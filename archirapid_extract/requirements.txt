@@ -1,0 +1,37 @@
+# archirapid_extract/requirements.txt
+# Dependencies for cadastral PDF extraction pipeline (MVP)
+
+# ===== CORE DEPENDENCIES (required) =====
+
+# PDF extraction
+PyMuPDF>=1.23.0          # Fast PDF rendering and text extraction
+pdfplumber>=0.10.0       # Fallback PDF extraction
+pdf2image>=1.16.3        # PDF to PNG conversion (requires Poppler on Windows)
+
+# Image processing and OCR
+Pillow>=10.0.0           # Image handling
+pytesseract>=0.3.10      # OCR wrapper (requires Tesseract binary installed)
+opencv-python>=4.8.0     # Image preprocessing and contour detection
+numpy>=1.24.0            # Numerical arrays
+
+# Vectorization and geometry
+shapely>=2.0.0           # Polygon operations and GeoJSON
+pyproj>=3.6.0            # Coordinate transformations (UTM ↔ lat/lon)
+
+# ===== OPTIONAL DEPENDENCIES =====
+
+# Advanced geospatial (comment out if not needed)
+# geopandas>=0.14.0      # Geospatial dataframes
+
+# 3D export (for future sprints 5-6)
+# trimesh>=4.0.0         # 3D mesh operations
+# pygltflib>=1.16.0      # glTF export
+
+# ===== SYSTEM DEPENDENCIES (install separately) =====
+# - Tesseract OCR: required for pytesseract
+#   Windows: choco install tesseract
+#   Or download: https://github.com/UB-Mannheim/tesseract/wiki
+#
+# - Poppler (optional): required for pdf2image if PyMuPDF fails
+#   Windows: choco install poppler
+#   Or download: https://github.com/oschwartz10612/poppler-windows/releases

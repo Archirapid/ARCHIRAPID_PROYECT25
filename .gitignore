@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Database (opcional - incluir si quieres versionar data.db)
+# data.db
+
+# Uploads y outputs temporales
+uploads/*
+!uploads/.gitkeep
+catastro_output/
+archirapid_extract/catastro_output/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporal
+*.tmp
+*.bak
+*.swp

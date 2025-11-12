@@ -249,9 +249,7 @@ if page == 'Home':
                 <h4 style='margin:6px 0;font-size:15px;color:#004080;'>{r['title']}</h4>
                 <div style='font-size:13px;color:#444;'><b>{int(r.get('m2',0)):,} m²</b> · €{int(r.get('price',0)):,}</div>
                 <div style='font-size:12px;color:#666;margin-top:4px;'>📍 {r.get('province','')} {r.get('locality','')}</div>
-                <div style='margin-top:8px;'>
-                    <a href="#" onclick="window.top.location.href=window.top.location.origin+window.top.location.pathname+'?page=Home&plot_id={r['id']}'" style='display:inline-block;background:linear-gradient(135deg,#0066cc,#004080);color:#fff;border-radius:6px;padding:6px 10px;text-decoration:none;font-weight:600;'>🔍 Ver detalles</a>
-                </div>
+                <div style='font-size:11px;color:#999;margin-top:8px;'>👉 Haz clic en el marcador para ver detalles completos</div>
             </div>
             """
 
@@ -266,7 +264,7 @@ if page == 'Home':
     map_col, panel_col = main_col.columns([2, 1])
     with map_col:
         st.header("Mapa de fincas (España & Portugal)")
-        map_data = st_folium(m, width="100%", height=650)
+        map_data = st_folium(m, width="100%", height=650, key="folium_map")
 
     # detect incoming plot_id from URL (robust handling)
     qp = st.query_params
@@ -284,6 +282,16 @@ if page == 'Home':
             st.query_params.clear()
         st.rerun()
 
+    # Detect marker click from map
+    if map_data and map_data.get("last_object_clicked") is not None:
+        clicked_lat = map_data["last_object_clicked"]["lat"]
+        clicked_lon = map_data["last_object_clicked"]["lng"]
+        # Find the plot with these exact coordinates
+        for _, r in df.iterrows():
+            if abs(r["lat"] - clicked_lat) < 0.0001 and abs(r["lon"] - clicked_lon) < 0.0001:
+                st.session_state["selected_plot"] = r["id"]
+                break
+
     # --- RIGHT: detail panel ---
     selected_plot = None
     if "selected_plot" in st.session_state:
@@ -296,7 +304,7 @@ if page == 'Home':
         else:
             st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
             if selected_plot.get("image_path") and os.path.exists(selected_plot["image_path"]):
-                st.image(selected_plot["image_path"], use_column_width=True)
+                st.image(selected_plot["image_path"], use_container_width=True)
             else:
                 st.info("Imagen no disponible")
 

@@ -173,7 +173,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Get current page from query params (robust resolver)
-raw_page = st.query_params.get('page', ['Home'])[0]
+raw_page = st.query_params.get('page', 'Home')
+if isinstance(raw_page, list):
+    raw_page = raw_page[0]
 page = str(raw_page) if raw_page is not None else 'Home'
 # Normalize common short values that sometimes appear (e.g. 'p' -> 'plots')
 norm = page.strip().lower()

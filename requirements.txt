@@ -3,6 +3,15 @@ folium>=0.14.0
 streamlit-folium>=0.12.0
 pillow>=9.5.0
 pandas>=2.0.3
+
+# Pipeline de extracción catastral
+PyMuPDF>=1.23.0
+opencv-python-headless>=4.8.0
+pytesseract>=0.3.10
+shapely>=2.0.0
+matplotlib>=3.7.0
+
+# Dependencias adicionales
 attrs>=25.4.0
 blinker>=1.9.0
 branca>=0.8.2

@@ -359,13 +359,24 @@ if page == 'Home':
                             import shutil
                             shutil.copy(pdf_source, pdf_dest)
                             
-                            # Ejecutar pipeline
+                            # Usar Python del venv explícitamente
+                            venv_python = os.path.join(os.getcwd(), "venv", "Scripts", "python.exe")
+                            if not os.path.exists(venv_python):
+                                venv_python = sys.executable  # fallback
+                            
+                            # Ejecutar pipeline con encoding UTF-8 para Windows
+                            env = os.environ.copy()
+                            env["PYTHONIOENCODING"] = "utf-8"
+                            
                             result = subprocess.run(
-                                [sys.executable, "run_pipeline_simple.py"],
+                                [venv_python, "run_pipeline_simple.py"],
                                 cwd="archirapid_extract",
                                 capture_output=True,
                                 text=True,
-                                timeout=120
+                                encoding='utf-8',
+                                errors='replace',
+                                timeout=120,
+                                env=env
                             )
                             
                             if result.returncode == 0:
@@ -385,6 +396,29 @@ if page == 'Home':
                                     with col2:
                                         st.metric("Máximo Edificable", f"{data.get('max_buildable_m2', 0):,.2f} m²")
                                         st.metric("% Edificabilidad", f"{data.get('buildability_pct', 33)}%")
+                                    
+                                    # Mostrar planos vectorizados si existen
+                                    contours_overlay = os.path.join("archirapid_extract", "catastro_output", "contours_visualization.png")
+                                    contours_clean = os.path.join("archirapid_extract", "catastro_output", "contours_clean.png")
+                                    
+                                    if os.path.exists(contours_overlay) or os.path.exists(contours_clean):
+                                        st.markdown("### 🗺️ Plano Vectorizado de la Parcela")
+                                        
+                                        tab1, tab2 = st.tabs(["🎯 Plano para CAD/BIM", "🔍 Validación Visual"])
+                                        
+                                        with tab1:
+                                            if os.path.exists(contours_clean):
+                                                st.image(contours_clean, caption="Contorno limpio para trabajo arquitectónico profesional (CAD/Revit/BIM)", width="stretch")
+                                                st.caption("✅ Este plano está listo para exportar a formatos CAD (DXF/DWG) y usar con herramientas de IA, VR/AR y gemelos digitales")
+                                            else:
+                                                st.info("Plano limpio no disponible")
+                                        
+                                        with tab2:
+                                            if os.path.exists(contours_overlay):
+                                                st.image(contours_overlay, caption="Contorno detectado sobre documento catastral original", width="stretch")
+                                                st.caption("🔍 Visualización de validación: muestra el contorno detectado sobre el PDF original")
+                                            else:
+                                                st.info("Visualización overlay no disponible")
                                 else:
                                     st.warning("⚠️ Pipeline ejecutado pero no se generó edificability.json")
                                     st.text("STDOUT:")

@@ -117,6 +117,26 @@ try:
 except Exception as e:
     print(f"⚠️  No se pudo crear visualización: {e}")
 
+# Generate clean contour image for professional architectural work
+try:
+    # Get image dimensions
+    img_path = IN_DIR / "page_1_processed.png"
+    img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+    if img is not None:
+        height, width = img.shape
+        
+        # Create clean white canvas
+        clean_img = np.ones((height, width, 3), dtype=np.uint8) * 255
+        
+        # Draw the main contour in black with thick line for clarity
+        cv2.drawContours(clean_img, [largest_cnt], -1, (0, 0, 0), 5)
+        
+        clean_path = IN_DIR / "contours_clean.png"
+        cv2.imwrite(str(clean_path), clean_img)
+        print(f"✅ Plano limpio para trabajo arquitectónico: {clean_path}")
+except Exception as e:
+    print(f"⚠️  No se pudo crear plano limpio: {e}")
+
 # Save top contours info
 contours_info = []
 for i, (area, idx, cnt) in enumerate(significant_contours[:5]):

@@ -1,10 +1,17 @@
 # vectorize_plan.py
+# -*- coding: utf-8 -*-
 import cv2
 import numpy as np
 from pathlib import Path
 from shapely.geometry import Polygon, mapping
 import json
 import sys
+
+# Force UTF-8 encoding for Windows console
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 IN_DIR = Path("catastro_output")
 proc_path = IN_DIR / "page_1_processed.png"

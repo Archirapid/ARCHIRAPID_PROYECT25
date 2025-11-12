@@ -1,7 +1,14 @@
 # extract_pdf.py
+# -*- coding: utf-8 -*-
 import os
 import sys
 from pathlib import Path
+
+# Force UTF-8 encoding for Windows console
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Ensure we run from project root or archirapid_extract
 PDF_PATH = Path("Catastro.pdf")

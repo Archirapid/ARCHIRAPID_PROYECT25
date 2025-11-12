@@ -1,8 +1,15 @@
 # compute_edificability.py
+# -*- coding: utf-8 -*-
 import re
 from pathlib import Path
 import json
 import sys
+
+# Force UTF-8 encoding for Windows console
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 IN_DIR = Path("catastro_output")
 txtf = IN_DIR / "extracted_text.txt"

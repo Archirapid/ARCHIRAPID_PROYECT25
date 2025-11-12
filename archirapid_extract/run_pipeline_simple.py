@@ -1,4 +1,5 @@
 # run_pipeline_simple.py - Pipeline sin emojis (compatible Windows cmd)
+# -*- coding: utf-8 -*-
 """
 Pipeline de extracción de notas catastrales - ArchiRapid MVP
 Versión simple sin emojis para compatibilidad con consola Windows
@@ -11,10 +12,14 @@ import sys
 from pathlib import Path
 import time
 import os
+import io
 
 # Forzar UTF-8 en Windows
 if sys.platform == "win32":
+    # Configurar consola y streams
     os.system("chcp 65001 >nul 2>&1")
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Scripts a ejecutar en orden
 SCRIPTS = [

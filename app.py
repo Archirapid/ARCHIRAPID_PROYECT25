@@ -343,6 +343,66 @@ if page == 'Home':
                                    data=registry_data,
                                    file_name=os.path.basename(selected_plot["registry_note_path"]),
                                    mime="application/pdf")
+                
+                # Botón para procesar nota catastral con pipeline de extracción
+                if st.button("🔍 Analizar Nota Catastral", key="analyze_registry"):
+                    with st.spinner("Procesando nota catastral... Esto puede tardar 30-60 segundos..."):
+                        import subprocess
+                        import sys
+                        
+                        # Copiar PDF a archirapid_extract para procesamiento
+                        pdf_source = selected_plot["registry_note_path"]
+                        pdf_dest = os.path.join("archirapid_extract", "test_catastral.pdf")
+                        
+                        try:
+                            # Copiar archivo
+                            import shutil
+                            shutil.copy(pdf_source, pdf_dest)
+                            
+                            # Ejecutar pipeline
+                            result = subprocess.run(
+                                [sys.executable, "run_pipeline_simple.py"],
+                                cwd="archirapid_extract",
+                                capture_output=True,
+                                text=True,
+                                timeout=120
+                            )
+                            
+                            if result.returncode == 0:
+                                # Leer resultados
+                                edificability_path = os.path.join("archirapid_extract", "catastro_output", "edificability.json")
+                                if os.path.exists(edificability_path):
+                                    import json
+                                    with open(edificability_path, 'r', encoding='utf-8') as f:
+                                        data = json.load(f)
+                                    
+                                    st.success("✅ Análisis completado")
+                                    st.markdown("### 📊 Resultados del Análisis")
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.metric("Referencia Catastral", data.get('catastral_ref', 'N/A'))
+                                        st.metric("Superficie Parcela", f"{data.get('surface_m2', 0):,.0f} m²")
+                                    with col2:
+                                        st.metric("Máximo Edificable", f"{data.get('max_buildable_m2', 0):,.2f} m²")
+                                        st.metric("% Edificabilidad", f"{data.get('buildability_pct', 33)}%")
+                                else:
+                                    st.warning("⚠️ Pipeline ejecutado pero no se generó edificability.json")
+                                    st.text("STDOUT:")
+                                    st.code(result.stdout)
+                            else:
+                                st.error(f"❌ Error en pipeline (código: {result.returncode})")
+                                if result.stderr:
+                                    st.text("STDERR:")
+                                    st.code(result.stderr)
+                                if result.stdout:
+                                    st.text("STDOUT:")
+                                    st.code(result.stdout)
+                        
+                        except subprocess.TimeoutExpired:
+                            st.error("❌ Timeout: El procesamiento tardó más de 2 minutos")
+                        except Exception as e:
+                            st.error(f"❌ Error: {str(e)}")
+
 
             st.markdown("---")
             if st.button("Close preview"):

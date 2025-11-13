@@ -10,8 +10,9 @@
 
 ### GitHub
 - 📦 Repositorio: https://github.com/Archirapid/ARCHIRAPID_PROYECT25
-- 🏷️ Tag actual: **v1.2-PIPELINE-COMPLETO**
-- 📝 Último commit: `cf1b61c` - packages.txt para Tesseract Cloud
+- 🏷️ Tag actual: **v1.3-DXF-EXPORT**
+- 📝 Último commit: `4f2dced` - DXF export integrado + Tesseract Linux
+- ✅ **CÓDIGO SUBIDO EXITOSAMENTE** (13 Nov 2025)
 
 ## 🌐 Deployment en Streamlit Cloud
 
@@ -133,21 +134,32 @@ Manage app → Logs → View app logs
 ## 🎯 Próximos Pasos
 
 ### Mejoras Futuras:
-1. **Autenticación** de usuarios
-2. **Base de datos** PostgreSQL en cloud
-3. **Storage** externo (AWS S3, Google Cloud)
-4. **API REST** para integraciones
-5. **Export** a DXF/DWG desde planos vectorizados
+1. **Autenticación** de usuarios (para gating de DXF/PDF)
+2. **Pago integrado** (Stripe/PayPal) para descargas premium
+3. **Base de datos** PostgreSQL en cloud
+4. **Storage** externo (AWS S3, Google Cloud)
+5. **API REST** para integraciones con BIM/CAD
+6. **Export** a DWG/IFC para gemelos digitales
 
-## 📞 Soporte
+## 🎉 NUEVAS FUNCIONALIDADES (v1.3-DXF-EXPORT)
 
-### Si necesitas ayuda:
-- GitHub Issues: Abre un issue en el repositorio
-- Streamlit Community: https://discuss.streamlit.io/
-- Documentación: https://docs.streamlit.io/
+### ✅ Export DXF Integrado:
+- Descarga directa desde la app después del análisis
+- Formato compatible con AutoCAD, Revit, ArchiCAD
+- Escala configurable (default: 0.1)
+- Layers organizados: PARCELA_CATASTRAL
+- Metadatos incluidos: Ref. catastral, superficie
+
+### 🔧 Cómo Usar:
+1. Sube PDF catastral en "Ver detalles"
+2. Click "Analizar Documento"
+3. Espera resultados (10-30 segundos)
+4. Scroll hasta "📥 Descargar DXF"
+5. Click "Descargar DXF para CAD/BIM"
+6. Archivo descarga como: `ARCHIRAPID_{referencia_catastral}.dxf`
 
 ---
 
-**Versión del sistema**: v1.2-PIPELINE-COMPLETO  
-**Última actualización**: 2025-11-12  
-**Estado**: ✅ VERIFICADO Y FUNCIONAL
+**Versión del sistema**: v1.3-DXF-EXPORT  
+**Última actualización**: 2025-11-13  
+**Estado**: ✅ CÓDIGO EN GITHUB - LISTO PARA DEPLOY CLOUD

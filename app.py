@@ -1,6 +1,5 @@
 """
 ARCHIRAPID MVP - Main Application
-Version: 1.3-DXF-EXPORT (Updated: 2025-11-13)
 """
 import streamlit as st
 import folium
@@ -12,16 +11,12 @@ import uuid
 from datetime import datetime
 import base64
 import json
-import sys
 
 # Configuration
 BASE = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE, "data.db")
 UPLOADS = os.path.join(BASE, "uploads")
 os.makedirs(UPLOADS, exist_ok=True)
-
-# Añadir path para módulo de export DXF
-sys.path.insert(0, os.path.join(BASE, "archirapid_extract"))
 
 st.set_page_config(page_title="ARCHIRAPID MVP", layout="wide")
 
@@ -199,6 +194,16 @@ if page == 'Home':
     st.title('ARCHIRAPID — Home')
     st.write('Busca fincas en la izquierda y visualízalas en el mapa interactivo. Haz clic en un marcador para abrir el panel detalle a la derecha.')
 
+    # =====================================================
+    # Persistencia robusta de selección de finca
+    # =====================================================
+    # Si tras un rerun desaparece selected_plot pero tenemos copia, restaurar.
+    if 'selected_plot' not in st.session_state and 'selected_plot_persist' in st.session_state:
+        st.session_state['selected_plot'] = st.session_state['selected_plot_persist']
+    # Mantener copia viva cada ciclo
+    if 'selected_plot' in st.session_state:
+        st.session_state['selected_plot_persist'] = st.session_state['selected_plot']
+
     # Layout: filters (left) + map + details panel (right)
     left_col, main_col = st.columns([1, 3])
 
@@ -216,7 +221,8 @@ if page == 'Home':
         max_price = st.number_input("Max price (€)", min_value=0, value=10000000)
         q = st.text_input("Search text (locality, title...)", "")
         if st.button("Apply filters"):
-            st.rerun()  # Fixed: removed deprecated experimental_rerun()
+            # No forzamos rerun manual para no perder selección
+            pass
 
 
     # --- MAIN: map + right preview panel ---
@@ -235,7 +241,7 @@ if page == 'Home':
         if type_sel != "any":
             df = df[df["type"] == type_sel]
         if q.strip() != "":
-            df = df[df.apply(lambda row: q.lower() in str(row["title"]).lower() or q.lower() in str(row.get("province","")).lower(), axis=1)]
+            df = df[df.apply(lambda row: q.lower() in str(row["title"]).lower() or q.lower() in str(row.get("province","")), axis=1)]
 
     # build map
     m = folium.Map(location=[40.0, -4.0], zoom_start=6, tiles="CartoDB positron")
@@ -274,18 +280,16 @@ if page == 'Home':
     # detect incoming plot_id from URL (robust handling)
     qp = st.query_params
     if "plot_id" in qp:
-        # Fixed: nueva API devuelve string directo, no lista
         plot_id_value = qp["plot_id"]
         if isinstance(plot_id_value, list):
             plot_id_value = plot_id_value[0]
         st.session_state["selected_plot"] = plot_id_value
-        # clear params solo si existen otros params
+        # Limpiar parámetro sin forzar rerun (evita perder selección en ciclo siguiente)
         new_qp = {k: v for k, v in qp.items() if k != "plot_id"}
         if len(new_qp) > 0:
             st.query_params.update(new_qp)
         else:
             st.query_params.clear()
-        st.rerun()
 
     # Detect marker click from map
     if map_data and map_data.get("last_object_clicked") is not None:
@@ -309,7 +313,7 @@ if page == 'Home':
         else:
             st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
             if selected_plot.get("image_path") and os.path.exists(selected_plot["image_path"]):
-                st.image(selected_plot["image_path"], width="stretch")
+                st.image(selected_plot["image_path"], width='stretch')
             else:
                 st.info("Imagen no disponible")
 
@@ -348,276 +352,462 @@ if page == 'Home':
                                    data=registry_data,
                                    file_name=os.path.basename(selected_plot["registry_note_path"]),
                                    mime="application/pdf")
-                
-                # Botón para procesar nota catastral con pipeline de extracción
-                if st.button("🔍 Analizar Nota Catastral", key="analyze_registry"):
-                    with st.spinner("Procesando nota catastral... Esto puede tardar 30-60 segundos..."):
-                        import subprocess
-                        import sys
-                        
-                        # Copiar PDF a archirapid_extract para procesamiento
-                        pdf_source = selected_plot["registry_note_path"]
-                        pdf_dest = os.path.join("archirapid_extract", "test_catastral.pdf")
-                        
+
+                # ---------------------------------------------------------
+                # 🔍 Extracción Catastral (Pipeline) - MVP
+                # ---------------------------------------------------------
+                st.markdown("### Análisis Automático Nota Catastral")
+                st.caption("Ejecuta el pipeline OCR + vectorización + edificabilidad sobre el PDF")
+                current_pid = selected_plot.get('id')
+                rendered_now = False
+                if st.button("🔍 Analizar Nota Catastral", key="analyze_catastral"):
+                    import shutil, subprocess, sys, json, traceback
+                    from pathlib import Path
+                    with st.spinner("Procesando nota catastral (30-60s)..."):
                         try:
-                            # Copiar archivo
-                            import shutil
-                            shutil.copy(pdf_source, pdf_dest)
-                            
-                            # Usar Python del venv explícitamente
-                            venv_python = os.path.join(os.getcwd(), "venv", "Scripts", "python.exe")
-                            if not os.path.exists(venv_python):
-                                venv_python = sys.executable  # fallback
-                            
-                            # Ejecutar pipeline con encoding UTF-8 para Windows
+                            extract_dir = Path("archirapid_extract")
+                            pdf_dest = extract_dir / "Catastro.pdf"  # Nombre esperado por run_pipeline_simple.py
+                            shutil.copy(selected_plot["registry_note_path"], pdf_dest)
+
+                            # Ejecutar pipeline simple
                             env = os.environ.copy()
                             env["PYTHONIOENCODING"] = "utf-8"
-                            
                             result = subprocess.run(
-                                [venv_python, "run_pipeline_simple.py"],
-                                cwd="archirapid_extract",
+                                [sys.executable, "run_pipeline_simple.py"],
+                                cwd=str(extract_dir),
                                 capture_output=True,
                                 text=True,
-                                encoding='utf-8',
-                                errors='replace',
-                                timeout=120,
+                                encoding="utf-8",
+                                errors="replace",
+                                timeout=180,
                                 env=env
                             )
-                            
-                            if result.returncode == 0:
-                                # Leer resultados
-                                edificability_path = os.path.join("archirapid_extract", "catastro_output", "edificability.json")
-                                if os.path.exists(edificability_path):
-                                    import json
-                                    with open(edificability_path, 'r', encoding='utf-8') as f:
-                                        data = json.load(f)
-                                    
-                                    st.success("✅ Análisis completado")
-                                    st.markdown("### 📊 Resultados del Análisis")
-                                    col1, col2 = st.columns(2)
-                                    with col1:
-                                        st.metric("Referencia Catastral", data.get('cadastral_ref', 'N/A'))
-                                        st.metric("Superficie Parcela", f"{data.get('surface_m2', 0):,.0f} m²")
-                                    with col2:
-                                        st.metric("Máximo Edificable", f"{data.get('max_buildable_m2', 0):,.2f} m²")
-                                        st.metric("% Edificabilidad", f"{int(data.get('edificability_percent', 0.33)*100)}%")
-                                    
-                                    # Informe de validación (si existe)
-                                    validation_path = os.path.join("archirapid_extract", "catastro_output", "validation_report.json")
-                                    if os.path.exists(validation_path):
-                                        with open(validation_path, 'r', encoding='utf-8') as vf:
-                                            validation = json.load(vf)
-                                        
-                                        # Semáforo de viabilidad
-                                        is_viable = validation.get('is_buildable', False)
-                                        if is_viable:
-                                            st.success("✅ **FINCA EDIFICABLE** - Cumple criterios básicos de viabilidad")
-                                        else:
-                                            st.error("❌ **NO EDIFICABLE** - Revisa las observaciones a continuación")
-                                        
-                                        # Detalles en expander para no saturar visualmente
-                                        with st.expander("📋 Ver Informe de Validación Completo", expanded=False):
-                                            col_v1, col_v2 = st.columns(2)
-                                            
-                                            with col_v1:
-                                                st.markdown(f"**Tipo de Suelo:** {validation.get('soil_type', 'DESCONOCIDO')}")
-                                                st.markdown(f"**Acceso Vial:** {'✅ Detectado' if validation.get('access_detected') else '❌ No detectado'}")
-                                            
-                                            with col_v2:
-                                                st.markdown(f"**Linderos Mencionados:** {'✅ Sí' if validation.get('linderos_mentioned') else '⚠️ No encontrados'}")
-                                                st.markdown(f"**Fuente Superficie:** {validation.get('surface_source', 'N/A')}")
-                                            
-                                            # Observaciones/Issues
-                                            issues = validation.get('issues', [])
-                                            if issues:
-                                                st.markdown("**⚠️ Observaciones:**")
-                                                for issue in issues:
-                                                    st.markdown(f"- {issue}")
-                                            else:
-                                                st.markdown("**✅ Sin observaciones críticas**")
-                                    
-                                    # Mostrar planos vectorizados si existen
-                                    contours_overlay = os.path.join("archirapid_extract", "catastro_output", "contours_visualization.png")
-                                    contours_clean = os.path.join("archirapid_extract", "catastro_output", "contours_clean.png")
-                                    
-                                    if os.path.exists(contours_overlay) or os.path.exists(contours_clean):
-                                        st.markdown("### 🗺️ Plano Vectorizado de la Parcela")
-                                        
-                                        tab1, tab2 = st.tabs(["🎯 Plano para CAD/BIM", "🔍 Validación Visual"])
-                                        
-                                        with tab1:
-                                            if os.path.exists(contours_clean):
-                                                st.image(contours_clean, caption="Contorno limpio para trabajo arquitectónico profesional (CAD/Revit/BIM)", width="stretch")
-                                                st.caption("✅ Este plano está listo para exportar a formatos CAD (DXF/DWG) y usar con herramientas de IA, VR/AR y gemelos digitales")
-                                            else:
-                                                st.info("Plano limpio no disponible")
-                                        
-                                        with tab2:
-                                            if os.path.exists(contours_overlay):
-                                                st.image(contours_overlay, caption="Contorno detectado sobre documento catastral original", width="stretch")
-                                                st.caption("🔍 Visualización de validación: muestra el contorno detectado sobre el PDF original")
-                                            else:
-                                                st.info("Visualización overlay no disponible")
-                                    
-                                    # Botón de descarga DXF para AutoCAD/Revit
-                                    st.markdown("---")
-                                    st.markdown("### 📥 Exportar a CAD/BIM")
-                                    
-                                    try:
-                                        from export_dxf import create_dxf_from_cadastral_output
-                                        
-                                        # Generar DXF desde la salida del pipeline
-                                        dxf_bytes = create_dxf_from_cadastral_output(
-                                            output_dir=os.path.join("archirapid_extract", "catastro_output"),
-                                            scale_factor=0.1  # 10 píxeles = 1 metro
-                                        )
-                                        
-                                        if dxf_bytes:
-                                            ref = data.get('catastral_ref', 'parcela')
-                                            filename = f"ARCHIRAPID_{ref}.dxf"
-                                            
-                                            col_dxf1, col_dxf2 = st.columns([2, 1])
-                                            
-                                            with col_dxf1:
-                                                st.download_button(
-                                                    label="⬇️ Descargar DXF (AutoCAD/Revit)",
-                                                    data=dxf_bytes,
-                                                    file_name=filename,
-                                                    mime="application/dxf",
-                                                    help="Archivo DXF compatible con AutoCAD, Revit, BricsCAD y otros software CAD/BIM"
-                                                )
-                                            
-                                            with col_dxf2:
-                                                st.info(f"📐 Tamaño: {len(dxf_bytes) / 1024:.1f} KB")
-                                            
-                                            st.caption("💡 **Uso profesional**: Este archivo DXF puede importarse directamente en AutoCAD, Revit, ArchiCAD, BricsCAD y otros software de arquitectura. Incluye el polígono de la parcela con escala métrica.")
-                                        else:
-                                            st.warning("⚠️ No se pudo generar el archivo DXF. Verifica que el análisis se completó correctamente.")
-                                    
-                                    except Exception as e:
-                                        st.error(f"❌ Error generando DXF: {e}")
-                                        st.caption("Contacta con soporte si el problema persiste.")
-                                    
-                                    # ============================================
-                                    # DISEÑADOR PARAMÉTRICO - SOLO SI ES EDIFICABLE
-                                    # ============================================
-                                    if validation_path and os.path.exists(validation_path):
-                                        with open(validation_path, 'r', encoding='utf-8') as vf:
-                                            validation_data = json.load(vf)
-                                        
-                                        is_viable = validation_data.get('is_buildable', False)
-                                        
-                                        if is_viable:
-                                            st.markdown("---")
-                                            st.markdown("### 🏗️ Diseñador Paramétrico Asistido")
-                                            st.caption("Genera automáticamente un diseño preliminar 2D/3D basado en la geometría y edificabilidad de tu finca")
-                                            
-                                            col_param1, col_param2 = st.columns(2)
-                                            
-                                            with col_param1:
-                                                num_bedrooms = st.selectbox("Número de dormitorios", [1, 2, 3, 4], index=1, key="param_bedrooms")
-                                                num_floors = st.selectbox("Número de plantas", [1, 2, 3], index=0, key="param_floors")
-                                            
-                                            with col_param2:
-                                                setback_m = st.slider("Retranqueo (metros)", min_value=1.0, max_value=10.0, value=3.0, step=0.5, key="param_setback")
-                                                st.caption(f"Distancia mínima al límite de la parcela: **{setback_m}m**")
-                                            
-                                            if st.button("🚀 Generar Proyecto Arquitectónico", type="primary", key="generate_design"):
-                                                with st.spinner("⏳ Generando diseño paramétrico..."):
-                                                    try:
-                                                        # Importar módulo de diseño
-                                                        import sys
-                                                        sys.path.insert(0, os.path.join(os.getcwd(), "archirapid_extract"))
-                                                        from generate_design import build_project
-                                                        
-                                                        # Ejecutar generador
-                                                        design_result = build_project(
-                                                            catastro_path=os.path.join("archirapid_extract", "catastro_output"),
-                                                            output_dir=os.path.join("archirapid_extract", "design_output"),
-                                                            num_bedrooms=num_bedrooms,
-                                                            num_floors=num_floors,
-                                                            setback_m=setback_m
-                                                        )
-                                                        
-                                                        if design_result["success"]:
-                                                            st.success("✅ Diseño generado exitosamente!")
-                                                            
-                                                            # Mostrar plano 2D
-                                                            st.markdown("#### 📐 Plano 2D Preliminar")
-                                                            plan_path = os.path.join("archirapid_extract", "design_output", "design_plan.png")
-                                                            if os.path.exists(plan_path):
-                                                                st.image(plan_path, caption="Plano arquitectónico preliminar", width="stretch")
-                                                            
-                                                            # Mostrar distribución
-                                                            layout = design_result["metadata"].get("layout", {})
-                                                            if layout:
-                                                                st.markdown("#### 🏠 Distribución de Espacios")
-                                                                layout_df_data = [{"Espacio": k, "Superficie (m²)": f"{v:.2f}"} for k, v in layout.items()]
-                                                                import pandas as pd
-                                                                st.dataframe(pd.DataFrame(layout_df_data), hide_index=True, width="stretch")
-                                                            
-                                                            # Mostrar presupuesto
-                                                            budget = design_result["metadata"].get("budget", {})
-                                                            if budget:
-                                                                st.markdown("#### 💰 Presupuesto Estimado")
-                                                                col_b1, col_b2, col_b3 = st.columns(3)
-                                                                with col_b1:
-                                                                    st.metric("Superficie Construida", f"{budget.get('superficie_construida_m2', 0):.2f} m²")
-                                                                with col_b2:
-                                                                    st.metric("Coste/m²", f"{budget.get('coste_por_m2_eur', 0):.0f} €")
-                                                                with col_b3:
-                                                                    st.metric("Total Estimado", f"{budget.get('total_estimado_eur', 0):,.0f} €")
-                                                                
-                                                                st.caption("⚠️ Presupuesto orientativo. No incluye terreno, urbanización ni gastos administrativos.")
-                                                            
-                                                            # Descarga modelo 3D
-                                                            st.markdown("#### 🏢 Modelo 3D")
-                                                            model_path = os.path.join("archirapid_extract", "design_output", "design_model.glb")
-                                                            if os.path.exists(model_path):
-                                                                with open(model_path, 'rb') as glb_file:
-                                                                    glb_bytes = glb_file.read()
-                                                                
-                                                                col_3d1, col_3d2 = st.columns([2, 1])
-                                                                with col_3d1:
-                                                                    st.download_button(
-                                                                        label="⬇️ Descargar Modelo 3D (GLB)",
-                                                                        data=glb_bytes,
-                                                                        file_name="ARCHIRAPID_modelo_3D.glb",
-                                                                        mime="model/gltf-binary",
-                                                                        help="Archivo GLB compatible con Blender, SketchUp, visualizadores web 3D, VR/AR"
-                                                                    )
-                                                                with col_3d2:
-                                                                    st.info(f"📦 Tamaño: {len(glb_bytes) / 1024:.1f} KB")
-                                                                
-                                                                st.caption("💡 **Visualización 3D**: Abre el archivo GLB en Blender, SketchUp, o cualquier visor 3D web (model-viewer, three.js)")
-                                                        
-                                                        else:
-                                                            st.error(f"❌ Error generando diseño: {design_result.get('error', 'Desconocido')}")
-                                                    
-                                                    except Exception as e:
-                                                        st.error(f"❌ Error en el generador: {str(e)}")
-                                                        import traceback
-                                                        st.code(traceback.format_exc())
-                                
-                                else:
-                                    st.warning("⚠️ Pipeline ejecutado pero no se generó edificability.json")
-                                    st.text("STDOUT:")
-                                    st.code(result.stdout)
-                            else:
-                                st.error(f"❌ Error en pipeline (código: {result.returncode})")
-                                if result.stderr:
-                                    st.text("STDERR:")
-                                    st.code(result.stderr)
-                                if result.stdout:
-                                    st.text("STDOUT:")
-                                    st.code(result.stdout)
-                        
                         except subprocess.TimeoutExpired:
-                            st.error("❌ Timeout: El procesamiento tardó más de 2 minutos")
+                            st.error("⏱️ Timeout: El proceso excedió 180s")
+                            result = None
                         except Exception as e:
-                            st.error(f"❌ Error: {str(e)}")
+                            st.error(f"❌ Error crítico ejecutando pipeline: {e}")
+                            st.code(traceback.format_exc())
+                            result = None
 
+                    # Fuera del spinner: mostrar resultados
+                    output_dir = Path("archirapid_extract") / "catastro_output"
+                    edific_file = output_dir / "edificability.json"
+                    valid_file = output_dir / "validation_report.json"
+                    overlay_img = output_dir / "contours_visualization.png"
+                    clean_img = output_dir / "contours_clean.png"
 
+                    if result and result.returncode == 0 and edific_file.exists():
+                        st.success("✅ Análisis completado correctamente")
+                        try:
+                            with open(edific_file, 'r', encoding='utf-8') as f:
+                                edata = json.load(f)
+                        except Exception as e:
+                            st.error(f"Error leyendo edificability.json: {e}")
+                            edata = {}
+
+                        # Coherencia automática con datos de la finca registrada (fallback seguro)
+                        try:
+                            corrected = False
+                            sel_surface_db = None
+                            try:
+                                sel_surface_db = float(selected_plot.get('m2') or 0)
+                            except Exception:
+                                sel_surface_db = None
+
+                            # 1) Corregir superficie si parece ser área en píxeles (demasiado grande)
+                            surf = edata.get('surface_m2')
+                            if isinstance(surf, (int, float)) and surf and surf > 100000 and sel_surface_db and 50 <= sel_surface_db <= 100000:
+                                edata['surface_m2'] = sel_surface_db
+                                corrected = True
+
+                            # 2) Ajustar tipo de suelo a partir de la finca si viene desconocido
+                            soil = None
+                            vdata_tmp = None
+                            if valid_file.exists():
+                                with open(valid_file, 'r', encoding='utf-8') as vf:
+                                    vdata_tmp = json.load(vf)
+                                soil = (vdata_tmp.get('soil_type') or '').upper()
+                            if (not soil or soil == 'DESCONOCIDO'):
+                                plot_type = (selected_plot.get('type') or '').lower()
+                                if plot_type == 'urban':
+                                    # Marcar como URBANO y edificable
+                                    if not vdata_tmp:
+                                        vdata_tmp = {}
+                                    vdata_tmp['soil_type'] = 'URBANO'
+                                    vdata_tmp['is_buildable'] = True
+                                    corrected = True
+                                    # Persistir actualización
+                                    with open(valid_file, 'w', encoding='utf-8') as vf:
+                                        json.dump(vdata_tmp, vf, indent=2, ensure_ascii=False)
+
+                            # 3) Recalcular edificabilidad máxima si cambió superficie o faltaba
+                            if corrected:
+                                ratio = edata.get('edificability_percent') or edata.get('edificability_ratio') or 0.33
+                                edata['max_buildable_m2'] = float(edata.get('surface_m2', 0)) * float(ratio)
+                                # Persistir edificability.json corregido
+                                with open(edific_file, 'w', encoding='utf-8') as ef:
+                                    json.dump(edata, ef, indent=2, ensure_ascii=False)
+                                # Sincronizar campos clave en validation_report.json para el diseñador
+                                try:
+                                    if valid_file.exists():
+                                        with open(valid_file, 'r', encoding='utf-8') as vf:
+                                            vaux = json.load(vf)
+                                    else:
+                                        vaux = {}
+                                    vaux['surface_m2'] = float(edata.get('surface_m2', 0))
+                                    vaux['buildable_m2'] = float(edata.get('max_buildable_m2', 0))
+                                    with open(valid_file, 'w', encoding='utf-8') as vf:
+                                        json.dump(vaux, vf, indent=2, ensure_ascii=False)
+                                except Exception:
+                                    pass
+                                # Mensaje informativo
+                                st.info("Se han ajustado automáticamente los datos usando la superficie registrada y el tipo de suelo de la finca (urbana).")
+                        except Exception as _auto_e:
+                            st.warning(f"No se pudo aplicar corrección automática: {_auto_e}")
+
+                        # Guardar en caché para persistir entre reruns
+                        try:
+                            st.session_state.setdefault('analysis_cache', {})
+                            st.session_state['analysis_cache'][current_pid] = {
+                                'output_dir': str(output_dir),
+                                'edata': edata,
+                                'vdata': vdata_tmp if 'vdata_tmp' in locals() and vdata_tmp else None
+                            }
+                        except Exception:
+                            pass
+
+                        # Métricas básicas (con posibles correcciones)
+                        st.markdown("#### 📊 Métricas Catastrales")
+                        mc1, mc2 = st.columns(2)
+                        with mc1:
+                            st.metric("Referencia", edata.get("cadastral_ref") or edata.get("cadastral_reference", "N/A"))
+                            st.metric("Superficie Parcela", f"{edata.get('surface_m2', 0):,.0f} m²")
+                        with mc2:
+                            st.metric("Máx. Edificable", f"{edata.get('max_buildable_m2', 0):,.2f} m²")
+                            perc = edata.get('edificability_percent') or edata.get('edificability_ratio') or 0
+                            st.metric("% Edificabilidad", f"{perc*100:.1f}%")
+
+                        # Validación / Viabilidad (con posibles correcciones)
+                        if valid_file.exists():
+                            try:
+                                with open(valid_file, 'r', encoding='utf-8') as vf:
+                                    vdata = json.load(vf)
+                            except Exception as e:
+                                st.error(f"Error leyendo validation_report.json: {e}")
+                                vdata = {}
+                            is_buildable = vdata.get('is_buildable', False)
+                            if is_buildable:
+                                st.success("✅ FINCA EDIFICABLE")
+                            else:
+                                st.error("❌ NO EDIFICABLE (según criterios automáticos)")
+                            with st.expander("📋 Informe de Validación"):
+                                st.write({k: v for k, v in vdata.items() if k not in ['issues']})
+                                issues = vdata.get('issues', [])
+                                if issues:
+                                    st.markdown("**Observaciones:**")
+                                    for iss in issues:
+                                        st.markdown(f"- {iss}")
+                                else:
+                                    st.markdown("Sin observaciones críticas")
+
+                        # Imágenes vectorizadas
+                        if overlay_img.exists() or clean_img.exists():
+                            st.markdown("#### 🗺️ Plano Vectorizado")
+                            t1, t2 = st.tabs(["Plano Limpio", "Overlay PDF"])
+                            with t1:
+                                if clean_img.exists():
+                                    st.image(str(clean_img), caption="Contorno procesado limpio", width='stretch')
+                                else:
+                                    st.info("No disponible")
+                            with t2:
+                                if overlay_img.exists():
+                                    st.image(str(overlay_img), caption="Contorno sobre documento original", width='stretch')
+                                else:
+                                    st.info("No disponible")
+
+                        # Export DXF
+                        try:
+                            from archirapid_extract.export_dxf import create_dxf_from_cadastral_output
+                            dxf_bytes = create_dxf_from_cadastral_output(output_dir=str(output_dir), scale_factor=0.1)
+                            if dxf_bytes:
+                                st.markdown("#### 📥 Exportar DXF")
+                                ref = edata.get("cadastral_ref") or edata.get("cadastral_reference") or "parcela"
+                                st.download_button(
+                                    "⬇️ Descargar DXF (AutoCAD)",
+                                    data=dxf_bytes,
+                                    file_name=f"ARCHIRAPID_{ref}.dxf",
+                                    mime="application/dxf",
+                                    help="Archivo compatible con AutoCAD / Revit / CAD genérico"
+                                )
+                            else:
+                                st.warning("DXF no generado (faltan datos GeoJSON)")
+                        except Exception as e:
+                            st.error(f"Error exportando DXF: {e}")
+
+                        # Mostrar logs resumidos
+                        with st.expander("🛠️ Log del Pipeline"):
+                            st.code((result.stdout or "").strip()[:4000])
+                            if result.stderr:
+                                st.code((result.stderr or "").strip()[:2000])
+                        
+                        # ---------------------------------------------------------
+                        # 🏗️ Diseñador Paramétrico + Visor 3D (solo si edificable)
+                        # ---------------------------------------------------------
+                        if valid_file.exists():
+                            try:
+                                with open(valid_file, 'r', encoding='utf-8') as vf:
+                                    vdata2 = json.load(vf)
+                                if vdata2.get('is_buildable', False):
+                                    st.markdown("---")
+                                    st.markdown("### 🏗️ Diseñador Paramétrico (Beta)")
+                                    st.caption("Genera plano 2D, modelo 3D GLB y presupuesto estimado basado en geometría catastral.")
+                                    dcol1, dcol2, dcol3 = st.columns(3)
+                                    with dcol1:
+                                        num_bedrooms = st.selectbox("Dormitorios", [1,2,3,4], index=1, key="design_bedrooms")
+                                    with dcol2:
+                                        num_floors = st.selectbox("Plantas", [1,2,3], index=0, key="design_floors")
+                                    with dcol3:
+                                        setback_m = st.slider("Retranqueo (m)", min_value=1.0, max_value=8.0, value=3.0, step=0.5, key="design_setback")
+                                    # Diseño paramétrico con persistencia de resultado
+                                    if st.button("🚀 Generar Diseño", key="btn_generate_design"):
+                                        st.session_state['design_requested'] = {
+                                            'bedrooms': num_bedrooms,
+                                            'floors': num_floors,
+                                            'setback': setback_m
+                                        }
+                                    # Ejecutar si se solicitó y aún no hay resultado
+                                    if st.session_state.get('design_requested') and not st.session_state.get('design_result'):
+                                        params = st.session_state['design_requested']
+                                        with st.spinner("Generando diseño paramétrico..."):
+                                            try:
+                                                import sys as _sys
+                                                _sys.path.insert(0, os.path.join(os.getcwd(), "archirapid_extract"))
+                                                from archirapid_extract.generate_design import build_project
+                                                design_res = build_project(
+                                                    catastro_path=str(output_dir),
+                                                    output_dir=os.path.join("archirapid_extract", "design_output"),
+                                                    num_bedrooms=params['bedrooms'],
+                                                    num_floors=params['floors'],
+                                                    setback_m=params['setback']
+                                                )
+                                            except Exception as de:
+                                                st.error(f"Error ejecutando generador: {de}")
+                                                import traceback as _tb
+                                                st.code(_tb.format_exc())
+                                                design_res = {"success": False}
+                                        st.session_state['design_result'] = design_res
+                                    # Mostrar resultado si existe
+                                    if st.session_state.get('design_result'):
+                                        design_res = st.session_state['design_result']
+                                        if design_res.get('success'):
+                                            st.success("✅ Diseño generado")
+                                            plan_path = os.path.join("archirapid_extract", "design_output", "design_plan.png")
+                                            if os.path.exists(plan_path):
+                                                st.image(plan_path, caption="Plano preliminar", width='stretch')
+                                            budget = design_res.get("metadata", {}).get("budget", {})
+                                            if budget:
+                                                st.markdown("#### 💰 Presupuesto Estimado")
+                                                bc1, bc2, bc3 = st.columns(3)
+                                                with bc1:
+                                                    st.metric("Sup. Construida", f"{budget.get('superficie_construida_m2',0):.1f} m²")
+                                                with bc2:
+                                                    st.metric("Coste/m²", f"{budget.get('coste_por_m2_eur',0):.0f} €")
+                                                with bc3:
+                                                    st.metric("Total Estimado", f"{budget.get('total_estimado_eur',0):,.0f} €")
+                                                st.caption("Estimación orientativa. No incluye licencias ni impuestos adicionales.")
+                                            model_path = os.path.join("archirapid_extract", "design_output", "design_model.glb")
+                                            if os.path.exists(model_path):
+                                                with open(model_path, 'rb') as mf:
+                                                    glb_bytes = mf.read()
+                                                import base64 as _b64
+                                                glb_b64 = _b64.b64encode(glb_bytes).decode()
+                                                st.markdown("#### 🏢 Modelo 3D Interactivo")
+                                                viewer_html = f"""
+                                                <script type=\"module\" src=\"https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js\"></script>
+                                                <model-viewer src=\"data:model/gltf-binary;base64,{glb_b64}\" camera-controls auto-rotate style=\"width:100%;height:420px;background:#f5f5f5;border-radius:12px;\"></model-viewer>
+                                                <p style='text-align:center;font-size:12px;color:#666;margin-top:4px;'>Rotar: arrastrar · Zoom: rueda · Móvil: multitouch</p>
+                                                """
+                                                st.components.v1.html(viewer_html, height=450)
+                                                dl1, dl2 = st.columns([2,1])
+                                                with dl1:
+                                                    st.download_button("⬇️ Descargar GLB", data=glb_bytes, file_name="ARCHIRAPID_modelo.glb", mime="model/gltf-binary")
+                                                with dl2:
+                                                    st.info(f"{len(glb_bytes)/1024:.1f} KB")
+                                            else:
+                                                st.warning("Modelo 3D no encontrado")
+                                        else:
+                                            st.error(f"Fallo generando diseño: {design_res.get('error','desconocido')}")
+                                    rendered_now = True
+                                else:
+                                    st.info("Diseñador disponible sólo si la finca es edificable.")
+                            except Exception as e:
+                                st.error(f"Error preparando diseñador: {e}")
+                    else:
+                        st.error("❌ Falló la extracción catastral")
+                        if result:
+                            st.text("STDOUT:")
+                            st.code(result.stdout or "")
+                            st.text("STDERR:")
+                            st.code(result.stderr or "")
+
+                # Si había un análisis previo en caché para esta finca, renderizarlo (evita tener que re-analizar)
+                try:
+                    cache_all = st.session_state.get('analysis_cache', {})
+                    cache = cache_all.get(current_pid)
+                except Exception:
+                    cache = None
+                if cache and not rendered_now:
+                    try:
+                        from pathlib import Path
+                        edata = cache.get('edata') or {}
+                        vdata = cache.get('vdata') or {}
+                        output_dir = Path(cache.get('output_dir', 'archirapid_extract/catastro_output'))
+                        valid_file = output_dir / "validation_report.json"
+                        overlay_img = output_dir / "contours_visualization.png"
+                        clean_img = output_dir / "contours_clean.png"
+
+                        st.info("Mostrando resultados del último análisis (caché)")
+                        st.markdown("#### 📊 Métricas Catastrales")
+                        mc1, mc2 = st.columns(2)
+                        with mc1:
+                            st.metric("Referencia", edata.get("cadastral_ref") or edata.get("cadastral_reference", "N/A"))
+                            st.metric("Superficie Parcela", f"{edata.get('surface_m2', 0):,.0f} m²")
+                        with mc2:
+                            st.metric("Máx. Edificable", f"{edata.get('max_buildable_m2', 0):,.2f} m²")
+                            perc = edata.get('edificability_percent') or edata.get('edificability_ratio') or 0
+                            st.metric("% Edificabilidad", f"{perc*100:.1f}%")
+
+                        if vdata:
+                            is_buildable = vdata.get('is_buildable', False)
+                            if is_buildable:
+                                st.success("✅ FINCA EDIFICABLE")
+                            else:
+                                st.error("❌ NO EDIFICABLE (según criterios automáticos)")
+                            with st.expander("📋 Informe de Validación"):
+                                st.write({k: v for k, v in vdata.items() if k not in ['issues']})
+                                issues = vdata.get('issues', [])
+                                if issues:
+                                    st.markdown("**Observaciones:**")
+                                    for iss in issues:
+                                        st.markdown(f"- {iss}")
+                                else:
+                                    st.markdown("Sin observaciones críticas")
+
+                        if overlay_img.exists() or clean_img.exists():
+                            st.markdown("#### 🗺️ Plano Vectorizado")
+                            t1, t2 = st.tabs(["Plano Limpio", "Overlay PDF"])
+                            with t1:
+                                if clean_img.exists():
+                                    st.image(str(clean_img), caption="Contorno procesado limpio", width='stretch')
+                                else:
+                                    st.info("No disponible")
+                            with t2:
+                                if overlay_img.exists():
+                                    st.image(str(overlay_img), caption="Contorno sobre documento original", width='stretch')
+                                else:
+                                    st.info("No disponible")
+
+                        # Export DXF desde caché
+                        try:
+                            from archirapid_extract.export_dxf import create_dxf_from_cadastral_output
+                            dxf_bytes = create_dxf_from_cadastral_output(output_dir=str(output_dir), scale_factor=0.1)
+                            if dxf_bytes:
+                                st.markdown("#### 📥 Exportar DXF")
+                                ref = edata.get("cadastral_ref") or edata.get("cadastral_reference") or "parcela"
+                                st.download_button(
+                                    "⬇️ Descargar DXF (AutoCAD)",
+                                    data=dxf_bytes,
+                                    file_name=f"ARCHIRAPID_{ref}.dxf",
+                                    mime="application/dxf",
+                                    help="Archivo compatible con AutoCAD / Revit / CAD genérico"
+                                )
+                            else:
+                                st.warning("DXF no generado (faltan datos GeoJSON)")
+                        except Exception as e:
+                            st.error(f"Error exportando DXF: {e}")
+
+                        # Diseñador si edificable en caché
+                        if vdata and vdata.get('is_buildable', False):
+                            st.markdown("---")
+                            st.markdown("### 🏗️ Diseñador Paramétrico (Beta)")
+                            st.caption("Genera plano 2D, modelo 3D GLB y presupuesto estimado basado en geometría catastral.")
+                            dcol1, dcol2, dcol3 = st.columns(3)
+                            with dcol1:
+                                num_bedrooms = st.selectbox("Dormitorios", [1,2,3,4], index=1, key="design_bedrooms_cache")
+                            with dcol2:
+                                num_floors = st.selectbox("Plantas", [1,2,3], index=0, key="design_floors_cache")
+                            with dcol3:
+                                setback_m = st.slider("Retranqueo (m)", min_value=1.0, max_value=8.0, value=3.0, step=0.5, key="design_setback_cache")
+                            if st.button("🚀 Generar Diseño", key="btn_generate_design_cache"):
+                                st.session_state['design_requested'] = {
+                                    'bedrooms': num_bedrooms,
+                                    'floors': num_floors,
+                                    'setback': setback_m
+                                }
+                            if st.session_state.get('design_requested') and not st.session_state.get('design_result'):
+                                params = st.session_state['design_requested']
+                                with st.spinner("Generando diseño paramétrico..."):
+                                    try:
+                                        import sys as _sys
+                                        _sys.path.insert(0, os.path.join(os.getcwd(), "archirapid_extract"))
+                                        from archirapid_extract.generate_design import build_project
+                                        design_res = build_project(
+                                            catastro_path=str(output_dir),
+                                            output_dir=os.path.join("archirapid_extract", "design_output"),
+                                            num_bedrooms=params['bedrooms'],
+                                            num_floors=params['floors'],
+                                            setback_m=params['setback']
+                                        )
+                                    except Exception as de:
+                                        st.error(f"Error ejecutando generador: {de}")
+                                        import traceback as _tb
+                                        st.code(_tb.format_exc())
+                                        design_res = {"success": False}
+                                st.session_state['design_result'] = design_res
+                            if st.session_state.get('design_result'):
+                                design_res = st.session_state['design_result']
+                                if design_res.get('success'):
+                                    st.success("✅ Diseño generado")
+                                    plan_path = os.path.join("archirapid_extract", "design_output", "design_plan.png")
+                                    if os.path.exists(plan_path):
+                                        st.image(plan_path, caption="Plano preliminar", width='stretch')
+                                    budget = design_res.get("metadata", {}).get("budget", {})
+                                    if budget:
+                                        st.markdown("#### 💰 Presupuesto Estimado")
+                                        bc1, bc2, bc3 = st.columns(3)
+                                        with bc1:
+                                            st.metric("Sup. Construida", f"{budget.get('superficie_construida_m2',0):.1f} m²")
+                                        with bc2:
+                                            st.metric("Coste/m²", f"{budget.get('coste_por_m2_eur',0):.0f} €")
+                                        with bc3:
+                                            st.metric("Total Estimado", f"{budget.get('total_estimado_eur',0):,.0f} €")
+                                        st.caption("Estimación orientativa. No incluye licencias ni impuestos adicionales.")
+                                    model_path = os.path.join("archirapid_extract", "design_output", "design_model.glb")
+                                    if os.path.exists(model_path):
+                                        with open(model_path, 'rb') as mf:
+                                            glb_bytes = mf.read()
+                                        import base64 as _b64
+                                        glb_b64 = _b64.b64encode(glb_bytes).decode()
+                                        st.markdown("#### 🏢 Modelo 3D Interactivo")
+                                        viewer_html = f"""
+                                        <script type=\"module\" src=\"https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js\"></script>
+                                        <model-viewer src=\"data:model/gltf-binary;base64,{glb_b64}\" camera-controls auto-rotate style=\"width:100%;height:420px;background:#f5f5f5;border-radius:12px;\"></model-viewer>
+                                        <p style='text-align:center;font-size:12px;color:#666;margin-top:4px;'>Rotar: arrastrar · Zoom: rueda · Móvil: multitouch</p>
+                                        """
+                                        st.components.v1.html(viewer_html, height=450)
+                                        dl1, dl2 = st.columns([2,1])
+                                        with dl1:
+                                            st.download_button("⬇️ Descargar GLB", data=glb_bytes, file_name="ARCHIRAPID_modelo.glb", mime="model/gltf-binary")
+                                        with dl2:
+                                            st.info(f"{len(glb_bytes)/1024:.1f} KB")
+                                    else:
+                                        st.warning("Modelo 3D no encontrado")
+                                else:
+                                    st.error(f"Fallo generando diseño: {design_res.get('error','desconocido')}")
+                    except Exception as e:
+                        st.error(f"Error mostrando resultados en caché: {e}")
+                
             st.markdown("---")
             if st.button("Close preview"):
                 st.session_state.pop("selected_plot", None)

@@ -538,7 +538,35 @@ def build_project(catastro_path: str, output_dir: str, num_bedrooms: int = 2,
     
     surface_m2 = validation.get("surface_m2")
     buildable_m2 = validation.get("buildable_m2")
-    
+
+    # Fallback robusto: leer edificability.json si faltan valores
+    if (surface_m2 is None) or (buildable_m2 is None):
+        try:
+            eda_path = Path(catastro_path) / "edificability.json"
+            if eda_path.exists():
+                with open(eda_path, 'r', encoding='utf-8') as ef:
+                    eda = json.load(ef)
+                if surface_m2 is None:
+                    # campos esperados en edificability.json
+                    s = eda.get("surface_m2")
+                    if isinstance(s, (int, float)) and s > 0:
+                        surface_m2 = float(s)
+                if buildable_m2 is None:
+                    b = eda.get("buildable_m2") or eda.get("max_buildable_m2")
+                    if isinstance(b, (int, float)) and b > 0:
+                        buildable_m2 = float(b)
+                    else:
+                        # calcular a partir de ratio si es posible
+                        ratio = eda.get("edificability_percent") or eda.get("edificability_ratio")
+                        if ratio is not None and surface_m2:
+                            try:
+                                buildable_m2 = float(surface_m2) * float(ratio)
+                            except Exception:
+                                pass
+        except Exception:
+            # Ignorar errores de fallback; validaremos abajo
+            pass
+
     if not surface_m2 or not buildable_m2:
         result["error"] = "Datos de superficie inválidos"
         return result

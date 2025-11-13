@@ -396,11 +396,45 @@ if page == 'Home':
                                     st.markdown("### 📊 Resultados del Análisis")
                                     col1, col2 = st.columns(2)
                                     with col1:
-                                        st.metric("Referencia Catastral", data.get('catastral_ref', 'N/A'))
+                                        st.metric("Referencia Catastral", data.get('cadastral_ref', 'N/A'))
                                         st.metric("Superficie Parcela", f"{data.get('surface_m2', 0):,.0f} m²")
                                     with col2:
                                         st.metric("Máximo Edificable", f"{data.get('max_buildable_m2', 0):,.2f} m²")
-                                        st.metric("% Edificabilidad", f"{data.get('buildability_pct', 33)}%")
+                                        st.metric("% Edificabilidad", f"{int(data.get('edificability_percent', 0.33)*100)}%")
+                                    
+                                    # Informe de validación (si existe)
+                                    validation_path = os.path.join("archirapid_extract", "catastro_output", "validation_report.json")
+                                    if os.path.exists(validation_path):
+                                        with open(validation_path, 'r', encoding='utf-8') as vf:
+                                            validation = json.load(vf)
+                                        
+                                        # Semáforo de viabilidad
+                                        is_viable = validation.get('is_buildable', False)
+                                        if is_viable:
+                                            st.success("✅ **FINCA EDIFICABLE** - Cumple criterios básicos de viabilidad")
+                                        else:
+                                            st.error("❌ **NO EDIFICABLE** - Revisa las observaciones a continuación")
+                                        
+                                        # Detalles en expander para no saturar visualmente
+                                        with st.expander("📋 Ver Informe de Validación Completo", expanded=False):
+                                            col_v1, col_v2 = st.columns(2)
+                                            
+                                            with col_v1:
+                                                st.markdown(f"**Tipo de Suelo:** {validation.get('soil_type', 'DESCONOCIDO')}")
+                                                st.markdown(f"**Acceso Vial:** {'✅ Detectado' if validation.get('access_detected') else '❌ No detectado'}")
+                                            
+                                            with col_v2:
+                                                st.markdown(f"**Linderos Mencionados:** {'✅ Sí' if validation.get('linderos_mentioned') else '⚠️ No encontrados'}")
+                                                st.markdown(f"**Fuente Superficie:** {validation.get('surface_source', 'N/A')}")
+                                            
+                                            # Observaciones/Issues
+                                            issues = validation.get('issues', [])
+                                            if issues:
+                                                st.markdown("**⚠️ Observaciones:**")
+                                                for issue in issues:
+                                                    st.markdown(f"- {issue}")
+                                            else:
+                                                st.markdown("**✅ Sin observaciones críticas**")
                                     
                                     # Mostrar planos vectorizados si existen
                                     contours_overlay = os.path.join("archirapid_extract", "catastro_output", "contours_visualization.png")

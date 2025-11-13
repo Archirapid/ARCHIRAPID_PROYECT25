@@ -309,7 +309,7 @@ if page == 'Home':
         else:
             st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
             if selected_plot.get("image_path") and os.path.exists(selected_plot["image_path"]):
-                st.image(selected_plot["image_path"], use_container_width=True)
+                st.image(selected_plot["image_path"], width="stretch")
             else:
                 st.info("Imagen no disponible")
 
@@ -497,6 +497,107 @@ if page == 'Home':
                                     except Exception as e:
                                         st.error(f"❌ Error generando DXF: {e}")
                                         st.caption("Contacta con soporte si el problema persiste.")
+                                    
+                                    # ============================================
+                                    # DISEÑADOR PARAMÉTRICO - SOLO SI ES EDIFICABLE
+                                    # ============================================
+                                    if validation_path and os.path.exists(validation_path):
+                                        with open(validation_path, 'r', encoding='utf-8') as vf:
+                                            validation_data = json.load(vf)
+                                        
+                                        is_viable = validation_data.get('is_buildable', False)
+                                        
+                                        if is_viable:
+                                            st.markdown("---")
+                                            st.markdown("### 🏗️ Diseñador Paramétrico Asistido")
+                                            st.caption("Genera automáticamente un diseño preliminar 2D/3D basado en la geometría y edificabilidad de tu finca")
+                                            
+                                            col_param1, col_param2 = st.columns(2)
+                                            
+                                            with col_param1:
+                                                num_bedrooms = st.selectbox("Número de dormitorios", [1, 2, 3, 4], index=1, key="param_bedrooms")
+                                                num_floors = st.selectbox("Número de plantas", [1, 2, 3], index=0, key="param_floors")
+                                            
+                                            with col_param2:
+                                                setback_m = st.slider("Retranqueo (metros)", min_value=1.0, max_value=10.0, value=3.0, step=0.5, key="param_setback")
+                                                st.caption(f"Distancia mínima al límite de la parcela: **{setback_m}m**")
+                                            
+                                            if st.button("🚀 Generar Proyecto Arquitectónico", type="primary", key="generate_design"):
+                                                with st.spinner("⏳ Generando diseño paramétrico..."):
+                                                    try:
+                                                        # Importar módulo de diseño
+                                                        import sys
+                                                        sys.path.insert(0, os.path.join(os.getcwd(), "archirapid_extract"))
+                                                        from generate_design import build_project
+                                                        
+                                                        # Ejecutar generador
+                                                        design_result = build_project(
+                                                            catastro_path=os.path.join("archirapid_extract", "catastro_output"),
+                                                            output_dir=os.path.join("archirapid_extract", "design_output"),
+                                                            num_bedrooms=num_bedrooms,
+                                                            num_floors=num_floors,
+                                                            setback_m=setback_m
+                                                        )
+                                                        
+                                                        if design_result["success"]:
+                                                            st.success("✅ Diseño generado exitosamente!")
+                                                            
+                                                            # Mostrar plano 2D
+                                                            st.markdown("#### 📐 Plano 2D Preliminar")
+                                                            plan_path = os.path.join("archirapid_extract", "design_output", "design_plan.png")
+                                                            if os.path.exists(plan_path):
+                                                                st.image(plan_path, caption="Plano arquitectónico preliminar", width="stretch")
+                                                            
+                                                            # Mostrar distribución
+                                                            layout = design_result["metadata"].get("layout", {})
+                                                            if layout:
+                                                                st.markdown("#### 🏠 Distribución de Espacios")
+                                                                layout_df_data = [{"Espacio": k, "Superficie (m²)": f"{v:.2f}"} for k, v in layout.items()]
+                                                                import pandas as pd
+                                                                st.dataframe(pd.DataFrame(layout_df_data), hide_index=True, width="stretch")
+                                                            
+                                                            # Mostrar presupuesto
+                                                            budget = design_result["metadata"].get("budget", {})
+                                                            if budget:
+                                                                st.markdown("#### 💰 Presupuesto Estimado")
+                                                                col_b1, col_b2, col_b3 = st.columns(3)
+                                                                with col_b1:
+                                                                    st.metric("Superficie Construida", f"{budget.get('superficie_construida_m2', 0):.2f} m²")
+                                                                with col_b2:
+                                                                    st.metric("Coste/m²", f"{budget.get('coste_por_m2_eur', 0):.0f} €")
+                                                                with col_b3:
+                                                                    st.metric("Total Estimado", f"{budget.get('total_estimado_eur', 0):,.0f} €")
+                                                                
+                                                                st.caption("⚠️ Presupuesto orientativo. No incluye terreno, urbanización ni gastos administrativos.")
+                                                            
+                                                            # Descarga modelo 3D
+                                                            st.markdown("#### 🏢 Modelo 3D")
+                                                            model_path = os.path.join("archirapid_extract", "design_output", "design_model.glb")
+                                                            if os.path.exists(model_path):
+                                                                with open(model_path, 'rb') as glb_file:
+                                                                    glb_bytes = glb_file.read()
+                                                                
+                                                                col_3d1, col_3d2 = st.columns([2, 1])
+                                                                with col_3d1:
+                                                                    st.download_button(
+                                                                        label="⬇️ Descargar Modelo 3D (GLB)",
+                                                                        data=glb_bytes,
+                                                                        file_name="ARCHIRAPID_modelo_3D.glb",
+                                                                        mime="model/gltf-binary",
+                                                                        help="Archivo GLB compatible con Blender, SketchUp, visualizadores web 3D, VR/AR"
+                                                                    )
+                                                                with col_3d2:
+                                                                    st.info(f"📦 Tamaño: {len(glb_bytes) / 1024:.1f} KB")
+                                                                
+                                                                st.caption("💡 **Visualización 3D**: Abre el archivo GLB en Blender, SketchUp, o cualquier visor 3D web (model-viewer, three.js)")
+                                                        
+                                                        else:
+                                                            st.error(f"❌ Error generando diseño: {design_result.get('error', 'Desconocido')}")
+                                                    
+                                                    except Exception as e:
+                                                        st.error(f"❌ Error en el generador: {str(e)}")
+                                                        import traceback
+                                                        st.code(traceback.format_exc())
                                 
                                 else:
                                     st.warning("⚠️ Pipeline ejecutado pero no se generó edificability.json")

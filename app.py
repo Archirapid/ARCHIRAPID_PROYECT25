@@ -1,5 +1,6 @@
 """
 ARCHIRAPID MVP - Main Application
+Version: 1.3-DXF-EXPORT (Updated: 2025-11-13)
 """
 import streamlit as st
 import folium

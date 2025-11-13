@@ -39,6 +39,10 @@ uploads/*
 catastro_output/
 archirapid_extract/catastro_output/
 
+# CAD exports and test artifacts
+*.dxf
+archirapid_extract/test_catastral.pdf
+
 # OS
 .DS_Store
 Thumbs.db

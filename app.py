@@ -11,12 +11,16 @@ import uuid
 from datetime import datetime
 import base64
 import json
+import sys
 
 # Configuration
 BASE = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE, "data.db")
 UPLOADS = os.path.join(BASE, "uploads")
 os.makedirs(UPLOADS, exist_ok=True)
+
+# Añadir path para módulo de export DXF
+sys.path.insert(0, os.path.join(BASE, "archirapid_extract"))
 
 st.set_page_config(page_title="ARCHIRAPID MVP", layout="wide")
 
@@ -419,6 +423,46 @@ if page == 'Home':
                                                 st.caption("🔍 Visualización de validación: muestra el contorno detectado sobre el PDF original")
                                             else:
                                                 st.info("Visualización overlay no disponible")
+                                    
+                                    # Botón de descarga DXF para AutoCAD/Revit
+                                    st.markdown("---")
+                                    st.markdown("### 📥 Exportar a CAD/BIM")
+                                    
+                                    try:
+                                        from export_dxf import create_dxf_from_cadastral_output
+                                        
+                                        # Generar DXF desde la salida del pipeline
+                                        dxf_bytes = create_dxf_from_cadastral_output(
+                                            output_dir=os.path.join("archirapid_extract", "catastro_output"),
+                                            scale_factor=0.1  # 10 píxeles = 1 metro
+                                        )
+                                        
+                                        if dxf_bytes:
+                                            ref = data.get('catastral_ref', 'parcela')
+                                            filename = f"ARCHIRAPID_{ref}.dxf"
+                                            
+                                            col_dxf1, col_dxf2 = st.columns([2, 1])
+                                            
+                                            with col_dxf1:
+                                                st.download_button(
+                                                    label="⬇️ Descargar DXF (AutoCAD/Revit)",
+                                                    data=dxf_bytes,
+                                                    file_name=filename,
+                                                    mime="application/dxf",
+                                                    help="Archivo DXF compatible con AutoCAD, Revit, BricsCAD y otros software CAD/BIM"
+                                                )
+                                            
+                                            with col_dxf2:
+                                                st.info(f"📐 Tamaño: {len(dxf_bytes) / 1024:.1f} KB")
+                                            
+                                            st.caption("💡 **Uso profesional**: Este archivo DXF puede importarse directamente en AutoCAD, Revit, ArchiCAD, BricsCAD y otros software de arquitectura. Incluye el polígono de la parcela con escala métrica.")
+                                        else:
+                                            st.warning("⚠️ No se pudo generar el archivo DXF. Verifica que el análisis se completó correctamente.")
+                                    
+                                    except Exception as e:
+                                        st.error(f"❌ Error generando DXF: {e}")
+                                        st.caption("Contacta con soporte si el problema persiste.")
+                                
                                 else:
                                     st.warning("⚠️ Pipeline ejecutado pero no se generó edificability.json")
                                     st.text("STDOUT:")

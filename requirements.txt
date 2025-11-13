@@ -11,6 +11,9 @@ pytesseract>=0.3.10
 shapely>=2.0.0
 matplotlib>=3.7.0
 
+# Export CAD/BIM
+ezdxf>=1.4.0
+
 # Dependencias adicionales
 attrs>=25.4.0
 blinker>=1.9.0

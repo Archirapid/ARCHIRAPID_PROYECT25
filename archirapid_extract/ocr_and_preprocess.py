@@ -19,7 +19,7 @@ print("=" * 60)
 # 🔍 1. VERIFICAR TESSERACT
 try:
     import pytesseract
-    # Buscar Tesseract en ubicaciones comunes de Windows
+    # Buscar Tesseract en ubicaciones comunes de Windows y Linux
     possible_paths = [
         r"D:\tesseract-5.5.1\tesseract.exe",
         r"E:\tesseract-5.5.1\tesseract.exe",
@@ -29,6 +29,7 @@ try:
         r"E:\Program Files\Tesseract-OCR\tesseract.exe",
         r"C:\Program Files\Tesseract-OCR\tesseract.exe",
         r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        "/usr/bin/tesseract",
     ]
     
     tesseract_found = False

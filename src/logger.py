@@ -48,14 +48,34 @@ def log(event: str, level: str = "INFO", **data):
                     FILE.rename(rotated)
             except Exception:
                 pass
+        # Mask sensitive fields (emails, nif) unless disabled
+        mask_enabled = os.environ.get('LOG_MASK_SENSITIVE', '1') == '1'
+        def _mask_email(v: str) -> str:
+            if '@' not in v: return v
+            local, dom = v.split('@', 1)
+            if not local: return v
+            return local[0] + '***@' + dom
+        def _mask_nif(v: str) -> str:
+            if len(v) < 3: return v
+            return v[0] + '***' + v[-1]
+        masked = {}
+        for k, v in data.items():
+            if mask_enabled and isinstance(v, str) and k.lower() in {'email','buyer_email','owner_email','nif','buyer_nif'}:
+                if 'email' in k.lower():
+                    masked[k] = _mask_email(v)
+                else:
+                    masked[k] = _mask_nif(v)
+            else:
+                masked[k] = v
         line = {
             'ts': datetime.utcnow().isoformat(),
             'level': level,
             'event': event,
-            **data
+            **masked
         }
+        import json
         with FILE.open('a', encoding='utf-8') as f:
-            f.write(str(line) + '\n')
+            f.write(json.dumps(line, ensure_ascii=False) + '\n')
     except Exception:
         pass
 
@@ -74,16 +94,10 @@ def get_recent_events(limit: int = 50):
         return []
     lines = FILE.read_text(encoding='utf-8').strip().splitlines()[-limit:]
     out = []
+    import json
     for ln in lines:
         try:
-            # eval seguro: formatea con dict() pero usamos json fallback si se cambia formato
-            if ln.startswith('{') and ln.endswith('}'):  # naive check
-                # Transform single quotes to double quotes for JSON
-                j = ln.replace("'", '"')
-                import json
-                out.append(json.loads(j))
-            else:
-                out.append({'raw': ln})
+            out.append(json.loads(ln))
         except Exception:
             out.append({'raw': ln})
     return out

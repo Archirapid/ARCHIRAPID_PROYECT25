@@ -56,10 +56,26 @@ def ensure_tables():
             buyer_phone TEXT, buyer_nif TEXT, method TEXT, status TEXT, timestamp TEXT,
             card_last4 TEXT
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS clients (
+            id TEXT PRIMARY KEY,
+            name TEXT, email TEXT, phone TEXT, address TEXT, preferences TEXT, created_at TEXT
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS reservations (
+            id TEXT PRIMARY KEY,
+            plot_id TEXT, buyer_name TEXT, buyer_email TEXT, amount REAL, kind TEXT, created_at TEXT
+        )""")
         # Índices para mejorar filtrado futuro
         c.execute("CREATE INDEX IF NOT EXISTS idx_plots_province ON plots(province)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_projects_style ON projects(style)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
+        # Índice único para email de clientes (si hay duplicados previos fallará, lo capturamos)
+        try:
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_email ON clients(email)")
+        except Exception:
+            pass
+        # Índices adicionales para acelerar búsquedas de reservas
+        c.execute("CREATE INDEX IF NOT EXISTS idx_reservations_plot ON reservations(plot_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_reservations_kind ON reservations(kind)")
 
 def insert_plot(data: Dict):
     ensure_tables()

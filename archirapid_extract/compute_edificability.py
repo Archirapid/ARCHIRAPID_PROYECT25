@@ -4,6 +4,7 @@ import re
 import json
 from pathlib import Path
 import sys
+import os
 from typing import Optional
 from functools import lru_cache
 
@@ -13,11 +14,19 @@ except Exception:
     # shapely debería estar en requirements; si falla seguimos sin cálculo geométrico
     shape = None
 
-# Force UTF-8 encoding for Windows console
-if sys.platform == 'win32':
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+# NOTE: Evitamos forzar la reasignación de stdout/stderr cuando se ejecuta bajo pytest
+# porque interfiere con el sistema de captura y provoca errores de "I/O operation on closed file".
+# Solo aplicamos el wrapper en ejecución normal (no tests) y si los atributos existen.
+if sys.platform == 'win32' and 'PYTEST_CURRENT_TEST' not in os.environ:
+    try:
+        import io
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        # Silenciamos cualquier error aquí para no afectar importaciones ni tests
+        pass
 
 IN_DIR = Path("catastro_output")
 OCR_FILE = IN_DIR / "ocr_text.txt"
@@ -164,6 +173,11 @@ def area_from_geojson(geojson_path: Path) -> Optional[float]:
 
 @lru_cache(maxsize=1)
 def build_report():
+    # Asegurar directorio de salida antes de cualquier escritura
+    try:
+        IN_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     # Read text
     text = read_text_file(EXTRACTED_FILE) or read_text_file(OCR_FILE) or ''
 

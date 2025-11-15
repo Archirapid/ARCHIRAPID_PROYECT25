@@ -5,6 +5,8 @@ from pathlib import Path
 import os, sqlite3
 from typing import Dict
 from src.db import ensure_tables, counts
+from datetime import datetime, timedelta
+import re
 
 REQUIRED_DIRS = [
     Path('uploads'),
@@ -52,12 +54,30 @@ def check_write_permissions() -> Dict[str, bool]:
     return results
 
 def run_all() -> Dict:
-    return {
+    report = {
         'dirs': check_directories(),
         'files': check_files(),
         'db': check_db(),
         'write_perms': check_write_permissions(),
     }
+    # Log retention purge (>30 días) para archivos app.log.YYYYMMDD_HHMMSS
+    logs_dir = Path('logs')
+    now = datetime.utcnow()
+    pattern = re.compile(r'app\.log\.(\d{8}_\d{6})$')
+    purged = []
+    for f in logs_dir.glob('app.log.*'):
+        m = pattern.match(f.name)
+        if not m:
+            continue
+        try:
+            dt = datetime.strptime(m.group(1), '%Y%m%d_%H%M%S')
+            if (now - dt) > timedelta(days=30):
+                f.unlink()
+                purged.append(f.name)
+        except Exception:
+            continue
+    report['log_retention'] = {'purged': purged}
+    return report
 
 if __name__ == '__main__':
     import json

@@ -13,6 +13,7 @@ import base64
 import json
 import sys
 import time
+from pathlib import Path
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -31,13 +32,56 @@ def init_db():
     from src.db import ensure_tables
     ensure_tables()
 
-def save_file(uploaded_file, prefix="file"):
+def save_file(uploaded_file, prefix="file", max_size_mb=10, allowed_mime_types=None):
+    """
+    Guarda archivo uploaded con validaciones de seguridad.
+    
+    Args:
+        uploaded_file: Archivo de Streamlit file_uploader
+        prefix: Prefijo para nombre del archivo
+        max_size_mb: Tamaño máximo en MB (default 10MB)
+        allowed_mime_types: Lista de MIME types permitidos (None = permitir todos)
+    
+    Returns:
+        str: Path del archivo guardado
+    
+    Raises:
+        ValueError: Si el archivo excede tamaño o MIME type no permitido
+    """
+    # Validar tamaño
+    file_size_mb = uploaded_file.size / (1024 * 1024)
+    if file_size_mb > max_size_mb:
+        raise ValueError(f"Archivo demasiado grande ({file_size_mb:.1f}MB). Máximo: {max_size_mb}MB")
+    
+    # Validar MIME type real (no solo extensión)
+    if allowed_mime_types:
+        file_bytes = uploaded_file.getvalue()
+        detected_mime = uploaded_file.type  # Default: confiar en browser
+        
+        # Intentar detección real con python-magic si está disponible
+        try:
+            import magic
+            detected_mime = magic.from_buffer(file_bytes, mime=True)
+        except ImportError:
+            pass  # Usar tipo reportado por browser
+        except Exception:
+            pass  # Fallback silencioso
+        
+        if detected_mime not in allowed_mime_types:
+            raise ValueError(f"Tipo de archivo no permitido ({detected_mime}). Permitidos: {', '.join(allowed_mime_types)}")
+    
+    # Guardar archivo
     ext = os.path.splitext(uploaded_file.name)[1]
     fname = f"{prefix}_{uuid.uuid4().hex}{ext}"
     path = os.path.join(UPLOADS, fname)
     with open(path, "wb") as f:
         f.write(uploaded_file.getbuffer())
+    
+    from src.logger import log
+    log('file_upload_success', prefix=prefix, size_mb=round(file_size_mb, 2), mime=uploaded_file.type)
+    
     return path
+
 
 # =====================================================
 # SUBSCRIPTION & PROPOSALS HELPERS
@@ -990,6 +1034,61 @@ with st.sidebar.expander("📡 Eventos recientes", expanded=False):
         st.markdown(table_html, unsafe_allow_html=True)
 
 # =====================================================
+# 🏥 PANEL DE DIAGNÓSTICO (Health Check)
+# =====================================================
+with st.sidebar.expander("🏥 Diagnóstico del Sistema", expanded=False):
+    if st.button("🔄 Actualizar Health", key="refresh_health"):
+        st.session_state['_health_refresh'] = datetime.utcnow().isoformat()
+    
+    try:
+        import json
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "health.py"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=BASE
+        )
+        
+        if result.returncode == 0:
+            health_data = json.loads(result.stdout)
+            
+            # Métricas clave
+            st.metric("🐍 Python", health_data.get('python_version', 'N/A'))
+            st.metric("💾 Memoria Proceso", f"{health_data.get('process_memory_bytes', 0) / (1024**2):.1f} MB")
+            
+            disk = health_data.get('disk', {})
+            disk_pct = disk.get('percent', 0)
+            if disk_pct > 90:
+                st.error(f"💿 Disco: {disk_pct:.1f}% usado")
+            elif disk_pct > 75:
+                st.warning(f"💿 Disco: {disk_pct:.1f}% usado")
+            else:
+                st.success(f"💿 Disco: {disk_pct:.1f}% usado")
+            
+            db = health_data.get('db', {})
+            st.metric("📊 BD Tamaño", f"{db.get('size_bytes', 0) / (1024**2):.2f} MB")
+            st.metric("📋 Tablas BD", db.get('tables', 0))
+            
+            log = health_data.get('log', {})
+            st.metric("📝 Eventos escaneados", log.get('scanned_events', 0))
+            st.metric("⚠️ Errores", log.get('error_events', 0))
+            st.metric("🔀 Mismatches", log.get('mismatch_events', 0))
+            
+            latest_mm = log.get('latest_mismatch')
+            if latest_mm:
+                st.warning(f"⚠️ Último mismatch: {latest_mm.get('ts', 'N/A')[:19]}")
+                with st.expander("Ver detalles"):
+                    st.json(latest_mm)
+        else:
+            st.error("❌ Error ejecutando health.py")
+            st.code(result.stderr)
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+
+
+# =====================================================
 # 🌓 THEME TOGGLE (Claro/Oscuro)
 # =====================================================
 theme_choice = st.sidebar.selectbox('Tema', ['Claro','Oscuro'], index=0, key='theme_choice')
@@ -1284,42 +1383,9 @@ if page == 'Home':
         
         payment_data = st.session_state.get('last_payment')
         if payment_data:
-            # Guardar reserva en BD
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            
-            price = float(selected_plot.get("price", 0))
-            amount_reserve = price * 0.10
-            payment_type = 'reservation' if payment_data['amount'] == amount_reserve else 'purchase'
-            
-            c.execute('''INSERT INTO reservations 
-                        (id, plot_id, buyer_name, buyer_email, amount, kind, created_at) 
-                        VALUES (?,?,?,?,?,?,?)''',
-                      (payment_data['payment_id'], 
-                       selected_plot['id'], 
-                       payment_data['buyer_name'],
-                       payment_data['buyer_email'],
-                       payment_data['amount'], 
-                       payment_type, 
-                       datetime.utcnow().isoformat()))
-            
-            # CREAR CLIENTE SI NO EXISTE (para portal clientes)
-            c.execute("SELECT id FROM clients WHERE email = ?", (payment_data['buyer_email'],))
-            existing = c.fetchone()
-            if not existing:
-                import uuid
-                c.execute('''INSERT INTO clients (id, name, email, phone, address, nif, created_at)
-                            VALUES (?,?,?,?,?,?,?)''',
-                         (str(uuid.uuid4()),
-                          payment_data['buyer_name'],
-                          payment_data['buyer_email'],
-                          payment_data.get('buyer_phone', ''),
-                          '',
-                          payment_data.get('buyer_nif', ''),
-                          datetime.utcnow().isoformat()))
-            
-            conn.commit()
-            conn.close()
+            from src.payment_flow import finalize_payment
+            result = finalize_payment(selected_plot, payment_data, Path(DB_PATH))
+            payment_type = result['payment_type']
             
             # === LAYOUT PROFESIONAL: CENTRADO Y ESPACIOSO ===
             st.markdown("---")
@@ -1666,11 +1732,29 @@ elif page == 'plots':
                     st.error('Campos obligatorios incompletos o coordenadas inválidas')
                 else:
                     image_path = None
-                    if images:
-                        image_path = save_file(images[0], prefix='plot')
                     registry_path = None
-                    if registry_note:
-                        registry_path = save_file(registry_note, prefix='registry')
+                    
+                    try:
+                        # Validar y guardar imagen con límites
+                        if images:
+                            image_path = save_file(
+                                images[0], 
+                                prefix='plot',
+                                max_size_mb=5,
+                                allowed_mime_types=['image/jpeg', 'image/png', 'image/jpg']
+                            )
+                        
+                        # Validar y guardar PDF
+                        if registry_note:
+                            registry_path = save_file(
+                                registry_note, 
+                                prefix='registry',
+                                max_size_mb=10,
+                                allowed_mime_types=['application/pdf']
+                            )
+                    except ValueError as e:
+                        st.error(f'❌ Error en archivo: {str(e)}')
+                        st.stop()
                     
                     # Determinar propósito según radio
                     purpose_value = 'construir' if '🏗️' in plot_purpose else 'vender'

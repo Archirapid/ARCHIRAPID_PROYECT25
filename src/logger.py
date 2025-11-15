@@ -9,6 +9,21 @@ FILE = LOG_PATH / 'app.log'
 
 VALID_LEVELS = {"DEBUG", "INFO", "WARN", "ERROR"}
 
+def log_exceptions(fn):
+    """Decorator para registrar excepciones de funciones críticas.
+
+    Registra nivel ERROR con nombre de función y tipo de excepción, luego re-lanza.
+    """
+    from functools import wraps
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            log_error('exception', func=fn.__name__, err=str(e), type=e.__class__.__name__)
+            raise
+    return wrapper
+
 def log(event: str, level: str = "INFO", **data):
     """Escribe una línea de log estructurada.
 

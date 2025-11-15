@@ -27,6 +27,7 @@ import matplotlib.patches as mpatches
 from shapely.geometry import Polygon, Point
 from shapely.affinity import scale as shapely_scale
 import trimesh
+from functools import lru_cache
 
 
 # =======================
@@ -43,6 +44,7 @@ MIN_ROOM_AREA = 4.0  # m² mínimos por habitación
 # 1. CARGA DE DATOS
 # =======================
 
+@lru_cache(maxsize=1)
 def load_inputs(base_path: str) -> Dict:
     """
     Carga datos de validación y geometría catastral.
@@ -111,6 +113,7 @@ def load_inputs(base_path: str) -> Dict:
 # 2. ESTIMACIÓN DE ESCALA
 # =======================
 
+@lru_cache(maxsize=32)
 def estimate_scale(polygon: Polygon, surface_m2: float) -> Dict:
     """
     Estima conversión píxeles → metros con validación robusta.

@@ -10,6 +10,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
 import io
 import uuid
+from src.utils_validation import first_error, file_size_ok, validate_email
 
 
 @st.dialog("💳 Checkout - Pago Seguro", width="small")
@@ -44,7 +45,7 @@ def payment_modal(amount, concept, buyer_name="", buyer_email=""):
     with col_a:
         name = st.text_input("Nombre completo*", value=buyer_name, key="modal_name")
     with col_b:
-        email = st.text_input("Email*", value=buyer_email, key="modal_email")
+        email = st.text_input("Email*", value=buyer_email, key="modal_email", placeholder="nombre@dominio.com")
     
     col_c, col_d = st.columns(2)
     with col_c:
@@ -105,6 +106,10 @@ def payment_modal(amount, concept, buyer_name="", buyer_email=""):
             if not name or not email or not phone:
                 st.error("❌ Completa todos los campos obligatorios (*)")
             else:
+                err = first_error(email, phone, nif)
+                if err:
+                    st.error(f"❌ {err}")
+                    return
                 # Simular procesamiento
                 with st.spinner("Procesando pago seguro..."):
                     import time

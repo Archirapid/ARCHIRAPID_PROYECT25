@@ -1039,53 +1039,62 @@ with st.sidebar.expander("📡 Eventos recientes", expanded=False):
 with st.sidebar.expander("🏥 Diagnóstico del Sistema", expanded=False):
     if st.button("🔄 Actualizar Health", key="refresh_health"):
         st.session_state['_health_refresh'] = datetime.utcnow().isoformat()
-    
+
     try:
-        import json
-        import subprocess
-        result = subprocess.run(
-            [sys.executable, "health.py"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=BASE
-        )
-        
-        if result.returncode == 0:
-            health_data = json.loads(result.stdout)
-            
-            # Métricas clave
-            st.metric("🐍 Python", health_data.get('python_version', 'N/A'))
-            st.metric("💾 Memoria Proceso", f"{health_data.get('process_memory_bytes', 0) / (1024**2):.1f} MB")
-            
-            disk = health_data.get('disk', {})
-            disk_pct = disk.get('percent', 0)
-            if disk_pct > 90:
-                st.error(f"💿 Disco: {disk_pct:.1f}% usado")
-            elif disk_pct > 75:
-                st.warning(f"💿 Disco: {disk_pct:.1f}% usado")
-            else:
-                st.success(f"💿 Disco: {disk_pct:.1f}% usado")
-            
-            db = health_data.get('db', {})
-            st.metric("📊 BD Tamaño", f"{db.get('size_bytes', 0) / (1024**2):.2f} MB")
-            st.metric("📋 Tablas BD", db.get('tables', 0))
-            
-            log = health_data.get('log', {})
-            st.metric("📝 Eventos escaneados", log.get('scanned_events', 0))
-            st.metric("⚠️ Errores", log.get('error_events', 0))
-            st.metric("🔀 Mismatches", log.get('mismatch_events', 0))
-            
-            latest_mm = log.get('latest_mismatch')
-            if latest_mm:
-                st.warning(f"⚠️ Último mismatch: {latest_mm.get('ts', 'N/A')[:19]}")
-                with st.expander("Ver detalles"):
-                    st.json(latest_mm)
+        import json, subprocess, os
+        health_script = os.path.join(BASE, "health.py")
+        if not os.path.isfile(health_script):
+            st.error("health.py no encontrado en el directorio base")
         else:
-            st.error("❌ Error ejecutando health.py")
-            st.code(result.stderr)
+            # Ejecutar script con ruta absoluta para evitar WinError 123 por cwd/relativo
+            result = subprocess.run(
+                [sys.executable, health_script],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                try:
+                    health_data = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    st.error("Salida inválida de health.py (no es JSON)")
+                    st.code(result.stdout[:500])
+                else:
+                    # Métricas clave
+                    st.metric("🐍 Python", health_data.get('python_version', 'N/A'))
+                    st.metric("💾 Memoria Proceso", f"{health_data.get('process_memory_bytes', 0) / (1024**2):.1f} MB")
+
+                    disk = health_data.get('disk', {})
+                    disk_pct = disk.get('percent', 0)
+                    if disk_pct > 90:
+                        st.error(f"💿 Disco: {disk_pct:.1f}% usado")
+                    elif disk_pct > 75:
+                        st.warning(f"💿 Disco: {disk_pct:.1f}% usado")
+                    else:
+                        st.success(f"💿 Disco: {disk_pct:.1f}% usado")
+
+                    db = health_data.get('db', {})
+                    st.metric("📊 BD Tamaño", f"{db.get('size_bytes', 0) / (1024**2):.2f} MB")
+                    st.metric("📋 Tablas BD", db.get('tables', 0))
+
+                    log = health_data.get('log', {})
+                    st.metric("📝 Eventos escaneados", log.get('scanned_events', 0))
+                    st.metric("⚠️ Errores", log.get('error_events', 0))
+                    st.metric("🔀 Mismatches", log.get('mismatch_events', 0))
+
+                    latest_mm = log.get('latest_mismatch')
+                    if latest_mm:
+                        st.warning(f"⚠️ Último mismatch: {latest_mm.get('ts', 'N/A')[:19]}")
+                        with st.expander("Ver detalles"):
+                            st.json(latest_mm)
+            else:
+                st.error("❌ Error ejecutando health.py")
+                stderr_trim = (result.stderr or "").strip()[:800]
+                if stderr_trim:
+                    st.code(stderr_trim)
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
+        st.error(f"❌ Error interno panel health: {e}")
 
 
 # =====================================================
@@ -1386,6 +1395,21 @@ if page == 'Home':
             from src.payment_flow import finalize_payment
             result = finalize_payment(selected_plot, payment_data, Path(DB_PATH))
             payment_type = result['payment_type']
+
+            # ==============================================
+            # 🚀 REDIRECCIÓN AUTOMÁTICA TRAS COMPRA COMPLETA
+            # ==============================================
+            # Si es compra (100%) enviamos directo al panel de clientes.
+            # Mantener reserva en la misma pantalla para permitir otras acciones.
+            if payment_type == 'purchase' and not st.session_state.get('auto_redirect_done'):
+                st.session_state["page"] = "clientes"
+                st.session_state["client_email_prefill"] = payment_data.get("buyer_email")
+                # Limpiar flags para evitar loops
+                st.session_state['payment_completed'] = False
+                st.session_state['auto_redirect_done'] = True
+                # Mantener el recibo en session_state si hiciera falta en otro panel
+                st.session_state['last_payment_receipt'] = payment_data
+                st.rerun()
             
             # === LAYOUT PROFESIONAL: CENTRADO Y ESPACIOSO ===
             st.markdown("---")

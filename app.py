@@ -1058,15 +1058,15 @@ init_db()
 # =====================================================
 logo_path = "assets/branding/logo.png"
 if os.path.exists(logo_path):
-    # Header con logo y tagline
-    header_col1, header_col2 = st.columns([1, 3])
+    # Header con logo y tagline (logo más estrecho para mejor UX)
+    header_col1, header_col2 = st.columns([1, 4])
     
     with header_col1:
-        st.image(logo_path, width=200)
+        st.image(logo_path, width=140)
     
     with header_col2:
         st.markdown("""
-        <div style='padding-top: 20px;'>
+        <div style='padding-top: 15px;'>
             <h3 style='margin: 0; color: #667eea;'>Soluciones Inteligentes para Tu Proyecto</h3>
             <p style='margin: 0; color: #666; font-size: 14px;'>
                 Conectamos fincas, arquitectos y constructores con tecnología IA
@@ -2746,7 +2746,7 @@ with footer_col1:
                     else:
                         st.image("https://via.placeholder.com/150x100?text=Finca", width='stretch')
                     
-                    if st.button("Ver", key=f"footer_plot_{plot['id']}", use_container_width=True):
+                    if st.button("Ver", key=f"footer_plot_{plot['id']}", width='stretch'):
                         st.session_state['selected_plot'] = plot['id']
                         st.session_state['page'] = 'home'
                         st.rerun()

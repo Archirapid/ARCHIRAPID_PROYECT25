@@ -101,7 +101,7 @@ def payment_modal(amount, concept, buyer_name="", buyer_email=""):
     col_btn1, col_btn2, col_btn3 = st.columns([2, 1, 1])
     
     with col_btn1:
-        if st.button("✅ CONFIRMAR PAGO", use_container_width=True, type="primary", key="modal_confirm"):
+        if st.button("✅ CONFIRMAR PAGO", width='stretch', type="primary", key="modal_confirm"):
             if not name or not email or not phone:
                 st.error("❌ Completa todos los campos obligatorios (*)")
             else:
@@ -130,7 +130,7 @@ def payment_modal(amount, concept, buyer_name="", buyer_email=""):
                 st.rerun()
     
     with col_btn2:
-        if st.button("❌ Cancelar", use_container_width=True, key="modal_cancel"):
+        if st.button("❌ Cancelar", width='stretch', key="modal_cancel"):
             st.session_state['payment_completed'] = False
             st.rerun()
     
@@ -177,7 +177,7 @@ def show_payment_success(payment_data, download_receipt=True):
                 data=pdf_bytes,
                 file_name=f"recibo_{payment_data['payment_id'][:8]}.pdf",
                 mime="application/pdf",
-                use_container_width=True
+                width='stretch'
             )
 
 

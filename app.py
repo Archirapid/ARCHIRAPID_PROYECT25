@@ -501,7 +501,7 @@ def show_analysis_modal(plot_id):
     
     with tabs[1]:
         if clean_img.exists():
-            st.image(str(clean_img), use_container_width=True)
+            st.image(str(clean_img), width='stretch')
     
     with tabs[2]:
         try:
@@ -509,7 +509,7 @@ def show_analysis_modal(plot_id):
             dxf_bytes = create_dxf_from_cadastral_output(output_dir=str(output_dir), scale_factor=0.1)
             if dxf_bytes:
                 ref = edata.get("cadastral_ref") or "parcela"
-                st.download_button("⬇️ Descargar DXF", dxf_bytes, f"ARCHIRAPID_{ref}.dxf", "application/dxf", use_container_width=True)
+                st.download_button("⬇️ Descargar DXF", dxf_bytes, f"ARCHIRAPID_{ref}.dxf", "application/dxf", width='stretch')
         except Exception as e:
             st.error(f"Error: {e}")
     
@@ -524,7 +524,7 @@ def show_analysis_modal(plot_id):
             with c3:
                 setback = st.slider("Retranqueo (m)", 1.0, 8.0, 3.0, 0.5, key=f"set_{plot_id}")
             
-            if st.button("🚀 Generar Diseño", key=f"gen_{plot_id}", type="primary", use_container_width=True):
+            if st.button("🚀 Generar Diseño", key=f"gen_{plot_id}", type="primary", width='stretch'):
                 st.session_state['design_requested'] = {'bedrooms': beds, 'floors': floors, 'setback': setback, 'plot_id': plot_id}
                 st.rerun()
             
@@ -534,7 +534,7 @@ def show_analysis_modal(plot_id):
                 if res.get('success'):
                     plan_path = "archirapid_extract/design_output/design_plan.png"
                     if os.path.exists(plan_path):
-                        st.image(plan_path, use_container_width=True)
+                        st.image(plan_path, width='stretch')
                     model_path = "archirapid_extract/design_output/design_model.glb"
                     if os.path.exists(model_path):
                         with open(model_path, 'rb') as f:
@@ -629,7 +629,7 @@ def show_proposal_modal(plot_id, architect_id):
                     prev_col1, prev_col2, prev_col3 = st.columns(3)
                     with prev_col1:
                         if selected_project.get('foto_principal') and os.path.exists(selected_project['foto_principal']):
-                            st.image(selected_project['foto_principal'], use_container_width=True)
+                            st.image(selected_project['foto_principal'], width='stretch')
                     with prev_col2:
                         st.metric("m² Construidos", selected_project.get('m2_construidos', '-'))
                         st.metric("Habitaciones", selected_project.get('habitaciones', '-'))
@@ -745,7 +745,7 @@ def show_proposal_modal(plot_id, architect_id):
     
     st.markdown("---")
     
-    if st.button("✅ Enviar Propuesta", type="primary", use_container_width=True):
+    if st.button("✅ Enviar Propuesta", type="primary", width='stretch'):
         if not proposal_text or len(proposal_text) < 50:
             st.error("⚠️ La propuesta debe tener al menos 50 caracteres")
         else:
@@ -850,7 +850,7 @@ def show_create_project_modal(architect_id, architect_name):
     
     col_btn1, col_btn2 = st.columns([3, 1])
     with col_btn1:
-        if st.button("✅ Crear Proyecto", type="primary", use_container_width=True):
+        if st.button("✅ Crear Proyecto", type="primary", width='stretch'):
             if not title or not description or m2_construidos == 0:
                 st.error("❌ Completa los campos obligatorios (*)")
             elif not foto_principal:
@@ -907,7 +907,7 @@ def show_create_project_modal(architect_id, architect_name):
                     st.rerun()
     
     with col_btn2:
-        if st.button("❌ Cancelar", use_container_width=True):
+        if st.button("❌ Cancelar", width='stretch'):
             st.session_state['show_project_modal'] = False
             st.rerun()
 
@@ -927,7 +927,7 @@ def show_project_detail_modal(project):
     with tab1:
         # Foto principal
         if project.get('foto_principal') and os.path.exists(project['foto_principal']):
-            st.image(project['foto_principal'], use_container_width=True, caption="Foto Principal")
+            st.image(project['foto_principal'], width='stretch', caption="Foto Principal")
         
         # Galería adicional
         if project.get('galeria_fotos'):
@@ -939,7 +939,7 @@ def show_project_detail_modal(project):
                     for idx, img_path in enumerate(galeria):
                         if os.path.exists(img_path):
                             with cols[idx % 3]:
-                                st.image(img_path, use_container_width=True)
+                                st.image(img_path, width='stretch')
             except:
                 pass
     
@@ -991,7 +991,7 @@ def show_project_detail_modal(project):
                         f.read(),
                         file_name=f"{project['title']}_planos.pdf",
                         mime="application/pdf",
-                        use_container_width=True
+                        width='stretch'
                     )
             else:
                 st.info("📄 No hay planos PDF disponibles")
@@ -1004,7 +1004,7 @@ def show_project_detail_modal(project):
                         "📐 Descargar Planos DWG",
                         f.read(),
                         file_name=fname,
-                        use_container_width=True
+                        width='stretch'
                     )
             else:
                 st.info("📐 No hay planos DWG disponibles")
@@ -1016,7 +1016,7 @@ def show_project_detail_modal(project):
                     f.read(),
                     file_name=f"{project['title']}_memoria.pdf",
                     mime="application/pdf",
-                    use_container_width=True
+                    width='stretch'
                 )
     
     with tab4:
@@ -1127,7 +1127,7 @@ if page == 'Home':
         q = st.text_input("Buscar texto", "", key="filter_search_text")
     with col8:
         st.write("")  # Spacer
-        if st.button("📋 Registrar nueva finca", use_container_width=True):
+    if st.button("📋 Registrar nueva finca", width='stretch'):
             st.query_params.update({"page": "plots"})
             st.rerun()
 
@@ -1222,7 +1222,7 @@ if page == 'Home':
         else:
             st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
             if selected_plot.get("image_path") and os.path.exists(selected_plot["image_path"]):
-                st.image(selected_plot["image_path"], use_container_width=True)
+                st.image(selected_plot["image_path"], width='stretch')
             else:
                 st.info("Imagen no disponible")
 
@@ -1244,7 +1244,7 @@ if page == 'Home':
                 amount_reserve = price * 0.10
                 st.metric("🔒 Reservar", f"{amount_reserve:,.2f} €", "10% del precio")
                 
-                if st.button("📝 Reservar Finca", key="btn_reserve", use_container_width=True):
+                if st.button("📝 Reservar Finca", key="btn_reserve", width='stretch'):
                     st.session_state['trigger_reserve_payment'] = True
                     st.rerun()
             
@@ -1252,7 +1252,7 @@ if page == 'Home':
             with col_buy:
                 st.metric("✅ Comprar", f"{price:,.2f} €", "100% del precio")
                 
-                if st.button("🏡 Comprar Finca", key="btn_buy", use_container_width=True, type="primary"):
+                if st.button("🏡 Comprar Finca", key="btn_buy", width='stretch', type="primary"):
                     st.session_state['trigger_buy_payment'] = True
                     st.rerun()
     
@@ -1314,14 +1314,14 @@ Accede al **Panel de Clientes** para:
                 # Botones de acción
                 btn_col1, btn_col2 = st.columns(2)
                 with btn_col1:
-                    if st.button("🚀 IR AL PANEL DE CLIENTES", use_container_width=True, type="primary", key="goto_clients"):
+                    if st.button("🚀 IR AL PANEL DE CLIENTES", width='stretch', type="primary", key="goto_clients"):
                         st.session_state["page"] = "clientes"
                         st.session_state["client_email_prefill"] = payment_data["buyer_email"]
                         st.session_state['payment_completed'] = False
                         st.session_state['last_payment'] = None
                         st.rerun()
                 with btn_col2:
-                    if st.button("🏠 Volver al Inicio", use_container_width=True, key="goto_home"):
+                    if st.button("🏠 Volver al Inicio", width='stretch', key="goto_home"):
                         st.session_state["selected_plot_id"] = None
                         st.session_state['payment_completed'] = False
                         st.session_state['last_payment'] = None
@@ -1848,9 +1848,9 @@ Accede al **Panel de Clientes** para:
                         
                         # Foto
                         if proj.get('foto_principal') and os.path.exists(proj['foto_principal']):
-                            st.image(proj['foto_principal'], use_container_width=True)
+                            st.image(proj['foto_principal'], width='stretch')
                         else:
-                            st.image("https://via.placeholder.com/300x200?text=Proyecto", use_container_width=True)
+                            st.image("https://via.placeholder.com/300x200?text=Proyecto", width='stretch')
                         
                         # Specs
                         st.metric("m² Construidos", proj.get('m2_construidos', '-'))
@@ -1862,7 +1862,7 @@ Accede al **Panel de Clientes** para:
                             st.caption(f"📐 Parcela: {proj['m2_parcela_minima']}-{proj['m2_parcela_maxima']} m²")
                         
                         # Botón ver detalle
-                        if st.button("👁️ Ver Detalles", key=f"view_compat_proj_{proj['id']}", use_container_width=True):
+                        if st.button("👁️ Ver Detalles", key=f"view_compat_proj_{proj['id']}", width='stretch'):
                             st.session_state['view_project_id'] = proj['id']
                             st.rerun()
             
@@ -1904,19 +1904,19 @@ Accede al **Panel de Clientes** para:
                         st.write(prop['proposal_text'])
                         
                         if prop.get('sketch_image_path') and os.path.exists(prop['sketch_image_path']):
-                            st.image(prop['sketch_image_path'], caption="Boceto inicial", use_container_width=True)
+                            st.image(prop['sketch_image_path'], caption="Boceto inicial", width='stretch')
                         
                         st.caption(f"📅 Recibida: {prop['created_at'][:10]}")
                         
                         if prop['status'] == 'pending':
                             col_accept, col_reject = st.columns(2)
                             with col_accept:
-                                if st.button("✅ Aceptar Propuesta", key=f"accept_{prop['id']}", type="primary", use_container_width=True):
+                                if st.button("✅ Aceptar Propuesta", key=f"accept_{prop['id']}", type="primary", width='stretch'):
                                     update_proposal_status(prop['id'], 'accepted')
                                     st.success("✅ Propuesta aceptada. El arquitecto será notificado.")
                                     st.rerun()
                             with col_reject:
-                                if st.button("❌ Rechazar", key=f"reject_{prop['id']}", use_container_width=True):
+                                if st.button("❌ Rechazar", key=f"reject_{prop['id']}", width='stretch'):
                                     update_proposal_status(prop['id'], 'rejected')
                                     st.info("Propuesta rechazada.")
                                     st.rerun()
@@ -2229,7 +2229,7 @@ elif page == 'architects':
                     colegiado = st.text_input('Nº Colegiado (opcional)')
                 
                 acepto_terminos = st.checkbox('Acepto los términos y condiciones')
-                submitted = st.form_submit_button('✅ Registrarse', use_container_width=True)
+                submitted = st.form_submit_button('✅ Registrarse', width='stretch')
                 
                 if submitted:
                     if not nombre or not email or not nif:
@@ -2258,7 +2258,7 @@ elif page == 'architects':
         else:  # Iniciar Sesión
             st.subheader("Accede a tu cuenta")
             email_login = st.text_input('📧 Email registrado')
-            if st.button('🔓 Iniciar Sesión', use_container_width=True):
+            if st.button('🔓 Iniciar Sesión', width='stretch'):
                 if email_login:
                     conn = sqlite3.connect(DB_PATH)
                     df = pd.read_sql_query("SELECT * FROM architects WHERE email = ?", conn, params=(email_login,))
@@ -2423,7 +2423,7 @@ elif page == 'architects':
                         st.write(f"• {feature}")
                     
                     if not is_current:
-                        if st.button(f"💳 Contratar {plan_name}", key=f"sub_{plan_name}", use_container_width=True):
+                        if st.button(f"💳 Contratar {plan_name}", key=f"sub_{plan_name}", width='stretch'):
                             # Trigger payment modal
                             st.session_state['pending_subscription'] = {
                                 'plan_name': plan_name,
@@ -2474,7 +2474,7 @@ elif page == 'architects':
                 with col_h1:
                     st.caption(f"Gestiona tu catálogo de proyectos para enviar propuestas profesionales")
                 with col_h2:
-                    if st.button("➕ Nuevo Proyecto", type="primary", use_container_width=True):
+                    if st.button("➕ Nuevo Proyecto", type="primary", width='stretch'):
                         st.session_state['show_project_modal'] = True
                         st.rerun()
                 
@@ -2505,9 +2505,9 @@ elif page == 'architects':
                                     
                                     # Mostrar foto principal si existe
                                     if proj.get('foto_principal') and os.path.exists(proj['foto_principal']):
-                                        st.image(proj['foto_principal'], use_container_width=True)
+                                        st.image(proj['foto_principal'], width='stretch')
                                     else:
-                                        st.image("https://via.placeholder.com/300x200?text=Sin+Imagen", use_container_width=True)
+                                        st.image("https://via.placeholder.com/300x200?text=Sin+Imagen", width='stretch')
                                     
                                     # Specs
                                     spec_cols = st.columns(2)
@@ -2521,7 +2521,7 @@ elif page == 'architects':
                                     # Acciones
                                     act_col1, act_col2 = st.columns(2)
                                     with act_col1:
-                                        if st.button("👁️ Ver", key=f"view_proj_{proj['id']}", use_container_width=True):
+                                        if st.button("👁️ Ver", key=f"view_proj_{proj['id']}", width='stretch'):
                                             st.session_state['view_project_id'] = proj['id']
                                             st.rerun()
                                     with act_col2:
@@ -2733,17 +2733,17 @@ elif page == 'clientes':
                     
                     acol1, acol2, acol3 = st.columns(3)
                     with acol1:
-                        if st.button('🗺️ Ver Mapa Fincas', use_container_width=True):
+                        if st.button('🗺️ Ver Mapa Fincas', width='stretch'):
                             st.query_params.update(page='Home')
                             st.rerun()
                     
                     with acol2:
-                        if st.button('📨 Mis Propuestas', use_container_width=True):
+                        if st.button('📨 Mis Propuestas', width='stretch'):
                             st.session_state['client_tab_default'] = '📨 Propuestas Recibidas'
                             st.rerun()
                     
                     with acol3:
-                        if st.button('🤖 Diseñar con IA', use_container_width=True):
+                        if st.button('🤖 Diseñar con IA', width='stretch'):
                             st.info('Selecciona primero una finca en el mapa')
                 
                 elif client_tab == '📨 Propuestas Recibidas':
@@ -2775,9 +2775,9 @@ elif page == 'clientes':
                                 
                                 with pcol1:
                                     if prop.get('project_photo') and pd.notna(prop['project_photo']) and os.path.exists(prop['project_photo']):
-                                        st.image(prop['project_photo'], use_container_width=True, caption=prop.get('project_title', 'Proyecto'))
+                                        st.image(prop['project_photo'], width='stretch', caption=prop.get('project_title', 'Proyecto'))
                                     else:
-                                        st.image('https://via.placeholder.com/300x200?text=Proyecto', use_container_width=True)
+                                        st.image('https://via.placeholder.com/300x200?text=Proyecto', width='stretch')
                                 
                                 with pcol2:
                                     # Título y arquitecto
@@ -2843,14 +2843,14 @@ elif page == 'clientes':
                                     bcol1, bcol2, bcol3 = st.columns([1, 1, 2])
                                     
                                     with bcol1:
-                                        if st.button(f"✅ Aceptar", key=f"accept_{prop['id']}", type="primary", use_container_width=True):
+                                        if st.button(f"✅ Aceptar", key=f"accept_{prop['id']}", type="primary", width='stretch'):
                                             update_proposal_status(prop['id'], 'accepted')
                                             st.session_state['pending_payment_proposal'] = prop['id']
                                             st.success("✅ Propuesta aceptada. Procede al pago...")
                                             st.rerun()
                                     
                                     with bcol2:
-                                        if st.button(f"❌ Rechazar", key=f"reject_{prop['id']}", use_container_width=True):
+                                        if st.button(f"❌ Rechazar", key=f"reject_{prop['id']}", width='stretch'):
                                             update_proposal_status(prop['id'], 'rejected')
                                             st.success("Propuesta rechazada")
                                             st.rerun()

@@ -5,11 +5,12 @@ import json
 from pathlib import Path
 import sys
 from typing import Optional
+from functools import lru_cache
 
 try:
     from shapely.geometry import shape, Polygon
 except Exception:
-    # shapely should be in requirements; if not, we will continue without geometric area
+    # shapely debería estar en requirements; si falla seguimos sin cálculo geométrico
     shape = None
 
 # Force UTF-8 encoding for Windows console
@@ -161,6 +162,7 @@ def area_from_geojson(geojson_path: Path) -> Optional[float]:
     return None
 
 
+@lru_cache(maxsize=1)
 def build_report():
     # Read text
     text = read_text_file(EXTRACTED_FILE) or read_text_file(OCR_FILE) or ''

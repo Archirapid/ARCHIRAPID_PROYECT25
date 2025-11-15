@@ -6,6 +6,9 @@ import folium
 from streamlit_folium import st_folium
 import uuid
 from datetime import datetime
+from src.db import insert_plot, get_all_plots, get_plot_by_id
+from src.utils_validation import validate_email, file_size_ok
+from src.logger import log
 
 # =====================================================
 # STUBS PARA EVITAR ERRORES (Funciones provistas en app principal)
@@ -139,10 +142,16 @@ def show_plot_form():
                 # Procesar archivos subidos
                 image_path = None
                 if plot_image:
+                    if not file_size_ok(plot_image):
+                        st.error("Imagen demasiado grande (máx 10MB)")
+                        return
                     image_path = save_file(plot_image, "plot")
                 
                 registry_path = None    
                 if registry_note:
+                    if not file_size_ok(registry_note):
+                        st.error("PDF demasiado grande (máx 10MB)")
+                        return
                     registry_path = save_file(registry_note, "registry")
                     
                 # Crear registro
@@ -167,6 +176,7 @@ def show_plot_form():
                 
                 # Insertar en DB
                 insert_plot(plot_data)
+                log('plot_insert', plot_id=plot_data['id'], m2=plot_data['m2'], price=plot_data['price'])
                 
                 st.success("¡Finca registrada exitosamente!")
                 st.balloons()

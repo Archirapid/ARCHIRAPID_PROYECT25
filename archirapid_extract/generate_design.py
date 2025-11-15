@@ -360,7 +360,15 @@ def render_plan(polygon: Polygon, buildable: Optional[Polygon], footprint: Optio
         if buildable:
             x, y = buildable.exterior.xy
             ax.fill(x, y, alpha=0.4, fc='lightgreen', ec='green', linewidth=1.5, label='Área Edificable')
-        
+        from functools import lru_cache
+        @lru_cache(maxsize=64)
+        def _buffer(setback_px: float, w: float, h: float):
+            return polygon.buffer(-setback_px)
+        setback_px = setback_m / scale_factor
+        buildable = _buffer(setback_px, polygon.bounds[2]-polygon.bounds[0], polygon.bounds[3]-polygon.bounds[1])
+        if buildable.is_empty or buildable.area <= 0:
+            return None
+        return buildable
         # 3. Huella edificio (azul)
         if footprint:
             x, y = footprint.exterior.xy
@@ -431,8 +439,30 @@ def export_3d(footprint: Polygon, num_floors: int, floor_height: float,
         n_verts = len(vertices_2d)
         vertices_base = np.column_stack([vertices_2d, np.zeros(n_verts)])
         
-        # Crear techo (Z=altura total)
-        total_height = num_floors * floor_height
+        """  # Placeholder for caching decorator
+        from functools import lru_cache
+        @lru_cache(maxsize=128)
+        def _foot(bounds: tuple, target_area_m2: float, scale_factor: float):
+            minx, miny, maxx, maxy = bounds
+            width_px = maxx - minx
+            height_px = maxy - miny
+            aspect = width_px / height_px if height_px else 1
+            area_px_target = target_area_m2 / (scale_factor ** 2)
+            # Ajustar lado según aspect
+            side_px = (area_px_target / aspect) ** 0.5
+            rect = Polygon([
+                (minx, miny),
+                (minx + side_px * aspect, miny),
+                (minx + side_px * aspect, miny + side_px),
+                (minx, miny + side_px)
+            ])
+            return rect
+        rect = _foot(buildable.bounds, target_area_m2, scale_factor)
+        if not rect.within(buildable):
+            rect = rect.intersection(buildable)
+        if rect.is_empty or rect.area <= 0:
+            return None
+        return rect
         vertices_top = np.column_stack([vertices_2d, np.full(n_verts, total_height)])
         
         # Combinar vértices

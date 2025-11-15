@@ -11,6 +11,7 @@ from reportlab.lib.units import cm
 import io
 import uuid
 from src.utils_validation import first_error, file_size_ok, validate_email
+from src.logger import log
 
 
 @st.dialog("💳 Checkout - Pago Seguro", width="small")
@@ -132,6 +133,12 @@ def payment_modal(amount, concept, buyer_name="", buyer_email=""):
                 # Guardar en session_state para acceder desde fuera del modal
                 st.session_state['last_payment'] = payment_data
                 st.session_state['payment_completed'] = True
+                try:
+                    from src.db import insert_payment
+                    insert_payment(payment_data)
+                except Exception:
+                    pass
+                log('payment_completed', payment_id=payment_data['payment_id'], amount=amount, method=payment_method)
                 st.rerun()
     
     with col_btn2:

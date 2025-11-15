@@ -11,6 +11,9 @@ from typing import List, Dict, Optional
 import streamlit as st
 import uuid
 from datetime import datetime
+from src.db import insert_project, get_all_projects
+from src.utils_validation import validate_email, validate_nif, file_size_ok
+from src.logger import log
 
 def show_project_form():
     """Muestra formulario para subir un proyecto arquitectónico"""
@@ -44,6 +47,9 @@ def show_project_form():
                     return
                     
                 # Guardar archivo
+                if not file_size_ok(project_file):
+                    st.error("Archivo demasiado grande (máx 10MB)")
+                    return
                 file_path = save_file(project_file, "project")
                 
                 # Crear registro
@@ -62,6 +68,7 @@ def show_project_form():
                 
                 # Insertar en DB
                 insert_project(project_data)
+                log('project_insert', project_id=project_data['id'], title=title, area_m2=area_m2)
                 
                 st.success("¡Proyecto subido exitosamente!")
                 st.balloons()

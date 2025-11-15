@@ -12,7 +12,7 @@ import io
 import uuid
 
 
-@st.dialog("💳 Checkout - Pago Seguro", width="medium")
+@st.dialog("💳 Checkout - Pago Seguro", width="small")
 def payment_modal(amount, concept, buyer_name="", buyer_email=""):
     """
     Modal de pago con formulario amplio y profesional

@@ -1074,11 +1074,18 @@ if logo_data_uri:
     # KPIs debajo del header
     try:
         from src.db import cached_counts as counts_fn
+        from src.logger import get_recent_events
         k = counts_fn()
-        kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+        recent = get_recent_events(limit=50)
+        has_errors = any(ev.get('level') == 'ERROR' for ev in recent)
+        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
         kpi_col1.markdown(f"<div class='ar-card'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
         kpi_col2.markdown(f"<div class='ar-card'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
         kpi_col3.markdown(f"<div class='ar-card'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
+        if has_errors:
+            kpi_col4.markdown("<div class='ar-card' style='background:#fef2f2;border-color:#fecaca'><h4>⚠️ Errores</h4><div class='ar-metric-value' style='color:#dc2626'>Sí</div></div>", unsafe_allow_html=True)
+        else:
+            kpi_col4.markdown("<div class='ar-card' style='background:#f0fdf4;border-color:#bbf7d0'><h4>✔️ Errores</h4><div class='ar-metric-value' style='color:#16a34a'>0</div></div>", unsafe_allow_html=True)
     except Exception:
         pass
 else:
@@ -1091,11 +1098,18 @@ else:
     """, unsafe_allow_html=True)
     try:
         from src.db import cached_counts as counts_fn
+        from src.logger import get_recent_events
         k = counts_fn()
-        kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+        recent = get_recent_events(limit=50)
+        has_errors = any(ev.get('level') == 'ERROR' for ev in recent)
+        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
         kpi_col1.markdown(f"<div class='ar-card'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
         kpi_col2.markdown(f"<div class='ar-card'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
         kpi_col3.markdown(f"<div class='ar-card'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
+        if has_errors:
+            kpi_col4.markdown("<div class='ar-card' style='background:#fef2f2;border-color:#fecaca'><h4>⚠️ Errores</h4><div class='ar-metric-value' style='color:#dc2626'>Sí</div></div>", unsafe_allow_html=True)
+        else:
+            kpi_col4.markdown("<div class='ar-card' style='background:#f0fdf4;border-color:#bbf7d0'><h4>✔️ Errores</h4><div class='ar-metric-value' style='color:#16a34a'>0</div></div>", unsafe_allow_html=True)
     except Exception:
         pass
 

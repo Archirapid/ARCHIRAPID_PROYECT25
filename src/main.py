@@ -7,6 +7,94 @@ from streamlit_folium import st_folium
 import uuid
 from datetime import datetime
 
+# =====================================================
+# STUBS PARA EVITAR ERRORES (Funciones provistas en app principal)
+# =====================================================
+import sqlite3, pandas as pd, os
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'data.db')
+
+def save_file(uploaded_file, kind: str):
+    if not uploaded_file:
+        return None
+    ext = os.path.splitext(uploaded_file.name)[1]
+    target_dir = os.path.join(BASE_DIR, 'uploads')
+    os.makedirs(target_dir, exist_ok=True)
+    target = os.path.join(target_dir, f"{uuid.uuid4().hex}{ext}")
+    with open(target, 'wb') as f:
+        f.write(uploaded_file.read())
+    return target
+
+def _ensure_plots_table():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS plots (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            description TEXT,
+            lat REAL,
+            lon REAL,
+            m2 INTEGER,
+            height REAL,
+            price REAL,
+            type TEXT,
+            province TEXT,
+            locality TEXT,
+            owner_name TEXT,
+            owner_email TEXT,
+            image_path TEXT,
+            registry_note_path TEXT,
+            created_at TEXT
+        )
+    """)
+    conn.commit(); conn.close()
+
+def insert_plot(data: dict):
+    _ensure_plots_table()
+    conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+    c.execute("""
+        INSERT OR REPLACE INTO plots
+        (id,title,description,lat,lon,m2,height,price,type,province,locality,owner_name,owner_email,image_path,registry_note_path,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (
+        data.get('id'), data.get('title'), data.get('description'), data.get('lat'), data.get('lon'),
+        data.get('m2'), data.get('height'), data.get('price'), data.get('type'), data.get('province'),
+        data.get('locality'), data.get('owner_name'), data.get('owner_email'), data.get('image_path'),
+        data.get('registry_note_path'), data.get('created_at')
+    ))
+    conn.commit(); conn.close()
+
+def get_all_plots():
+    _ensure_plots_table()
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql_query("SELECT * FROM plots", conn)
+    conn.close(); return df
+
+def get_plot_by_id(plot_id: str):
+    _ensure_plots_table(); conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+    c.execute("SELECT * FROM plots WHERE id=?", (plot_id,))
+    row = c.fetchone(); conn.close()
+    if not row: return None
+    cols = ["id","title","description","lat","lon","m2","height","price","type","province","locality","owner_name","owner_email","image_path","registry_note_path","created_at"]
+    return dict(zip(cols, row))
+
+def match_projects_for_plot(plot: dict):
+    # Lógica placeholder: devuelve lista vacía
+    return []
+
+def insert_reservation(reservation: dict):
+    # Placeholder para auditoría; usar implementación real en app principal
+    pass
+
+def get_image_base64(image_path: str):
+    try:
+        with open(image_path, 'rb') as f:
+            import base64
+            return 'data:image/png;base64,' + base64.b64encode(f.read()).decode()
+    except Exception:
+        return None
+
 def show_plot_form():
     """Muestra el formulario de registro de fincas"""
     st.title("Registro de Finca")

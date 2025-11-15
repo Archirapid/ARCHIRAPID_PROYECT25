@@ -18,59 +18,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'data.db')
 
 def save_file(uploaded_file, kind: str):
-    if not uploaded_file:
-        return None
-    ext = os.path.splitext(uploaded_file.name)[1]
-    target_dir = os.path.join(BASE_DIR, 'uploads')
-    os.makedirs(target_dir, exist_ok=True)
-    target = os.path.join(target_dir, f"{uuid.uuid4().hex}{ext}")
-    with open(target, 'wb') as f:
-        f.write(uploaded_file.read())
-    return target
-
-def _ensure_plots_table():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS plots (
-            id TEXT PRIMARY KEY,
-            title TEXT,
-            description TEXT,
-            lat REAL,
-            lon REAL,
-            m2 INTEGER,
-            height REAL,
-            price REAL,
-            type TEXT,
-            province TEXT,
-            locality TEXT,
-            owner_name TEXT,
-            owner_email TEXT,
-            image_path TEXT,
-            registry_note_path TEXT,
-            created_at TEXT
-        )
-    """)
-    conn.commit(); conn.close()
-
-def insert_plot(data: dict):
-    _ensure_plots_table()
-    conn = sqlite3.connect(DB_PATH); c = conn.cursor()
-    c.execute("""
-        INSERT OR REPLACE INTO plots
-        (id,title,description,lat,lon,m2,height,price,type,province,locality,owner_name,owner_email,image_path,registry_note_path,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        data.get('id'), data.get('title'), data.get('description'), data.get('lat'), data.get('lon'),
-        data.get('m2'), data.get('height'), data.get('price'), data.get('type'), data.get('province'),
-        data.get('locality'), data.get('owner_name'), data.get('owner_email'), data.get('image_path'),
-        data.get('registry_note_path'), data.get('created_at')
-    ))
-    conn.commit(); conn.close()
-
-def get_all_plots():
-    _ensure_plots_table()
-    conn = sqlite3.connect(DB_PATH)
+    ## Eliminadas funciones duplicadas de acceso a DB.
+    ## Se delega completamente en `src.db` para evitar divergencia.
     df = pd.read_sql_query("SELECT * FROM plots", conn)
     conn.close(); return df
 
@@ -255,17 +204,25 @@ def show_plot_detail(plot_id):
         if plot['image_path']:
             st.image(plot['image_path'])
             
+    from src.utils_validation import html_safe
     with col2:
+        area = html_safe(plot['m2'])
+        height = html_safe(plot['height'])
+        price = html_safe(plot['price'])
+        ptype = html_safe(plot['type'])
+        prov = html_safe(plot['province'])
+        locality = html_safe(plot['locality']) if plot['locality'] else ''
+        desc = html_safe(plot['description'])
         st.markdown(f"""
         ### Detalles
-        - **Área:** {plot['m2']} m²
-        - **Altura máxima:** {plot['height']} m
-        - **Precio:** {plot['price']} €
-        - **Tipo:** {plot['type']}
-        - **Ubicación:** {plot['province']} {f"({plot['locality']})" if plot['locality'] else ''}
+        - **Área:** {area} m²
+        - **Altura máxima:** {height} m
+        - **Precio:** {price} €
+        - **Tipo:** {ptype}
+        - **Ubicación:** {prov} {f"({locality})" if locality else ''}
         
         ### Descripción
-        {plot['description']}
+        {desc}
         """)
         
     # Mapa individual
@@ -279,13 +236,20 @@ def show_plot_detail(plot_id):
     if matches:
         for project in matches:
             with st.container():
+                title = html_safe(project['title'])
+                arch = html_safe(project['architect_name'])
+                area_p = html_safe(project['area_m2'])
+                maxh = html_safe(project['max_height'])
+                style = html_safe(project['style'])
+                price_p = html_safe(project['price'])
+                desc_p = html_safe(project['description'])
                 st.markdown(f"""
                 <div class="plot-card">
-                    <h4>{project['title']}</h4>
-                    <p><b>Arquitecto:</b> {project['architect_name']}</p>
-                    <p><b>Área:</b> {project['area_m2']}m² | <b>Altura:</b> {project['max_height']}m | <b>Estilo:</b> {project['style']}</p>
-                    <p><b>Precio del proyecto:</b> {project['price']}€</p>
-                    <p>{project['description']}</p>
+                    <h4>{title}</h4>
+                    <p><b>Arquitecto:</b> {arch}</p>
+                    <p><b>Área:</b> {area_p}m² | <b>Altura:</b> {maxh}m | <b>Estilo:</b> {style}</p>
+                    <p><b>Precio del proyecto:</b> {price_p}€</p>
+                    <p>{desc_p}</p>
                 </div>
                 """, unsafe_allow_html=True)
     else:

@@ -12,7 +12,7 @@ import streamlit as st
 import uuid
 from datetime import datetime
 from src.db import insert_project, get_all_projects
-from src.utils_validation import validate_email, validate_nif, file_size_ok
+from src.utils_validation import validate_email, validate_nif, file_size_ok, html_safe
 from src.logger import log
 
 def show_project_form():
@@ -110,16 +110,24 @@ def show_projects():
     
     for idx, row in filtered_df.iterrows():
         with st.container():
-            st.markdown(f"""
+            title = html_safe(row['title'])
+            arch = html_safe(row['architect_name'])
+            desc = html_safe(row['description'])
+            style = html_safe(row['style'])
+            price = html_safe(row['price'])
+            area = html_safe(row['area_m2'])
+            maxh = html_safe(row['max_height'])
+            card_html = f"""
             <div class="plot-card">
-                <h3>{row['title']}</h3>
-                <p><b>Arquitecto:</b> {row['architect_name']}</p>
-                <p><b>Área:</b> {row['area_m2']}m² | <b>Altura máxima:</b> {row['max_height']}m</p>
-                <p><b>Estilo:</b> {row['style']}</p>
-                <p><b>Precio:</b> {row['price']}€</p>
-                <p>{row['description']}</p>
+                <h3>{title}</h3>
+                <p><b>Arquitecto:</b> {arch}</p>
+                <p><b>Área:</b> {area}m² | <b>Altura máxima:</b> {maxh}m</p>
+                <p><b>Estilo:</b> {style}</p>
+                <p><b>Precio:</b> {price}€</p>
+                <p>{desc}</p>
             </div>
-            """, unsafe_allow_html=True)
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
             
             if row['file_path']:
                 st.download_button(
@@ -258,20 +266,18 @@ class AssetManager:
 # Estas funciones se usan en formularios pero no estaban definidas.
 # Se provee una versión mínima para integridad del sistema.
 # =====================================================
-import sqlite3
-import pandas as pd
-
-BASE_DIR = Path(__file__).parent.parent
-DB_PATH = str(BASE_DIR / 'data.db')
+## Eliminadas implementaciones duplicadas de proyectos (CRUD) para usar central DB.
+from pathlib import Path as _Path
+BASE_DIR = _Path(__file__).parent.parent
 ASSETS_DIR = BASE_DIR / 'assets'
 PROJECTS_DIR = ASSETS_DIR / 'projects'
 PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 
 def save_file(uploaded_file, kind: str) -> Optional[str]:
-    """Guarda archivo subido y devuelve la ruta. Si falla devuelve None."""
+    """Guarda archivo subido y devuelve la ruta (wrapper local)."""
     if not uploaded_file:
         return None
-    suffix = Path(uploaded_file.name).suffix
+    suffix = _Path(uploaded_file.name).suffix
     target = PROJECTS_DIR / f"{uuid.uuid4().hex}{suffix}"
     try:
         with open(target, 'wb') as f:
@@ -279,56 +285,3 @@ def save_file(uploaded_file, kind: str) -> Optional[str]:
         return str(target)
     except Exception:
         return None
-
-def _ensure_projects_table():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS projects (
-            id TEXT PRIMARY KEY,
-            title TEXT,
-            architect_name TEXT,
-            area_m2 INTEGER,
-            max_height REAL,
-            style TEXT,
-            price REAL,
-            file_path TEXT,
-            description TEXT,
-            created_at TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-def insert_project(project_data: Dict) -> None:
-    _ensure_projects_table()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        INSERT OR REPLACE INTO projects
-        (id,title,architect_name,area_m2,max_height,style,price,file_path,description,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?)
-    """, (
-        project_data.get('id'),
-        project_data.get('title'),
-        project_data.get('architect_name'),
-        project_data.get('area_m2'),
-        project_data.get('max_height'),
-        project_data.get('style'),
-        project_data.get('price'),
-        project_data.get('file_path'),
-        project_data.get('description'),
-        project_data.get('created_at'),
-    ))
-    conn.commit()
-    conn.close()
-
-def get_all_projects() -> pd.DataFrame:
-    _ensure_projects_table()
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        df = pd.read_sql_query("SELECT * FROM projects", conn)
-        conn.close()
-        return df
-    except Exception:
-        return pd.DataFrame(columns=["id","title","architect_name","area_m2","max_height","style","price","file_path","description","created_at"])

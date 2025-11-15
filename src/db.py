@@ -56,28 +56,38 @@ def ensure_tables():
             buyer_phone TEXT, buyer_nif TEXT, method TEXT, status TEXT, timestamp TEXT,
             card_last4 TEXT
         )""")
+        # Índices para mejorar filtrado futuro
+        c.execute("CREATE INDEX IF NOT EXISTS idx_plots_province ON plots(province)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_projects_style ON projects(style)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
 
 def insert_plot(data: Dict):
     ensure_tables()
     with transaction() as c:
-        c.execute("""INSERT OR REPLACE INTO plots VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                  (data['id'], data['title'], data['description'], data['lat'], data['lon'], data['m2'], data['height'],
-                   data['price'], data['type'], data['province'], data['locality'], data['owner_name'], data['owner_email'],
-                   data.get('image_path'), data.get('registry_note_path'), data['created_at']))
+        c.execute("""INSERT OR REPLACE INTO plots (
+            id,title,description,lat,lon,m2,height,price,type,province,locality,owner_name,owner_email,image_path,registry_note_path,created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (data['id'], data['title'], data['description'], data['lat'], data['lon'], data['m2'], data['height'],
+         data['price'], data['type'], data['province'], data['locality'], data['owner_name'], data['owner_email'],
+         data.get('image_path'), data.get('registry_note_path'), data['created_at']))
 
 def insert_project(data: Dict):
     ensure_tables()
     with transaction() as c:
-        c.execute("""INSERT OR REPLACE INTO projects VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                  (data['id'], data['title'], data['architect_name'], data['area_m2'], data['max_height'], data['style'],
-                   data['price'], data.get('file_path'), data['description'], data['created_at']))
+        c.execute("""INSERT OR REPLACE INTO projects (
+            id,title,architect_name,area_m2,max_height,style,price,file_path,description,created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (data['id'], data['title'], data['architect_name'], data['area_m2'], data['max_height'], data['style'],
+         data['price'], data.get('file_path'), data['description'], data['created_at']))
 
 def insert_payment(data: Dict):
     ensure_tables()
     with transaction() as c:
-        c.execute("""INSERT OR REPLACE INTO payments VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                  (data['payment_id'], data['amount'], data['concept'], data['buyer_name'], data['buyer_email'],
-                   data['buyer_phone'], data['buyer_nif'], data['method'], data['status'], data['timestamp'], data.get('card_last4'), data.get('card_last4')))
+        c.execute("""INSERT OR REPLACE INTO payments (
+            payment_id,amount,concept,buyer_name,buyer_email,buyer_phone,buyer_nif,method,status,timestamp,card_last4
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (data['payment_id'], data['amount'], data['concept'], data['buyer_name'], data['buyer_email'],
+         data['buyer_phone'], data['buyer_nif'], data['method'], data['status'], data['timestamp'], data.get('card_last4')))
 
 def get_all_plots():
     ensure_tables(); conn = get_conn(); import pandas as pd
@@ -109,3 +119,17 @@ def counts() -> Dict[str,int]:
     for table in ['plots','projects','payments']:
         c.execute(f'SELECT COUNT(*) FROM {table}'); out[table] = c.fetchone()[0]
     conn.close(); return out
+
+# Cache ligera en memoria para counts (TTL segundos)
+_COUNTS_CACHE: Dict[str,int] | None = None
+_COUNTS_TS: float | None = None
+_COUNTS_TTL = 5  # segundos
+
+def cached_counts() -> Dict[str,int]:
+    import time
+    global _COUNTS_CACHE, _COUNTS_TS
+    now = time.time()
+    if _COUNTS_CACHE is None or _COUNTS_TS is None or (now - _COUNTS_TS) > _COUNTS_TTL:
+        _COUNTS_CACHE = counts()
+        _COUNTS_TS = now
+    return _COUNTS_CACHE.copy()

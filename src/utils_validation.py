@@ -1,6 +1,7 @@
 """Utilidades de validación para formularios y pagos."""
 import re
 from typing import Optional
+import html
 
 EMAIL_REGEX = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 NIF_REGEX = re.compile(r"^[0-9]{7,8}[A-Za-z]$")
@@ -26,3 +27,9 @@ def first_error(email: str, phone: str, nif: str) -> Optional[str]:
     if nif and not validate_nif(nif):
         return "NIF inválido"
     return None
+
+def html_safe(value: str) -> str:
+    """Escapa contenido para inserción segura en HTML (previene inyección básica)."""
+    if value is None:
+        return ''
+    return html.escape(str(value), quote=True)

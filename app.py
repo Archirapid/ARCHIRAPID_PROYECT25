@@ -1053,6 +1053,42 @@ def show_project_detail_modal(project):
 # Initialize DB
 init_db()
 
+# =====================================================
+# 🎨 HEADER PROFESIONAL CON LOGO Y BRANDING
+# =====================================================
+logo_path = "assets/branding/logo.png"
+if os.path.exists(logo_path):
+    # Header con logo y tagline
+    header_col1, header_col2 = st.columns([1, 3])
+    
+    with header_col1:
+        st.image(logo_path, width=200)
+    
+    with header_col2:
+        st.markdown("""
+        <div style='padding-top: 20px;'>
+            <h3 style='margin: 0; color: #667eea;'>Soluciones Inteligentes para Tu Proyecto</h3>
+            <p style='margin: 0; color: #666; font-size: 14px;'>
+                Conectamos fincas, arquitectos y constructores con tecnología IA
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+else:
+    # Fallback: Header solo con texto
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                padding: 20px; 
+                border-radius: 12px; 
+                text-align: center;
+                color: white;
+                margin-bottom: 20px;'>
+        <h1 style='margin: 0; font-weight: bold;'>ARCHIRAPID</h1>
+        <p style='margin: 5px 0 0 0; font-size: 14px;'>Soluciones Inteligentes para Tu Proyecto</p>
+    </div>
+    """, unsafe_allow_html=True)
+
 # Navigation bar
 st.markdown("""
 <nav style='background:#f8f9fa;padding:8px;border-radius:6px;margin-bottom:12px;'>
@@ -2734,20 +2770,21 @@ with footer_col2:
 
 with footer_col3:
     st.markdown("### 🏢 Logo")
-    # Intentar cargar logo desde assets/branding/
+    # Logo profesional en footer
     logo_path = "assets/branding/logo.png"
     if os.path.exists(logo_path):
-        st.image(logo_path, width=150)
+        st.image(logo_path, width=180)
+        st.caption("_Powered by AI & Geospatial Tech_")
     else:
         # Fallback: Logo de texto
         st.markdown("""
         <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    padding: 20px; 
-                    border-radius: 12px; 
+                    padding: 15px; 
+                    border-radius: 8px; 
                     text-align: center;
                     color: white;
                     font-weight: bold;
-                    font-size: 18px;'>
+                    font-size: 16px;'>
             ARCHIRAPID
         </div>
         """, unsafe_allow_html=True)

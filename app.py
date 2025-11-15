@@ -1180,33 +1180,6 @@ if page == 'Home':
     st.title('ARCHIRAPID — Home')
     st.write('Busca fincas con los filtros horizontales y visualízalas en el mapa interactivo.')
 
-    # Mostrar recibo inmediatamente arriba si procede (solo reservas, compra redirige)
-    if st.session_state.get('show_receipt_top') and st.session_state.get('last_payment'):
-        from src.payment_simulator import show_payment_success
-        st.markdown("---")
-        st.subheader("🧾 Recibo de tu Reserva")
-        show_payment_success(st.session_state['last_payment'])
-        st.markdown("<script>window.scrollTo({top:0,behavior:'smooth'});</script>", unsafe_allow_html=True)
-        # Acción rápida
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("🚀 Ir al Panel de Clientes", key="top_go_clients", type="primary"):
-                st.session_state['last_payment_receipt'] = st.session_state.get('last_payment')
-                st.session_state['show_receipt_top'] = False
-                st.session_state['payment_completed'] = False
-                try:
-                    st.query_params.update(page='clientes')
-                except Exception:
-                    pass
-                st.session_state['page'] = 'clientes'
-                st.rerun()
-        with c2:
-            if st.button("❌ Ocultar recibo", key="hide_receipt"):
-                st.session_state['show_receipt_top'] = False
-                st.session_state['payment_completed'] = False
-                st.session_state['last_payment'] = None
-                st.rerun()
-
     # =====================================================
     # Persistencia robusta de selección de finca
     # =====================================================
@@ -1411,7 +1384,7 @@ if page == 'Home':
                     st.rerun()
     
     # =====================================================
-    # 🎯 POST-PAGO: PANTALLA COMPLETA (PROFESIONAL)
+    # 🎯 POST-PAGO: CONFIRMACIÓN COMPLETA PARA TODOS
     # =====================================================
     # SALIR del contexto panel_col para renderizar a full width
     if selected_plot and st.session_state.get('payment_completed'):
@@ -1422,69 +1395,77 @@ if page == 'Home':
             from src.payment_flow import finalize_payment
             result = finalize_payment(selected_plot, payment_data, Path(DB_PATH))
             payment_type = result['payment_type']
-
-            # ==============================================
-            # 🚀 REDIRECCIÓN AUTOMÁTICA TRAS COMPRA COMPLETA
-            # ==============================================
-            # Si es compra (100%) enviamos directo al panel de clientes.
-            # Mantener reserva en la misma pantalla para permitir otras acciones.
-            if payment_type == 'purchase' and not st.session_state.get('auto_redirect_done'):
-                st.session_state["page"] = "clientes"
-                # Usar query params para navegación consistente
-                try:
-                    st.query_params.update(page='clientes')
-                except Exception:
-                    pass
-                st.session_state["client_email_prefill"] = payment_data.get("buyer_email")
-                # Limpiar flags para evitar loops
-                st.session_state['payment_completed'] = False
-                st.session_state['auto_redirect_done'] = True
-                # Mantener el recibo en session_state si hiciera falta en otro panel
-                st.session_state['last_payment_receipt'] = payment_data
-                st.rerun()
-            else:
-                # Reserva: mostrar recibo arriba en Home para mejor UX
-                st.session_state['show_receipt_top'] = True
             
-            # === LAYOUT PROFESIONAL: CENTRADO Y ESPACIOSO (solo si NO redirigido) ===
-            if payment_type != 'purchase':
-                st.markdown("---")
-                st.markdown("<br>", unsafe_allow_html=True)
-                # Scroll al inicio para que usuario vea recibo sin perderlo
-                st.markdown("<script>window.scrollTo({top:0,behavior:'smooth'});</script>", unsafe_allow_html=True)
+            # === CONFIRMACIÓN COMPLETA CON TODOS LOS DATOS ===
+            st.markdown("---")
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<script>window.scrollTo({top:0,behavior:'smooth'});</script>", unsafe_allow_html=True)
             
-            # Centrar contenido: 20% | 60% | 20%
+            # Centrar contenido
             _, center_col, _ = st.columns([1, 3, 1])
             
-            if payment_type != 'purchase':
-                with center_col:
-                    st.success("✅ ¡Pago completado con éxito!")
-                    show_payment_success(payment_data)
-                    st.markdown("---")
-                    st.markdown("### 🎯 Próximos Pasos")
-                    st.info("""**Tu finca está reservada con éxito**\nAccede al **Panel de Clientes** para:\n- 📋 Ver propuestas de arquitectos\n- 🏗️ Diseñar tu casa con IA\n- 📦 Explorar proyectos compatibles\n- 📊 Descargar análisis catastral""")
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    btn_col1, btn_col2 = st.columns(2)
-                    with btn_col1:
-                        if st.button("🚀 IR AL PANEL DE CLIENTES", use_container_width=True, type="primary", key="goto_clients"):
-                            st.session_state["page"] = "clientes"
-                            try:
-                                st.query_params.update(page='clientes')
-                            except Exception:
-                                pass
-                            st.session_state["client_email_prefill"] = payment_data.get("buyer_email")
-                            # Mantener recibo para mostrar en portal
-                            st.session_state['last_payment_receipt'] = payment_data
-                            # Limpiar flags
-                            st.session_state['payment_completed'] = False
-                            st.session_state['last_payment'] = None
-                            st.rerun()
-                    with btn_col2:
-                        if st.button("🏠 Volver al Inicio", use_container_width=True, key="goto_home"):
-                            st.session_state["selected_plot_id"] = None
-                            st.session_state['payment_completed'] = False
-                            st.session_state['last_payment'] = None
-                            st.rerun()
+            with center_col:
+                # TÍTULO CON TIPO DE OPERACIÓN
+                if payment_type == 'purchase':
+                    st.success("🎉 ¡COMPRA COMPLETADA CON ÉXITO!")
+                else:
+                    st.success("✅ ¡RESERVA COMPLETADA CON ÉXITO!")
+                
+                st.markdown("---")
+                
+                # DATOS DE LA FINCA COMPRADA/RESERVADA
+                st.markdown("### 🏡 Detalles de tu Finca")
+                col_f1, col_f2 = st.columns(2)
+                with col_f1:
+                    st.metric("📍 Ubicación", f"{selected_plot.get('locality', 'N/A')}, {selected_plot.get('province', 'N/A')}")
+                    st.metric("📏 Superficie", f"{selected_plot.get('m2', 0):,.0f} m²")
+                with col_f2:
+                    st.metric("💰 Precio Total", f"{selected_plot.get('price', 0):,.2f} €")
+                    if payment_type == 'purchase':
+                        st.metric("✅ Pagado", f"{payment_data['amount']:,.2f} €", delta="100%")
+                    else:
+                        st.metric("💳 Reserva (10%)", f"{payment_data['amount']:,.2f} €")
+                
+                st.markdown("---")
+                
+                # RECIBO COMPLETO DEL PAGO
+                st.markdown("### 🧾 Recibo de Pago")
+                show_payment_success(payment_data, download_receipt=True)
+                
+                st.markdown("---")
+                st.markdown("### 🎯 Próximos Pasos")
+                
+                if payment_type == 'purchase':
+                    st.info("""**¡Tu finca ya es tuya!**\n\nAccede al **Panel de Clientes** para:\n- 🏗️ **Diseñar tu casa** con IA\n- 📦 **Ver proyectos arquitectónicos** compatibles\n- 📋 Recibir propuestas de arquitectos\n- 📊 Descargar análisis catastral completo""")
+                else:
+                    st.info("""**Tu finca está reservada**\n\nAccede al **Panel de Clientes** para:\n- 📋 Ver propuestas de arquitectos\n- 🏗️ Diseñar tu casa con IA\n- 📦 Explorar proyectos compatibles\n- 📊 Descargar análisis catastral""")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # BOTONES DE ACCIÓN
+                btn_col1, btn_col2 = st.columns(2)
+                with btn_col1:
+                    if st.button("🚀 IR AL PANEL DE CLIENTES", use_container_width=True, type="primary", key="goto_clients"):
+                        st.session_state["page"] = "clientes"
+                        try:
+                            st.query_params.update(page='clientes')
+                        except Exception:
+                            pass
+                        st.session_state["client_email_prefill"] = payment_data.get("buyer_email")
+                        st.session_state["auto_login_email"] = payment_data.get("buyer_email")
+                        # Guardar datos para mostrar en portal
+                        st.session_state['last_payment_receipt'] = payment_data
+                        st.session_state['purchased_plot'] = selected_plot
+                        # Limpiar flags
+                        st.session_state['payment_completed'] = False
+                        st.session_state['last_payment'] = None
+                        st.rerun()
+                with btn_col2:
+                    if st.button("🏠 Volver al Inicio", use_container_width=True, key="goto_home"):
+                        st.session_state["selected_plot_id"] = None
+                        st.session_state['payment_completed'] = False
+                        st.session_state['last_payment'] = None
+                        st.rerun()
     
     # =====================================================
     # 📋 PREVIEW NORMAL: PROYECTOS Y PROPUESTAS
@@ -2330,15 +2311,63 @@ elif page == 'clientes':
     st.title('🎯 Portal de Clientes')
     st.markdown("Accede a tu cuenta o regístrate para buscar tu finca ideal y diseñar tu casa.")
     
-    # Mostrar recibo reciente si existe y no se ha mostrado aún
-    if st.session_state.get('last_payment_receipt') and not st.session_state.get('receipt_shown_in_client_panel'):
-        from src.payment_simulator import show_payment_success
+    # AUTO-LOGIN si viene de pago con email
+    auto_login_email = st.session_state.get('auto_login_email')
+    if auto_login_email and 'client_id' not in st.session_state:
+        # Buscar cliente por email
+        conn_auto = sqlite3.connect(DB_PATH)
+        df_client = pd.read_sql_query("SELECT * FROM clients WHERE email = ? LIMIT 1", conn_auto, params=(auto_login_email,))
+        conn_auto.close()
+        
+        if df_client.shape[0] > 0:
+            client_data = df_client.iloc[0].to_dict()
+            st.session_state['client_id'] = client_data['id']
+            st.session_state['client_name'] = client_data['name']
+            st.session_state['client_email'] = client_data['email']
+            # Limpiar flag para evitar auto-login repetido
+            st.session_state.pop('auto_login_email', None)
+            st.success(f"✅ ¡Bienvenido/a {client_data['name']}!")
+            st.rerun()
+    
+    # Mostrar resumen de compra/reserva si existe
+    if st.session_state.get('last_payment_receipt') and st.session_state.get('purchased_plot'):
+        payment_receipt = st.session_state['last_payment_receipt']
+        plot_data = st.session_state['purchased_plot']
+        
         st.markdown('---')
-        with st.expander('🧾 Recibo de tu Pago', expanded=True):
-            show_payment_success(st.session_state['last_payment_receipt'])
-            if st.button('Ocultar recibo', key='hide_receipt_client'):
-                st.session_state['receipt_shown_in_client_panel'] = True
-        st.session_state['receipt_shown_in_client_panel'] = True
+        st.success("🎉 ¡Operación completada con éxito!")
+        
+        col_s1, col_s2 = st.columns([2, 1])
+        with col_s1:
+            st.markdown(f"### 🏡 {plot_data.get('title', 'Tu Finca')}")
+            st.write(f"**📍 Ubicación:** {plot_data.get('locality', 'N/A')}, {plot_data.get('province', 'N/A')}")
+            st.write(f"**📏 Superficie:** {plot_data.get('m2', 0):,.0f} m²")
+            st.write(f"**💰 Precio:** {plot_data.get('price', 0):,.2f} €")
+        with col_s2:
+            st.metric("💳 Pagado", f"{payment_receipt['amount']:,.2f} €")
+            st.caption(f"Transacción: {payment_receipt['payment_id'][:12].upper()}")
+        
+        st.markdown("---")
+        st.markdown("### 🎯 ¿Qué quieres hacer ahora?")
+        
+        action_col1, action_col2 = st.columns(2)
+        with action_col1:
+            if st.button("🏗️ DISEÑAR MI CASA CON IA", use_container_width=True, type="primary", key="design_house"):
+                st.session_state['action_design_house'] = True
+                st.info("🚧 Funcionalidad de diseño con IA próximamente disponible")
+        with action_col2:
+            if st.button("📦 VER PROYECTOS COMPATIBLES", use_container_width=True, key="view_projects"):
+                st.session_state['action_view_projects'] = True
+                st.info("🚧 Búsqueda de proyectos arquitectónicos próximamente disponible")
+        
+        # Botón para ocultar resumen
+        if st.button("❌ Ocultar resumen", key="hide_summary"):
+            st.session_state.pop('last_payment_receipt', None)
+            st.session_state.pop('purchased_plot', None)
+            st.session_state.pop('receipt_shown_in_client_panel', None)
+            st.rerun()
+        
+        st.markdown('---')
     
     # Contador de clientes para info
     conn_check = sqlite3.connect(DB_PATH)

@@ -1058,21 +1058,24 @@ init_db()
 # =====================================================
 logo_path = "assets/branding/logo.png"
 if os.path.exists(logo_path):
-    # Header con logo y tagline (logo más estrecho para mejor UX)
-    header_col1, header_col2 = st.columns([1, 4])
+    # Header compacto y profesional: logo visible + tagline sin ocupar mucho
+    header_col1, header_col2, header_col3 = st.columns([1.2, 3, 1])
     
     with header_col1:
-        st.image(logo_path, width=140)
+        st.image(logo_path, width=180)
     
     with header_col2:
         st.markdown("""
-        <div style='padding-top: 15px;'>
-            <h3 style='margin: 0; color: #667eea;'>Soluciones Inteligentes para Tu Proyecto</h3>
-            <p style='margin: 0; color: #666; font-size: 14px;'>
+        <div style='padding-top: 12px; padding-left: 10px;'>
+            <h4 style='margin: 0; color: #667eea; font-size: 18px; font-weight: 600;'>Soluciones Inteligentes para Tu Proyecto</h4>
+            <p style='margin: 2px 0 0 0; color: #666; font-size: 13px;'>
                 Conectamos fincas, arquitectos y constructores con tecnología IA
             </p>
         </div>
         """, unsafe_allow_html=True)
+    
+    with header_col3:
+        pass  # Columna vacía para balance
     
     st.markdown("---")
 else:

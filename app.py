@@ -27,153 +27,9 @@ os.makedirs(UPLOADS, exist_ok=True)
 st.set_page_config(page_title="ARCHIRAPID MVP", layout="wide")
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    # plots table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS plots (
-            id TEXT PRIMARY KEY,
-            title TEXT,
-            description TEXT,
-            lat REAL,
-            lon REAL,
-            m2 INTEGER,
-            height REAL,
-            price REAL,
-            type TEXT,
-            province TEXT,
-            locality TEXT,
-            owner_name TEXT,
-            owner_email TEXT,
-            image_path TEXT,
-            registry_note_path TEXT,
-            created_at TEXT
-        )
-    ''')
-    # projects table - EXTENDED FOR PORTFOLIO SYSTEM
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS projects (
-            id TEXT PRIMARY KEY,
-            title TEXT,
-            architect_name TEXT,
-            architect_id TEXT,
-            area_m2 INTEGER,
-            max_height REAL,
-            style TEXT,
-            price REAL,
-            file_path TEXT,
-            description TEXT,
-            created_at TEXT,
-            -- NEW FIELDS FOR MATCHING & TECHNICAL SPECS
-            m2_construidos INTEGER,
-            m2_parcela_minima INTEGER,
-            m2_parcela_maxima INTEGER,
-            habitaciones INTEGER,
-            banos INTEGER,
-            garaje INTEGER,
-            plantas INTEGER,
-            certificacion_energetica TEXT,
-            tipo_proyecto TEXT,
-            -- MEDIA FILES (JSON arrays for multiple files)
-            foto_principal TEXT,
-            galeria_fotos TEXT,
-            modelo_3d_glb TEXT,
-            render_vr TEXT,
-            planos_pdf TEXT,
-            planos_dwg TEXT,
-            memoria_pdf TEXT,
-            presupuesto_pdf TEXT,
-            gemelo_digital_ifc TEXT
-        )
-    ''')
-    # reservations
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS reservations (
-            id TEXT PRIMARY KEY,
-            plot_id TEXT,
-            buyer_name TEXT,
-            buyer_email TEXT,
-            amount REAL,
-            kind TEXT,
-            created_at TEXT
-        )
-    ''')
-    # architects and subscriptions
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS architects (
-            id TEXT PRIMARY KEY,
-            name TEXT,
-            email TEXT UNIQUE,
-            phone TEXT,
-            company TEXT,
-            nif TEXT,
-            created_at TEXT
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS subscriptions (
-            id TEXT PRIMARY KEY,
-            architect_id TEXT,
-            plan_type TEXT,
-            price REAL,
-            monthly_proposals_limit INTEGER,
-            commission_rate REAL,
-            status TEXT,
-            start_date TEXT,
-            end_date TEXT,
-            created_at TEXT,
-            FOREIGN KEY (architect_id) REFERENCES architects(id)
-        )
-    ''')
-    # proposals (arquitecto → propietario)
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS proposals (
-            id TEXT PRIMARY KEY,
-            architect_id TEXT,
-            plot_id TEXT,
-            proposal_text TEXT,
-            estimated_budget REAL,
-            deadline_days INTEGER,
-            sketch_image_path TEXT,
-            status TEXT,
-            created_at TEXT,
-            responded_at TEXT,
-            delivery_format TEXT DEFAULT "PDF",
-            delivery_price REAL DEFAULT 1200,
-            supervision_fee REAL DEFAULT 0,
-            visa_fee REAL DEFAULT 0,
-            total_cliente REAL DEFAULT 0,
-            commission REAL DEFAULT 0,
-            FOREIGN KEY (architect_id) REFERENCES architects(id),
-            FOREIGN KEY (plot_id) REFERENCES plots(id)
-        )
-    ''')
-    # clients
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS clients (
-            id TEXT PRIMARY KEY,
-            name TEXT,
-            email TEXT UNIQUE,
-            phone TEXT,
-            address TEXT,
-            nif TEXT,
-            created_at TEXT
-        )
-    ''')
-    # contractors
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS contractors (
-            id TEXT PRIMARY KEY,
-            company_name TEXT,
-            email TEXT UNIQUE,
-            phone TEXT,
-            cif TEXT,
-            specialty TEXT,
-            created_at TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    """Initialize database using centralized src.db module."""
+    from src.db import ensure_tables
+    ensure_tables()
 
 def save_file(uploaded_file, prefix="file"):
     ext = os.path.splitext(uploaded_file.name)[1]
@@ -196,7 +52,8 @@ def get_subscription_plans():
 
 def get_architect_subscription(architect_id):
     """Obtiene suscripción activa del arquitecto"""
-    conn = sqlite3.connect(DB_PATH)
+    from src.db import get_conn
+    conn = get_conn()
     df = pd.read_sql_query("SELECT * FROM subscriptions WHERE architect_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1", conn, params=(architect_id,))
     conn.close()
     if df.shape[0] == 0:
@@ -371,46 +228,10 @@ def delete_project(project_id):
     conn.commit()
     conn.close()
 
-
-def insert_plot(data):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''INSERT INTO plots (id, title, description, lat, lon, m2, height, price, type, province, locality, owner_name, owner_email, image_path, registry_note_path, plot_purpose, created_at)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
-        data['id'], data['title'], data.get('description',''), data['lat'], data['lon'], data['m2'], data['height'], data['price'], data['type'], data['province'], data.get('locality',''), data.get('owner_name',''), data.get('owner_email',''), data.get('image_path'), data.get('registry_note_path'), data.get('plot_purpose', 'vender'), data['created_at']
-    ))
-    conn.commit()
-    conn.close()
-
-def get_all_plots():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM plots ORDER BY created_at DESC", conn)
-    conn.close()
-    return df
-
-def get_plot_by_id(pid):
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM plots WHERE id = ?", conn, params=(pid,))
-    conn.close()
-    if df.shape[0] == 0:
-        return None
-    return df.iloc[0].to_dict()
-
-def insert_project(data):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''INSERT INTO projects (id, title, architect_name, architect_id, area_m2, max_height, style, price, file_path, description, created_at)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?)''', (
-        data['id'], data['title'], data.get('architect_name',''), data.get('architect_id'), data.get('area_m2'), data.get('max_height'), data.get('style'), data.get('price'), data.get('file_path'), data.get('description',''), data.get('created_at')
-    ))
-    conn.commit()
-    conn.close()
-
-def get_all_projects():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM projects", conn)
-    conn.close()
-    return df
+# =====================================================
+# DB FUNCTIONS - Delegate to src.db for consistency
+# =====================================================
+from src.db import insert_plot, get_all_plots, get_plot_by_id, insert_project, get_all_projects
 
 def insert_reservation(data):
     conn = sqlite3.connect(DB_PATH)

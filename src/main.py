@@ -18,18 +18,15 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'data.db')
 
 def save_file(uploaded_file, kind: str):
-    ## Eliminadas funciones duplicadas de acceso a DB.
-    ## Se delega completamente en `src.db` para evitar divergencia.
-    df = pd.read_sql_query("SELECT * FROM plots", conn)
-    conn.close(); return df
-
-def get_plot_by_id(plot_id: str):
-    _ensure_plots_table(); conn = sqlite3.connect(DB_PATH); c = conn.cursor()
-    c.execute("SELECT * FROM plots WHERE id=?", (plot_id,))
-    row = c.fetchone(); conn.close()
-    if not row: return None
-    cols = ["id","title","description","lat","lon","m2","height","price","type","province","locality","owner_name","owner_email","image_path","registry_note_path","created_at"]
-    return dict(zip(cols, row))
+    """Save uploaded file to uploads/ directory. Returns relative path."""
+    from pathlib import Path
+    uploads_dir = Path('uploads')
+    uploads_dir.mkdir(exist_ok=True)
+    ext = uploaded_file.name.split('.')[-1] if '.' in uploaded_file.name else 'bin'
+    filename = f"{kind}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = uploads_dir / filename
+    filepath.write_bytes(uploaded_file.read())
+    return str(filepath)
 
 def match_projects_for_plot(plot: dict):
     # Lógica placeholder: devuelve lista vacía

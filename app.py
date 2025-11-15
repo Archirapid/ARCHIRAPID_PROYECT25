@@ -1073,8 +1073,8 @@ if logo_data_uri:
     """, unsafe_allow_html=True)
     # KPIs debajo del header
     try:
-        from src.db import counts
-        k = counts()
+        from src.db import cached_counts as counts_fn
+        k = counts_fn()
         kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
         kpi_col1.markdown(f"<div class='ar-card'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
         kpi_col2.markdown(f"<div class='ar-card'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
@@ -1090,8 +1090,8 @@ else:
     </div>
     """, unsafe_allow_html=True)
     try:
-        from src.db import counts
-        k = counts()
+        from src.db import cached_counts as counts_fn
+        k = counts_fn()
         kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
         kpi_col1.markdown(f"<div class='ar-card'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
         kpi_col2.markdown(f"<div class='ar-card'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
@@ -1114,9 +1114,45 @@ html, body, [class*='css'] { font-family: 'Inter', 'Segoe UI', system-ui, sans-s
 .ar-btn-primary:hover { background:#4338ca; }
 @media (max-width: 900px){ .ar-responsive-hide { display:none !important; } }
 html { scroll-behavior:smooth; }
+ /* Eventos recientes */
+ .events-table { width:100%; border-collapse:collapse; font-size:12px; }
+ .events-table th { background:#f3f4f6; text-align:left; padding:6px 8px; border-bottom:1px solid #e5e7eb; }
+ .events-table td { padding:6px 8px; border-bottom:1px solid #f1f5f9; }
+ .level-ERROR { color:#dc2626; font-weight:600; }
+ .level-WARN { color:#d97706; font-weight:600; }
+ .level-INFO { color:#2563eb; }
+ .level-DEBUG { color:#64748b; }
 </style>
 """
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
+# =====================================================
+# 📡 PANEL DE EVENTOS (Observabilidad)
+# =====================================================
+from src.logger import get_recent_events
+with st.sidebar.expander("📡 Eventos recientes", expanded=False):
+    limit = st.number_input("Máx eventos", min_value=5, max_value=200, value=30, step=5, key="events_limit")
+    if st.button("Refrescar eventos", key="refresh_events"):
+        st.session_state['_events_refresh'] = datetime.utcnow().isoformat()
+    events = get_recent_events(limit=limit)
+    if not events:
+        st.caption("No hay eventos en el log todavía.")
+    else:
+        rows = []
+        for ev in events:
+            ts = ev.get('ts', ev.get('raw', '—'))
+            level = ev.get('level', 'INFO')
+            event_name = ev.get('event', ev.get('raw', ''))
+            extra = {k:v for k,v in ev.items() if k not in {'ts','level','event','raw'}}
+            extra_str = ', '.join(f"{k}={v}" for k,v in extra.items()) if extra else ''
+            rows.append(f"<tr><td>{ts}</td><td class='level-{level}'>{level}</td><td>{event_name}</td><td style='white-space:nowrap'>{extra_str}</td></tr>")
+        table_html = """
+        <table class='events-table'>
+            <thead><tr><th>Timestamp (UTC)</th><th>Nivel</th><th>Evento</th><th>Extra</th></tr></thead>
+            <tbody>{rows}</tbody>
+        </table>
+        """.replace('{rows}', ''.join(rows))
+        st.markdown(table_html, unsafe_allow_html=True)
 
 # =====================================================
 # 🌓 THEME TOGGLE (Claro/Oscuro)

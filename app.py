@@ -1284,7 +1284,7 @@ if page == 'Home':
         
         payment_data = st.session_state.get('last_payment')
         if payment_data:
-            # Guardar en BD
+            # Guardar reserva en BD
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
             
@@ -1302,6 +1302,22 @@ if page == 'Home':
                        payment_data['amount'], 
                        payment_type, 
                        datetime.utcnow().isoformat()))
+            
+            # CREAR CLIENTE SI NO EXISTE (para portal clientes)
+            c.execute("SELECT id FROM clients WHERE email = ?", (payment_data['buyer_email'],))
+            existing = c.fetchone()
+            if not existing:
+                import uuid
+                c.execute('''INSERT INTO clients (id, name, email, phone, address, nif, created_at)
+                            VALUES (?,?,?,?,?,?,?)''',
+                         (str(uuid.uuid4()),
+                          payment_data['buyer_name'],
+                          payment_data['buyer_email'],
+                          payment_data.get('buyer_phone', ''),
+                          '',
+                          payment_data.get('buyer_nif', ''),
+                          datetime.utcnow().isoformat()))
+            
             conn.commit()
             conn.close()
             
@@ -1333,25 +1349,18 @@ Accede al **Panel de Clientes** para:
                 # Botones de acción
                 btn_col1, btn_col2 = st.columns(2)
                 with btn_col1:
-                    if st.button("🚀 IR AL PANEL DE CLIENTES", width='stretch', type="primary", key="goto_clients"):
+                    if st.button("🚀 IR AL PANEL DE CLIENTES", use_container_width=True, type="primary", key="goto_clients"):
                         st.session_state["page"] = "clientes"
                         st.session_state["client_email_prefill"] = payment_data["buyer_email"]
                         st.session_state['payment_completed'] = False
                         st.session_state['last_payment'] = None
                         st.rerun()
                 with btn_col2:
-                    if st.button("🏠 Volver al Inicio", width='stretch', key="goto_home"):
+                    if st.button("🏠 Volver al Inicio", use_container_width=True, key="goto_home"):
                         st.session_state["selected_plot_id"] = None
                         st.session_state['payment_completed'] = False
                         st.session_state['last_payment'] = None
                         st.rerun()
-            
-            # Limpiar flags ANTES de st.stop()
-            st.session_state['payment_completed'] = False
-            st.session_state['last_payment'] = None
-            
-            # Detener renderizado: NO mostrar preview ni contenido adicional
-            st.stop()
     
     # =====================================================
     # 📋 PREVIEW NORMAL: PROYECTOS Y PROPUESTAS
@@ -2230,7 +2239,19 @@ elif page == 'clientes':
         st.subheader('Iniciar sesión')
         st.info("💡 Si es tu primera vez, ve a la pestaña '📝 Registro' primero")
         
-        email_login = st.text_input('Email registrado', key='client_login_email', placeholder="ejemplo@email.com")
+        # Auto-login si viene de pago
+        prefilled_email = st.session_state.get('client_email_prefill', '')
+        if prefilled_email and 'client_id' not in st.session_state:
+            client = client_manager.get_client(email=prefilled_email)
+            if client:
+                st.session_state['client_id'] = client['id']
+                st.session_state['client_name'] = client['name']
+                st.session_state.pop('client_email_prefill', None)  # Limpiar
+                st.success(f"✅ Sesión iniciada automáticamente: {client['name']}")
+                time.sleep(1)
+                st.rerun()
+        
+        email_login = st.text_input('Email registrado', key='client_login_email', placeholder="ejemplo@email.com", value=prefilled_email)
         if st.button('🔓 Acceder', key='client_login_btn'):
             if email_login:
                 client = client_manager.get_client(email=email_login)

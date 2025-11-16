@@ -19,7 +19,6 @@ from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-from payment_simulator import payment_modal, show_payment_success
 
 # Configuration
 BASE = os.path.dirname(__file__)

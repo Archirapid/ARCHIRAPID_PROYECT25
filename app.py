@@ -2157,10 +2157,6 @@ elif page == 'architects':
             last_payment = st.session_state.get('last_payment')
             
             if pending and last_payment:
-                # Show success message
-                st.success(f"🎉 ¡Pago confirmado! Plan {pending['plan_name']} activado")
-                show_payment_success(last_payment, download_receipt=True)
-                
                 # Create subscription in DB
                 sub_id = str(uuid.uuid4())
                 from datetime import datetime, timedelta
@@ -2193,18 +2189,22 @@ elif page == 'architects':
                 # CRÍTICO: Recargar subscription en session_state para que esté disponible
                 st.session_state['subscription_refresh'] = True
                 
-                st.success("✅ Plan activado correctamente")
-                st.info("📂 Abriendo tu panel de proyectos...")
-                
-                # IMPORTANTE: Limpiar flags ANTES de rerun
+                # IMPORTANTE: Limpiar flags ANTES de rerun para evitar modales anidados
                 st.session_state['payment_completed'] = False
                 st.session_state['trigger_plan_payment'] = False
                 st.session_state['pending_subscription'] = None
                 st.session_state['last_payment'] = None
                 st.session_state['default_arch_tab'] = '📂 Mis Proyectos'
+                st.session_state['show_payment_success_banner'] = True  # Flag para mostrar banner después
                 
-                # Forzar rerun INMEDIATO (sin sleep que bloquea)
+                # Forzar rerun INMEDIATO (cerrar modal de pago)
                 st.rerun()
+        
+        # Mostrar banner de éxito si viene de pago (SIN modal)
+        if st.session_state.get('show_payment_success_banner'):
+            st.success("🎉 ¡Pago confirmado! Tu plan está activo. Ahora puedes crear proyectos.")
+            st.balloons()
+            del st.session_state['show_payment_success_banner']
         
         # ============================================================================
         # NAVEGACIÓN TABS

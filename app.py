@@ -721,10 +721,8 @@ def show_proposal_modal(plot_id, architect_id):
 
 # =====================================================
 # MODAL: CREAR PROYECTO (Portfolio Arquitecto)
-# =====================================================
-@st.dialog("➕ Nuevo Proyecto", width="small")
-# =====================================================
-# MODAL: CREAR PROYECTO (Portfolio Arquitecto)
+# (Un solo @st.dialog para evitar anidamientos que provocan
+#  StreamlitAPIException: Dialogs may not be nested inside other dialogs)
 # =====================================================
 @st.dialog("📋 Crear Nuevo Proyecto", width="large")
 def show_create_project_modal(architect_id, architect_name):
@@ -2054,7 +2052,7 @@ elif page == 'architects':
     # Sistema de tabs para navegación
     if 'arch_id' not in st.session_state:
         # No hay sesión → Mostrar registro/login
-        tab = st.radio('', ['🔐 Iniciar Sesión', '📝 Registrarse'], horizontal=True)
+        tab = st.radio(' ', ['🔐 Iniciar Sesión', '📝 Registrarse'], horizontal=True, label_visibility='collapsed')
         
         if tab == '📝 Registrarse':
             st.subheader("Únete a ARCHIRAPID")
@@ -2157,13 +2155,13 @@ elif page == 'architects':
             last_payment = st.session_state.get('last_payment')
             
             if pending and last_payment:
-                # Create subscription in DB
+                # Crear suscripción en BD
                 sub_id = str(uuid.uuid4())
                 from datetime import datetime, timedelta
                 start = datetime.now()
                 end = start + timedelta(days=30)
                 
-                # Cancel previous subscription if exists
+                # Cancelar suscripción previa si existe
                 existing_sub = get_architect_subscription(pending['architect_id'])
                 if existing_sub:
                     conn = sqlite3.connect(DB_PATH)
@@ -2172,7 +2170,6 @@ elif page == 'architects':
                     conn.commit()
                     conn.close()
                 
-                # Insert new subscription
                 insert_subscription({
                     'id': sub_id,
                     'architect_id': pending['architect_id'],
@@ -2186,25 +2183,40 @@ elif page == 'architects':
                     'created_at': start.isoformat()
                 })
                 
-                # CRÍTICO: Recargar subscription en session_state para que esté disponible
+                # Guardar datos para mostrar recibo tras rerun (fuera de cualquier modal)
+                st.session_state['arch_subscription_success'] = True
+                st.session_state['arch_subscription_payment'] = last_payment
                 st.session_state['subscription_refresh'] = True
+                st.session_state['default_arch_tab'] = '📂 Mis Proyectos'
                 
-                # IMPORTANTE: Limpiar flags ANTES de rerun para evitar modales anidados
+                # Limpiar flags que disparan el modal (pero NO borrar last_payment aún)
                 st.session_state['payment_completed'] = False
                 st.session_state['trigger_plan_payment'] = False
                 st.session_state['pending_subscription'] = None
-                st.session_state['last_payment'] = None
-                st.session_state['default_arch_tab'] = '📂 Mis Proyectos'
-                st.session_state['show_payment_success_banner'] = True  # Flag para mostrar banner después
                 
-                # Forzar rerun INMEDIATO (cerrar modal de pago)
+                # Rerun para cerrar modal de pago
                 st.rerun()
         
-        # Mostrar banner de éxito si viene de pago (SIN modal)
-        if st.session_state.get('show_payment_success_banner'):
-            st.success("🎉 ¡Pago confirmado! Tu plan está activo. Ahora puedes crear proyectos.")
-            st.balloons()
-            del st.session_state['show_payment_success_banner']
+        # Mostrar confirmación de suscripción y recibo (post-rerun)
+        if st.session_state.get('arch_subscription_success'):
+            pay = st.session_state.get('arch_subscription_payment')
+            if pay:
+                st.success(f"🎉 Suscripción '{pay['concept']}' activada correctamente")
+                from src.payment_simulator import generate_receipt_pdf
+                pdf_bytes = generate_receipt_pdf(pay)
+                st.download_button(
+                    label="⬇️ Descargar Recibo PDF",
+                    data=pdf_bytes,
+                    file_name=f"recibo_sub_{pay['payment_id'][:8]}.pdf",
+                    mime="application/pdf"
+                )
+                st.info("Ahora puedes usar '📂 Mis Proyectos' para subir tu portfolio.")
+            # Limpiar datos de pago mostrados
+            st.session_state['arch_subscription_success'] = False
+            st.session_state['arch_subscription_payment'] = None
+            # Borrar last_payment para no interferir con otros flujos
+            if 'last_payment' in st.session_state:
+                del st.session_state['last_payment']
         
         # ============================================================================
         # NAVEGACIÓN TABS
@@ -2217,7 +2229,7 @@ elif page == 'architects':
         except:
             default_index = 0
         
-        arch_tab = st.radio('', tabs_options, horizontal=True, index=default_index, key='arch_tab_radio')
+        arch_tab = st.radio(' ', tabs_options, horizontal=True, index=default_index, key='arch_tab_radio', label_visibility='collapsed')
         
         # ============================================================================
         # CONTENIDO TABS
@@ -2315,9 +2327,13 @@ elif page == 'architects':
                 # Header con botón crear
                 col_h1, col_h2 = st.columns([3, 1])
                 with col_h1:
-                    st.caption(f"Gestiona tu catálogo de proyectos para enviar propuestas profesionales")
+                    st.caption("Gestiona tu catálogo de proyectos para enviar propuestas profesionales")
                 with col_h2:
-                    if st.button("➕ Nuevo Proyecto", type="primary", width='stretch'):
+                    # Asegurarse de que no quede ningún modal de pago abierto antes de abrir el de proyecto
+                    if st.button("➕ Nuevo Proyecto", type="primary", key="btn_new_project", disabled=st.session_state.get('trigger_plan_payment', False)):
+                        # Limpiar cualquier modal de detalle abierto para evitar dialogs anidados
+                        if st.session_state.get('view_project_id'):
+                            del st.session_state['view_project_id']
                         st.session_state['show_project_modal'] = True
                         st.rerun()
                 
@@ -2373,13 +2389,19 @@ elif page == 'architects':
                                             st.success("✅ Proyecto eliminado")
                                             st.rerun()
                 
-                # Modal crear proyecto
-                if st.session_state.get('show_project_modal'):
-                    show_create_project_modal(arch_id, arch_name)
+                # Gestor de modales arquitecto: asegurar exclusividad
+                show_create_flag = st.session_state.get('show_project_modal')
+                view_flag = st.session_state.get('view_project_id')
                 
-                # Modal ver proyecto
-                if st.session_state.get('view_project_id'):
-                    project_data = get_project_by_id(st.session_state['view_project_id'])
+                # Si ambos están activos (condición inesperada) priorizar creación y limpiar vista
+                if show_create_flag and view_flag:
+                    del st.session_state['view_project_id']
+                    view_flag = None
+                
+                if show_create_flag:
+                    show_create_project_modal(arch_id, arch_name)
+                elif view_flag:
+                    project_data = get_project_by_id(view_flag)
                     if project_data:
                         show_project_detail_modal(project_data)
 

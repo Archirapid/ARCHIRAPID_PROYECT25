@@ -1324,13 +1324,23 @@ if page == 'Home':
     # build map
     m = folium.Map(location=[40.0, -4.0], zoom_start=6, tiles="CartoDB positron")
     if df.shape[0] > 0:
-        for _, r in df.iterrows():
-            # small thumbnail in popup
+        for idx_map, r in df.iterrows():
+            # small thumbnail in popup (con placeholder)
             img_html = ""
-            if r.get("image_path") and os.path.exists(r["image_path"]):
-                img_b64 = get_image_base64(r["image_path"])
+            img_path = r.get("image_path")
+            if img_path and os.path.exists(img_path):
+                img_b64 = get_image_base64(img_path)
                 if img_b64:
                     img_html = f'<img src="{img_b64}" width="160" style="border-radius:8px;display:block;margin:0 auto 6px;"/>'
+            else:
+                # Placeholder para popup
+                plot_id = r.get('id', '')
+                plot_idx = (hash(plot_id) % 3) + 1
+                placeholder = f"assets/fincas/finca{plot_idx}_1.png"
+                if os.path.exists(placeholder):
+                    img_b64 = get_image_base64(placeholder)
+                    if img_b64:
+                        img_html = f'<img src="{img_b64}" width="160" style="border-radius:8px;display:block;margin:0 auto 6px;opacity:0.85;"/>'
 
             popup_html = f"""
             <div style="width:240px;font-family:'Segoe UI',Roboto,sans-serif;background:#fff;border-radius:12px;padding:8px;text-align:center;box-shadow:0 3px 8px rgba(0,0,0,0.15);">
@@ -1400,10 +1410,19 @@ if page == 'Home':
             st.info("👈 Selecciona una finca en el mapa para ver detalles rápidos aquí.")
         else:
             st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
-            if selected_plot.get("image_path") and os.path.exists(selected_plot["image_path"]):
-                st.image(selected_plot["image_path"], width='stretch')
+            # Fix: Mostrar placeholder si no hay imagen
+            img_path = selected_plot.get("image_path")
+            if img_path and os.path.exists(img_path):
+                st.image(img_path, width='stretch')
             else:
-                st.info("Imagen no disponible")
+                # Asignar placeholder basado en ID para consistencia visual
+                plot_id = selected_plot.get('id', '')
+                plot_idx = (hash(plot_id) % 3) + 1  # 1, 2 o 3
+                placeholder = f"assets/fincas/finca{plot_idx}_1.png"
+                if os.path.exists(placeholder):
+                    st.image(placeholder, width='stretch', caption="Imagen de referencia")
+                else:
+                    st.info("Imagen no disponible")
 
             st.markdown(f"**{selected_plot.get('description','-')}**")
             st.write(f"**Superficie:** {int(selected_plot.get('m2',0)):,} m²")
@@ -1562,38 +1581,48 @@ if page == 'Home':
             st.markdown("### 🏗️ Proyectos Compatibles con esta Parcela")
             st.caption("Proyectos arquitectónicos que encajan perfectamente con tus m² disponibles")
             
-            current_m2 = selected_plot.get('m2', 0)
-            current_type = selected_plot.get('type', 'vivienda')
-            compatible_projects_df = get_compatible_projects(current_m2, current_type)
+            # Usar motor avanzado para scoring real (reemplaza get_compatible_projects legacy)
+            try:
+                from src.compatibility_engine import rank_projects_for_plot
+                all_projects_df = get_all_projects()
+                ranked_df = rank_projects_for_plot(selected_plot, all_projects_df)
+            except Exception as e:
+                ranked_df = pd.DataFrame([])
+                st.warning(f"⚠️ Motor compatibilidad no disponible: {e}")
 
-            
-            if compatible_projects_df.shape[0] == 0:
+            if ranked_df.shape[0] == 0:
                 st.info("📭 No hay proyectos compatibles disponibles todavía")
             else:
-                # Mostrar top 3 proyectos
-                top_projects = compatible_projects_df.head(3)
+                # Mostrar top 3 proyectos con scoring real
+                top_projects = ranked_df.head(3)
                 
-                st.success(f"✅ Encontrados {compatible_projects_df.shape[0]} proyecto(s) compatible(s)")
+                st.success(f"✅ Encontrados {ranked_df.shape[0]} proyecto(s) compatible(s)")
                 
                 cols_proj = st.columns(3)
                 for idx, (col, (_, proj)) in enumerate(zip(cols_proj, top_projects.iterrows())):
                     with col:
-                        # Badge de compatibilidad
-                        match_score = proj.get('match_score', 0)
-                        if match_score == 100:
-                            st.success("🎯 MATCH PERFECTO")
-                        elif match_score >= 50:
-                            st.warning("⚠️ Compatible con ajustes")
+                        # Badge de compatibilidad CON SCORE REAL
+                        score = int(proj.get('score', 0))
+                        if score >= 85:
+                            st.success(f"🎯 {score} / 100")
+                        elif score >= 60:
+                            st.warning(f"⚠️ {score} / 100")
                         else:
-                            st.info("💡 Requiere adaptación")
+                            st.info(f"💡 {score} / 100")
                         
                         st.markdown(f"### {proj['title']}")
                         
-                        # Foto
-                        if proj.get('foto_principal') and os.path.exists(proj['foto_principal']):
-                            st.image(proj['foto_principal'], width='stretch')
+                        # Foto con placeholder inteligente
+                        foto_path = proj.get('foto_principal')
+                        if foto_path and os.path.exists(str(foto_path)):
+                            st.image(foto_path, width='stretch')
                         else:
-                            st.image("https://via.placeholder.com/300x200?text=Proyecto", width='stretch')
+                            # Placeholder desde assets/projects
+                            placeholder_img = f"assets/projects/project{(idx % 3) + 1}.png"
+                            if os.path.exists(placeholder_img):
+                                st.image(placeholder_img, width='stretch')
+                            else:
+                                st.image("https://via.placeholder.com/300x200?text=Proyecto", width='stretch')
                         
                         # Specs
                         st.metric("m² Construidos", proj.get('m2_construidos', '-'))
@@ -1604,11 +1633,54 @@ if page == 'Home':
                         if proj.get('m2_parcela_minima') and proj.get('m2_parcela_maxima'):
                             st.caption(f"📐 Parcela: {proj['m2_parcela_minima']}-{proj['m2_parcela_maxima']} m²")
                         
-                        # Botón ver detalle
+                        # Explicación compacta
+                        with st.expander("🔍 Score"):
+                            st.markdown(proj.get('explanation','').replace('\n','  \n'))
+                        
+                        # Botón ver detalle (FIX: sin condicional de modal anidado)
                         if st.button("👁️ Ver Detalles", key=f"view_compat_proj_{proj['id']}", width='stretch'):
                             st.session_state['view_project_id'] = proj['id']
                             st.rerun()
             
+            # =====================================================
+            # PROPUESTAS COMPATIBILIDAD AVANZADA (Motor Explainable)
+            # =====================================================
+            try:
+                from src.compatibility_engine import rank_projects_for_plot
+                advanced_df = rank_projects_for_plot(selected_plot, get_all_projects())
+            except Exception as e:
+                advanced_df = None
+                st.warning(f"⚠️ Motor avanzado no disponible: {e}")
+
+            if advanced_df is not None and advanced_df.shape[0] > 0:
+                st.markdown("### 🔬 Evaluación Avanzada de Compatibilidad")
+                st.caption("Motor de reglas explicables (tamaño parcela, eficiencia, densidad y tipología)")
+                top_adv = advanced_df.head(1)  # mostrar sólo mejor para no saturar
+                best = top_adv.iloc[0]
+                score = int(best.get('score', 0))
+                if score >= 85:
+                    st.success(f"MEJOR AJUSTE: {score}/100")
+                elif score >= 60:
+                    st.warning(f"MEJOR AJUSTE: {score}/100")
+                else:
+                    st.info(f"MEJOR AJUSTE: {score}/100")
+                # Card resumen
+                st.markdown(f"**🏗️ {best.get('title','Proyecto')}**")
+                spec_cols = st.columns(4)
+                with spec_cols[0]:
+                    st.metric("Construidos", best.get('m2_construidos','-'))
+                with spec_cols[1]:
+                    st.metric("Parcela Min", best.get('m2_parcela_minima','-'))
+                with spec_cols[2]:
+                    st.metric("Parcela Max", best.get('m2_parcela_maxima','-'))
+                with spec_cols[3]:
+                    st.metric("Habitaciones", best.get('habitaciones','-'))
+                with st.expander("📌 Razones del Score"):
+                    st.markdown((best.get('explanation','')).replace('\n','  \n'))
+                if st.button("👁️ Ver Detalles (Mejor Ajuste)", key=f"view_best_adv_{best.get('id','')}"):
+                    st.session_state['view_project_id'] = best.get('id')
+                    st.rerun()
+
             # =====================================================
             # PROPUESTAS RECIBIDAS (Arquitectos → Propietario)
             # =====================================================
@@ -1793,6 +1865,18 @@ if page == 'Home':
         else:
             st.warning("⚠️ Debes iniciar sesión como arquitecto")
             st.session_state['send_proposal_to'] = None
+
+    # ============================================================================
+    # DISPATCHER GLOBAL: Modal de Detalle de Proyecto (desde Home y Arquitectos)
+    # ============================================================================
+    if st.session_state.get('view_project_id'):
+        project_id = st.session_state['view_project_id']
+        project_data = get_project_by_id(project_id)
+        if project_data:
+            show_project_detail_modal(project_data)
+        else:
+            st.error(f"⚠️ Proyecto {project_id[:8]} no encontrado")
+            del st.session_state['view_project_id']
 
 elif page == 'plots':
     st.title('Registro y Gestión de Fincas')

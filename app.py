@@ -14,6 +14,8 @@ import json
 import sys
 import time
 from pathlib import Path
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -276,6 +278,75 @@ def delete_project(project_id):
 # DB FUNCTIONS - Delegate to src.db for consistency
 # =====================================================
 from src.db import insert_plot, get_all_plots, get_plot_by_id, insert_project, get_all_projects
+
+# --- AUTOFIX: Corrección de signos de longitud mal ingresados ---
+def fix_longitude_signs():
+    """Detecta fincas españolas con lon positiva improbable y corrige a negativa.
+    Criterios:
+      - lon > 4.4 (fuera del rango máximo ~4.3 de Baleares) => invertir
+      - lon > 0 y provincia en lista de provincias andaluzas / occidentales => invertir
+    Sólo se ejecuta una vez por sesión para no reescribir repetidamente.
+    """
+    import sqlite3
+    from src.db import DB_PATH
+    negative_provs = {
+        'malaga','málaga','cadiz','cádiz','sevilla','granada','cordoba','córdoba','huelva','jaen','jaén','almeria','almería'
+    }
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT id, lon, province FROM plots WHERE lon > 0")
+        rows = cur.fetchall()
+        to_fix = []
+        for rid, lon, prov in rows:
+            p = (prov or '').lower()
+            if lon > 4.4 or p in negative_provs:
+                to_fix.append((rid, lon))
+        for rid, lon in to_fix:
+            cur.execute("UPDATE plots SET lon=? WHERE id=?", (-abs(lon), rid))
+        conn.commit()
+        fixed = len(to_fix)
+    except Exception as e:
+        fixed = -1
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    if fixed > 0:
+        st.info(f"🔧 Corrección automática aplicada: {fixed} fincas con longitud invertida.")
+    elif fixed == -1:
+        st.warning("No se pudo ejecutar la corrección automática de longitudes.")
+
+# =====================================================
+# GEOCODIFICACIÓN: Convertir dirección → lat/lon
+# =====================================================
+geolocator = Nominatim(user_agent="archirapid-mvp-v1", timeout=10)
+
+def geocodificar_direccion(direccion_completa):
+    """Convierte dirección de texto a coordenadas decimales usando Nominatim (OpenStreetMap).
+    
+    Args:
+        direccion_completa (str): Dirección completa (calle, localidad, provincia, país)
+    
+    Returns:
+        tuple: (lat, lon) si éxito, (None, mensaje_error) si falla
+    """
+    try:
+        location = geolocator.geocode(direccion_completa)
+        if location:
+            return location.latitude, location.longitude
+        else:
+            return None, "⚠️ Dirección no encontrada. Verifica que esté completa (calle, localidad, provincia)."
+    except (GeocoderTimedOut, GeocoderServiceError) as e:
+        return None, f"❌ Error de geocodificación: {str(e)}"
+    except Exception as e:
+        return None, f"❌ Error inesperado: {str(e)}"
+
+if 'fixed_longitudes_run' not in st.session_state:
+    fix_longitude_signs()
+    st.session_state['fixed_longitudes_run'] = True
+
 
 def insert_reservation(data):
     conn = sqlite3.connect(DB_PATH)
@@ -1741,28 +1812,57 @@ elif page == 'plots':
             with col2:
                 height = st.number_input('Altura máxima (m)', min_value=0.0, value=6.0)
                 price = st.number_input('Precio (€)*', min_value=0, value=100000)
-                st.markdown('**Coordenadas geográficas**')
-                st.caption("Formato admitido: decimal (ej: 36.5123) o grados/minutos/segundos (ej: 36º25'10''). Se convertirán automáticamente.")
-                lat_input = st.text_input('Latitud*', value='')
-                lon_input = st.text_input('Longitud*', value='')
                 owner_name = st.text_input('Nombre del Propietario*')
                 owner_email = st.text_input('Email del Propietario*')
+                owner_phone = st.text_input('Teléfono del Propietario', placeholder='+34 600 123 456')
+            
+            # --- SECCIÓN DE DIRECCIÓN COMPLETA (siempre visible) ---
+            st.markdown("---")
+            st.markdown("### 📍 Ubicación de la Finca")
+            address = st.text_input(
+                'Dirección Completa (Calle, Número, Código Postal)*',
+                placeholder='Calle Real 15, 29600 Marbella, Málaga, España',
+                help='Introduce la dirección completa. Se usará para geocodificar si no introduces coordenadas manualmente.'
+            )
+            
+            # --- SECCIÓN DE COORDENADAS (3 métodos visibles) ---
+            st.markdown("### 🗺️ Coordenadas Geográficas")
+            st.caption("**Elige cómo introducir las coordenadas** (si dejas ambas vacías, se geocodificará la dirección automáticamente):")
+            
+            coord_col1, coord_col2 = st.columns(2)
+            with coord_col1:
+                st.markdown("**Opción 1: Formato Decimal**")
+                st.caption("Ejemplo: 36.5064 (latitud), -4.9116 (longitud)")
+                lat_input = st.text_input('Latitud', value='', key='lat_decimal', placeholder='36.5064')
+                lon_input = st.text_input('Longitud', value='', key='lon_decimal', placeholder='-4.9116')
+            
+            with coord_col2:
+                st.markdown("**Opción 2: Formato Grados/Minutos/Segundos (DMS)**")
+                st.caption("Ejemplo: 36º30'23''N o 36 30 23 N")
+                lat_dms = st.text_input('Latitud DMS', value='', key='lat_dms', placeholder="36º30'23''N")
+                lon_dms = st.text_input('Longitud DMS', value='', key='lon_dms', placeholder="4º54'42''W")
+            
+            st.markdown("---")
             description = st.text_area('Descripción')
             images = st.file_uploader('Imágenes', accept_multiple_files=True, type=['jpg','jpeg','png'])
             registry_note = st.file_uploader('Nota Simple (PDF)', type=['pdf'])
             submitted = st.form_submit_button('Registrar Finca')
 
             if submitted:
-                # Validar coordenadas (soporta N/S/E/W y O=Oeste)
+                # =====================================================
+                # PROCESAMIENTO DE COORDENADAS: Soporta 3 métodos
+                # =====================================================
                 def gms_to_decimal(coord, is_lon=False):
+                    """Parser robusto de coordenadas DMS y decimales"""
                     import re
-                    # Ejemplo: 36º25'10'' o 36 25 10 o 36°25'10" o 36d25m10s
-                    # Intenta múltiples formatos
                     patterns = [
                         r"([\d.]+)[º°d][\s]*(\d+)['\s][\s]*(\d+)[\"s]?",  # 36º 25' 10"
                         r"([\d.]+)[º°d][\s]*(\d+)[\s]*(\d+)",  # 36 25 10
                     ]
                     text = str(coord or '').strip()
+                    if not text:
+                        return None
+                    
                     # Detectar hemisferio o signo explícito
                     hemi = text.upper()
                     sign = 1
@@ -1788,10 +1888,38 @@ elif page == 'plots':
                     except Exception:
                         return None
 
-                lat = gms_to_decimal(lat_input, is_lon=False)
-                lon = gms_to_decimal(lon_input, is_lon=True)
-                if not all([title, province, m2, price, lat, lon, owner_name, owner_email]):
-                    st.error('Campos obligatorios incompletos o coordenadas inválidas')
+                # Intentar obtener coordenadas en orden de prioridad
+                lat, lon = None, None
+                coord_method = "No especificado"
+                
+                # 1. Prioridad a coordenadas decimales si están presentes
+                if lat_input.strip() and lon_input.strip():
+                    lat = gms_to_decimal(lat_input, is_lon=False)
+                    lon = gms_to_decimal(lon_input, is_lon=True)
+                    coord_method = "Decimal"
+                
+                # 2. Si no hay decimales, intentar DMS
+                if lat is None and lon is None and lat_dms.strip() and lon_dms.strip():
+                    lat = gms_to_decimal(lat_dms, is_lon=False)
+                    lon = gms_to_decimal(lon_dms, is_lon=True)
+                    coord_method = "DMS"
+                
+                # 3. Si no hay coordenadas manuales, geocodificar dirección
+                if lat is None and lon is None and address.strip():
+                    with st.spinner('🌍 Geocodificando dirección...'):
+                        lat, lon_or_error = geocodificar_direccion(address)
+                        if lat is None:
+                            st.error(lon_or_error)  # lon_or_error contiene el mensaje de error
+                        else:
+                            lon = lon_or_error
+                            coord_method = "Geocodificación"
+                            st.success(f"✅ Dirección geocodificada: {lat:.6f}, {lon:.6f}")
+                
+                # Validación final
+                if not all([title, province, m2, price, owner_name, owner_email]):
+                    st.error('❌ Campos obligatorios incompletos (título, provincia, m², precio, propietario)')
+                elif lat is None or lon is None:
+                    st.error('❌ No se pudieron obtener coordenadas. Introduce coordenadas manualmente (Decimal o DMS) o una dirección completa para geocodificar.')
                 else:
                     image_path = None
                     registry_path = None
@@ -1835,12 +1963,16 @@ elif page == 'plots':
                         'locality': locality,
                         'owner_name': owner_name,
                         'owner_email': owner_email,
+                        'owner_phone': owner_phone.strip() if owner_phone else None,
+                        'address': address.strip() if address else None,
                         'image_path': image_path,
                         'registry_note_path': registry_path,
                         'plot_purpose': purpose_value,
                         'created_at': datetime.utcnow().isoformat()
                     }
                     insert_plot(pdata)
+                    
+                    st.success(f'✅ Finca registrada correctamente usando **{coord_method}** para las coordenadas: {lat:.6f}, {lon:.6f}')
                     
                     # Si eligió "Construir", auto-crear cuenta de cliente
                     if purpose_value == 'construir':

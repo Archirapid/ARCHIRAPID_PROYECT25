@@ -44,6 +44,15 @@ def ensure_tables():
             locality TEXT, owner_name TEXT, owner_email TEXT,
             image_path TEXT, registry_note_path TEXT, created_at TEXT
         )""")
+        # Migración segura: agregar columnas nuevas si no existen
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN address TEXT")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN owner_phone TEXT")
+        except Exception:
+            pass  # Columna ya existe
         c.execute("""CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
             title TEXT, architect_name TEXT, area_m2 INTEGER, max_height REAL,
@@ -81,11 +90,11 @@ def insert_plot(data: Dict):
     ensure_tables()
     with transaction() as c:
         c.execute("""INSERT OR REPLACE INTO plots (
-            id,title,description,lat,lon,m2,height,price,type,province,locality,owner_name,owner_email,image_path,registry_note_path,created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            id,title,description,lat,lon,m2,height,price,type,province,locality,owner_name,owner_email,image_path,registry_note_path,created_at,address,owner_phone
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (data['id'], data['title'], data['description'], data['lat'], data['lon'], data['m2'], data['height'],
          data['price'], data['type'], data['province'], data['locality'], data['owner_name'], data['owner_email'],
-         data.get('image_path'), data.get('registry_note_path'), data['created_at']))
+         data.get('image_path'), data.get('registry_note_path'), data['created_at'], data.get('address'), data.get('owner_phone')))
 
 def insert_project(data: Dict):
     ensure_tables()

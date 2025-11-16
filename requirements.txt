@@ -75,3 +75,4 @@ xyzservices==2025.10.0
 psutil
 pytest-cov
 python-magic-bin>=0.4.14
+geopy>=2.4.0  # Geocodificación de direcciones

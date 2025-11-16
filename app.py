@@ -723,6 +723,10 @@ def show_proposal_modal(plot_id, architect_id):
 # MODAL: CREAR PROYECTO (Portfolio Arquitecto)
 # =====================================================
 @st.dialog("➕ Nuevo Proyecto", width="small")
+# =====================================================
+# MODAL: CREAR PROYECTO (Portfolio Arquitecto)
+# =====================================================
+@st.dialog("📋 Crear Nuevo Proyecto", width="large")
 def show_create_project_modal(architect_id, architect_name):
     """Modal para crear proyecto en portfolio del arquitecto"""
     
@@ -774,13 +778,13 @@ def show_create_project_modal(architect_id, architect_name):
     
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        foto_principal = st.file_uploader("🖼️ Foto Principal*", type=['jpg', 'jpeg', 'png'], help="Imagen destacada del proyecto")
-        galeria = st.file_uploader("📷 Galería Adicional", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
-        modelo_3d = st.file_uploader("🎮 Modelo 3D (.glb)", type=['glb'], help="Modelo 3D para visualización interactiva")
+        foto_principal = st.file_uploader("🖼️ Foto Principal*", type=['jpg', 'jpeg', 'png'], help="Imagen destacada del proyecto", key="foto_principal_uploader")
+        galeria = st.file_uploader("📷 Galería Adicional", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="galeria_uploader")
+        modelo_3d = st.file_uploader("🎮 Modelo 3D (.glb)", type=['glb'], help="Modelo 3D para visualización interactiva", key="modelo_3d_uploader")
     with col_f2:
-        planos_pdf = st.file_uploader("📄 Planos PDF", type=['pdf'])
-        planos_dwg = st.file_uploader("📐 Planos DWG/DXF", type=['dwg', 'dxf'])
-        memoria = st.file_uploader("📋 Memoria Técnica", type=['pdf'])
+        planos_pdf = st.file_uploader("📄 Planos PDF", type=['pdf'], key="planos_pdf_uploader")
+        planos_dwg = st.file_uploader("📐 Planos DWG/DXF", type=['dwg', 'dxf'], key="planos_dwg_uploader")
+        memoria = st.file_uploader("📋 Memoria Técnica", type=['pdf'], key="memoria_uploader")
     
     st.markdown("---")
     
@@ -793,54 +797,60 @@ def show_create_project_modal(architect_id, architect_name):
                 st.error("❌ Debes subir al menos una foto principal")
             else:
                 with st.spinner("Guardando proyecto..."):
-                    # Save files
-                    foto_path = save_file(foto_principal, "project_main") if foto_principal else None
-                    
-                    galeria_paths = []
-                    if galeria:
-                        for img in galeria:
-                            galeria_paths.append(save_file(img, "project_gallery"))
-                    
-                    modelo_path = save_file(modelo_3d, "project_model") if modelo_3d else None
-                    planos_pdf_path = save_file(planos_pdf, "project_plans_pdf") if planos_pdf else None
-                    planos_dwg_path = save_file(planos_dwg, "project_plans_dwg") if planos_dwg else None
-                    memoria_path = save_file(memoria, "project_memoria") if memoria else None
-                    
-                    # Create project
-                    project_id = str(uuid.uuid4())
-                    insert_project({
-                        'id': project_id,
-                        'title': title,
-                        'architect_name': architect_name,
-                        'architect_id': architect_id,
-                        'area_m2': m2_construidos,
-                        'max_height': max_height,
-                        'style': style,
-                        'price': price,
-                        'description': description,
-                        'created_at': datetime.now().isoformat(),
-                        'm2_construidos': m2_construidos,
-                        'm2_parcela_minima': m2_parcela_min,
-                        'm2_parcela_maxima': m2_parcela_max,
-                        'habitaciones': habitaciones,
-                        'banos': banos,
-                        'garaje': garaje,
-                        'plantas': plantas,
-                        'certificacion_energetica': certificacion,
-                        'tipo_proyecto': tipo_proyecto,
-                        'foto_principal': foto_path,
-                        'galeria_fotos': json.dumps(galeria_paths),
-                        'modelo_3d_glb': modelo_path,
-                        'planos_pdf': planos_pdf_path,
-                        'planos_dwg': planos_dwg_path,
-                        'memoria_pdf': memoria_path,
-                        'file_path': foto_path  # backward compatibility
-                    })
-                    
-                    st.success("🎉 ¡Proyecto creado exitosamente!")
-                    st.balloons()
-                    st.session_state['show_project_modal'] = False
-                    st.rerun()
+                    try:
+                        # Save files with validation
+                        foto_path = save_file(foto_principal, "project_main", max_size_mb=5, allowed_mime_types=['image/jpeg', 'image/png', 'image/jpg']) if foto_principal else None
+                        
+                        galeria_paths = []
+                        if galeria:
+                            for img in galeria:
+                                try:
+                                    galeria_paths.append(save_file(img, "project_gallery", max_size_mb=5, allowed_mime_types=['image/jpeg', 'image/png', 'image/jpg']))
+                                except ValueError as e:
+                                    st.warning(f"⚠️ Imagen de galería omitida: {e}")
+                        
+                        modelo_path = save_file(modelo_3d, "project_model", max_size_mb=50) if modelo_3d else None
+                        planos_pdf_path = save_file(planos_pdf, "project_plans_pdf", max_size_mb=20, allowed_mime_types=['application/pdf']) if planos_pdf else None
+                        planos_dwg_path = save_file(planos_dwg, "project_plans_dwg", max_size_mb=50) if planos_dwg else None
+                        memoria_path = save_file(memoria, "project_memoria", max_size_mb=20, allowed_mime_types=['application/pdf']) if memoria else None
+                        
+                        # Create project
+                        project_id = str(uuid.uuid4())
+                        insert_project({
+                            'id': project_id,
+                            'title': title,
+                            'architect_name': architect_name,
+                            'architect_id': architect_id,
+                            'area_m2': m2_construidos,
+                            'max_height': max_height,
+                            'style': style,
+                            'price': price,
+                            'description': description,
+                            'created_at': datetime.now().isoformat(),
+                            'm2_construidos': m2_construidos,
+                            'm2_parcela_minima': m2_parcela_min,
+                            'm2_parcela_maxima': m2_parcela_max,
+                            'habitaciones': habitaciones,
+                            'banos': banos,
+                            'garaje': garaje,
+                            'plantas': plantas,
+                            'certificacion_energetica': certificacion,
+                            'tipo_proyecto': tipo_proyecto,
+                            'foto_principal': foto_path,
+                            'galeria_fotos': json.dumps(galeria_paths),
+                            'modelo_3d_glb': modelo_path,
+                            'planos_pdf': planos_pdf_path,
+                            'planos_dwg': planos_dwg_path,
+                            'memoria_pdf': memoria_path,
+                            'file_path': foto_path  # backward compatibility
+                        })
+                        
+                        st.success("🎉 ¡Proyecto creado exitosamente!")
+                        st.balloons()
+                        st.session_state['show_project_modal'] = False
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(f"❌ Error al guardar archivos: {str(e)}")
     
     with col_btn2:
         if st.button("❌ Cancelar", width='stretch'):
@@ -850,7 +860,7 @@ def show_create_project_modal(architect_id, architect_name):
 # =====================================================
 # MODAL: DETALLE PROYECTO (Vista completa)
 # =====================================================
-@st.dialog("🏗️ Detalle del Proyecto", width="small")
+@st.dialog("🏗️ Detalle del Proyecto", width="large")
 def show_project_detail_modal(project):
     """Modal para ver detalles completos de un proyecto"""
     

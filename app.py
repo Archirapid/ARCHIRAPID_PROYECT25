@@ -2051,15 +2051,15 @@ elif page == 'plots':
 elif page == 'architects':
     st.title('🏛️ Portal de Arquitectos')
     
-    # DEBUG: Mostrar estado actual
-    st.caption(f"Debug: arch_id in session = {'arch_id' in st.session_state}")
-    
-    # Sistema de tabs para navegación
-    if 'arch_id' not in st.session_state:
-        # No hay sesión → Mostrar registro/login
-        tab = st.radio('', ['🔐 Iniciar Sesión', '📝 Registrarse'], horizontal=True, key='arch_auth_tab')
-        
-        if tab == '📝 Registrarse':
+    try:
+        # Sistema de tabs para navegación
+        if 'arch_id' not in st.session_state:
+            # No hay sesión → Mostrar registro/login
+            st.info("👋 Bienvenido al Portal de Arquitectos. Inicia sesión o regístrate para continuar.")
+            
+            tab = st.radio('Selecciona una opción:', ['🔐 Iniciar Sesión', '📝 Registrarse'], horizontal=True, key='arch_auth_tab')
+            
+            if tab == '📝 Registrarse':
             st.subheader("Únete a ARCHIRAPID")
             st.caption("Accede a fincas listas para proyectar y conecta con propietarios")
             
@@ -2471,6 +2471,11 @@ elif page == 'architects':
                         
                         if prop['status'] != 'pending':
                             st.caption(f"Respondida: {prop.get('responded_at', '')[:10] if prop.get('responded_at') else 'N/A'}")
+    
+    except Exception as e:
+        st.error(f"❌ Error en la página de arquitectos: {str(e)}")
+        st.exception(e)
+        st.info("Por favor, recarga la página o contacta con soporte.")
 
 elif page == 'clientes':
     from src.client_manager import ClientManager

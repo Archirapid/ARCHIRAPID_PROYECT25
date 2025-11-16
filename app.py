@@ -2341,6 +2341,9 @@ elif page == 'architects':
                             st.session_state['show_project_modal'] = True
                             st.rerun()
                     else:
+                        # Aviso explícito (solicitado): guía para continuar por la pestaña superior
+                        st.info("Tras activar tu suscripción, usa la pestaña superior ‘📂 Mis Proyectos’ para crear tu portfolio.")
+                        st.button("Ir a ‘📂 Mis Proyectos’", key="btn_hint_go_projects", help="Abre la sección donde podrás crear tu primer proyecto")
                         # Limpiar la marca para que en la siguiente navegación aparezca el botón con normalidad
                         del st.session_state['hide_new_project_once']
                 

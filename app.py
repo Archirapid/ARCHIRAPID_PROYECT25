@@ -1198,7 +1198,8 @@ if page == 'Home':
     with col1:
         min_m2 = st.number_input("Min m²", min_value=0, value=0, key="filter_min_m2")
     with col2:
-        max_m2 = st.number_input("Max m²", min_value=0, value=100000, key="filter_max_m2")
+        # Ampliar límite por defecto a 1 millón para evitar ocultar fincas grandes
+        max_m2 = st.number_input("Max m²", min_value=0, value=1_000_000, key="filter_max_m2")
     with col3:
         type_sel = st.selectbox("Tipo", options=["any", "rural", "urban", "industrial"], key="filter_type")
     with col4:
@@ -1230,7 +1231,11 @@ if page == 'Home':
     df = df.drop_duplicates(subset=["id"])
     # Aplicar filtros
     if df.shape[0] > 0:
+        before_filter = df.shape[0]
         df = df[(df["m2"] >= min_m2) & (df["m2"] <= max_m2) & (df["price"] >= min_price) & (df["price"] <= max_price)]
+        after_filter = df.shape[0]
+        if after_filter == 0 and before_filter > 0:
+            st.warning("⚠️ Los filtros actuales ocultan todas las fincas. Ajusta 'Max m²' o 'Precio'.")
         if province.strip() != "":
             df = df[df["province"].str.contains(province, case=False, na=False)]
         if type_sel != "any":

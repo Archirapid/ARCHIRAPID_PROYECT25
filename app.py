@@ -2051,10 +2051,13 @@ elif page == 'plots':
 elif page == 'architects':
     st.title('🏛️ Portal de Arquitectos')
     
+    # DEBUG: Mostrar estado actual
+    st.caption(f"Debug: arch_id in session = {'arch_id' in st.session_state}")
+    
     # Sistema de tabs para navegación
     if 'arch_id' not in st.session_state:
         # No hay sesión → Mostrar registro/login
-        tab = st.radio('', ['🔐 Iniciar Sesión', '📝 Registrarse'], horizontal=True)
+        tab = st.radio('', ['🔐 Iniciar Sesión', '📝 Registrarse'], horizontal=True, key='arch_auth_tab')
         
         if tab == '📝 Registrarse':
             st.subheader("Únete a ARCHIRAPID")

@@ -73,10 +73,114 @@ def ensure_tables():
             id TEXT PRIMARY KEY,
             plot_id TEXT, buyer_name TEXT, buyer_email TEXT, amount REAL, kind TEXT, created_at TEXT
         )""")
+        
+        # Tabla architects (arquitectos registrados)
+        c.execute("""CREATE TABLE IF NOT EXISTS architects (
+            id TEXT PRIMARY KEY,
+            name TEXT, email TEXT UNIQUE, phone TEXT, company TEXT, nif TEXT,
+            created_at TEXT
+        )""")
+        
+        # Tabla subscriptions (suscripciones de arquitectos)
+        c.execute("""CREATE TABLE IF NOT EXISTS subscriptions (
+            id TEXT PRIMARY KEY,
+            architect_id TEXT,
+            plan_type TEXT,
+            price REAL,
+            monthly_proposals_limit INTEGER,
+            commission_rate REAL,
+            status TEXT,
+            start_date TEXT,
+            end_date TEXT,
+            created_at TEXT
+        )""")
+        
+        # Tabla proposals (propuestas de arquitectos a propietarios)
+        c.execute("""CREATE TABLE IF NOT EXISTS proposals (
+            id TEXT PRIMARY KEY,
+            plot_id TEXT,
+            architect_id TEXT,
+            project_id TEXT,
+            message TEXT,
+            price REAL,
+            status TEXT,
+            created_at TEXT
+        )""")
+        
+        # Migración segura: agregar columnas nuevas a projects si no existen
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN architect_id TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN m2_construidos INTEGER")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN m2_parcela_minima INTEGER")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN m2_parcela_maxima INTEGER")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN habitaciones INTEGER")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN banos INTEGER")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN garaje INTEGER")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN plantas INTEGER")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN certificacion_energetica TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN tipo_proyecto TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN foto_principal TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN galeria_fotos TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN modelo_3d_glb TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN planos_pdf TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN planos_dwg TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN memoria_pdf TEXT")
+        except Exception:
+            pass
+        
         # Índices para mejorar filtrado futuro
         c.execute("CREATE INDEX IF NOT EXISTS idx_plots_province ON plots(province)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_projects_style ON projects(style)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_projects_architect ON projects(architect_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_subscriptions_architect ON subscriptions(architect_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_proposals_plot ON proposals(plot_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_proposals_architect ON proposals(architect_id)")
         # Índice único para email de clientes (si hay duplicados previos fallará, lo capturamos)
         try:
             c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_email ON clients(email)")

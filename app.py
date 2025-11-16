@@ -1533,7 +1533,9 @@ if page == 'Home':
             st.markdown("### 📨 Propuestas de Arquitectos")
 
             
-            df_proposals = get_proposals_for_plot(current_pid)
+            # Asegurar variable current_pid definida (ya establecida en sección anterior)
+            current_pid_safe = selected_plot.get('id')
+            df_proposals = get_proposals_for_plot(current_pid_safe) if current_pid_safe else pd.DataFrame([])
             
             if df_proposals.shape[0] == 0:
                 st.info("📭 No has recibido propuestas todavía")

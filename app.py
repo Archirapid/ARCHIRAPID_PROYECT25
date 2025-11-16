@@ -2188,6 +2188,8 @@ elif page == 'architects':
                 st.session_state['arch_subscription_payment'] = last_payment
                 st.session_state['subscription_refresh'] = True
                 st.session_state['default_arch_tab'] = '📂 Mis Proyectos'
+                # Solicitud UX: ocultar el botón "Nuevo Proyecto" solo en este primer render post-pago
+                st.session_state['hide_new_project_once'] = True
                 
                 # Limpiar flags que disparan el modal (pero NO borrar last_payment aún)
                 st.session_state['payment_completed'] = False
@@ -2329,13 +2331,18 @@ elif page == 'architects':
                 with col_h1:
                     st.caption("Gestiona tu catálogo de proyectos para enviar propuestas profesionales")
                 with col_h2:
-                    # Asegurarse de que no quede ningún modal de pago abierto antes de abrir el de proyecto
-                    if st.button("➕ Nuevo Proyecto", type="primary", key="btn_new_project", disabled=st.session_state.get('trigger_plan_payment', False)):
-                        # Limpiar cualquier modal de detalle abierto para evitar dialogs anidados
-                        if st.session_state.get('view_project_id'):
-                            del st.session_state['view_project_id']
-                        st.session_state['show_project_modal'] = True
-                        st.rerun()
+                    # Tras pago: ocultar SOLO una vez el botón para evitar confusión y forzar ir por la pestaña superior
+                    if not st.session_state.get('hide_new_project_once'):
+                        # Asegurarse de que no quede ningún modal de pago abierto antes de abrir el de proyecto
+                        if st.button("➕ Nuevo Proyecto", type="primary", key="btn_new_project", disabled=st.session_state.get('trigger_plan_payment', False)):
+                            # Limpiar cualquier modal de detalle abierto para evitar dialogs anidados
+                            if st.session_state.get('view_project_id'):
+                                del st.session_state['view_project_id']
+                            st.session_state['show_project_modal'] = True
+                            st.rerun()
+                    else:
+                        # Limpiar la marca para que en la siguiente navegación aparezca el botón con normalidad
+                        del st.session_state['hide_new_project_once']
                 
                 # Get existing projects
                 projects_df = get_architect_projects(arch_id)

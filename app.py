@@ -2051,83 +2051,80 @@ elif page == 'plots':
 elif page == 'architects':
     st.title('🏛️ Portal de Arquitectos')
     
-    try:
-        # Sistema de tabs para navegación
-        if 'arch_id' not in st.session_state:
-            # No hay sesión → Mostrar registro/login
-            st.info("👋 Bienvenido al Portal de Arquitectos. Inicia sesión o regístrate para continuar.")
-            
-            tab = st.radio('Selecciona una opción:', ['🔐 Iniciar Sesión', '📝 Registrarse'], horizontal=True, key='arch_auth_tab')
-            
-            if tab == '📝 Registrarse':
-                st.subheader("Únete a ARCHIRAPID")
-                st.caption("Accede a fincas listas para proyectar y conecta con propietarios")
-                
-                with st.form('registro_arquitecto'):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        nombre = st.text_input('Nombre completo *')
-                        email = st.text_input('Email *')
-                        telefono = st.text_input('Teléfono')
-                    with col2:
-                        empresa = st.text_input('Empresa/Estudio')
-                        nif = st.text_input('NIF/CIF *')
-                        colegiado = st.text_input('Nº Colegiado (opcional)')
-                    
-                    acepto_terminos = st.checkbox('Acepto los términos y condiciones')
-                    submitted = st.form_submit_button('✅ Registrarse', width='stretch')
-                    
-                    if submitted:
-                        if not nombre or not email or not nif:
-                            st.error('⚠️ Nombre, email y NIF son obligatorios')
-                        elif not acepto_terminos:
-                            st.error('⚠️ Debes aceptar los términos y condiciones')
-                        else:
-                            # Crear arquitecto
-                            arch_id = str(uuid.uuid4())
-                            conn = sqlite3.connect(DB_PATH)
-                            c = conn.cursor()
-                            try:
-                                c.execute('''INSERT INTO architects (id, name, email, phone, company, nif, created_at)
-                                             VALUES (?,?,?,?,?,?,?)''', 
-                                          (arch_id, nombre, email, telefono, empresa, nif, datetime.now().isoformat()))
-                                conn.commit()
-                                st.success(f'✅ Registro completado. Bienvenido/a, {nombre}!')
-                                st.session_state['arch_id'] = arch_id
-                                st.session_state['arch_name'] = nombre
-                                st.rerun()
-                            except sqlite3.IntegrityError:
-                                st.error('❌ Este email ya está registrado')
-                            finally:
-                                conn.close()
-            
-            else:  # Iniciar Sesión
-                st.subheader("Accede a tu cuenta")
-                email_login = st.text_input('📧 Email registrado')
-                if st.button('🔓 Iniciar Sesión', width='stretch'):
-                    if email_login:
-                        conn = sqlite3.connect(DB_PATH)
-                        df = pd.read_sql_query("SELECT * FROM architects WHERE email = ?", conn, params=(email_login,))
-                        conn.close()
-                        
-                        if df.shape[0] > 0:
-                            arch = df.iloc[0].to_dict()
-                            st.success(f"✅ Bienvenido/a, {arch['name']}")
-                            st.session_state['arch_id'] = arch['id']
-                            st.session_state['arch_name'] = arch['name']
-                            st.rerun()
-                        else:
-                            st.error('❌ Email no encontrado. ¿Necesitas registrarte?')
-                    else:
-                        st.warning('⚠️ Introduce tu email')
+    # Sistema de tabs para navegación
+    if 'arch_id' not in st.session_state:
+        # No hay sesión → Mostrar registro/login
+        tab = st.radio('', ['🔐 Iniciar Sesión', '📝 Registrarse'], horizontal=True)
         
-        else:
-            # ARQUITECTO LOGUEADO → Dashboard principal
-            arch_id = st.session_state['arch_id']
-            arch_name = st.session_state.get('arch_name', 'Arquitecto')
+        if tab == '📝 Registrarse':
+            st.subheader("Únete a ARCHIRAPID")
+            st.caption("Accede a fincas listas para proyectar y conecta con propietarios")
             
-            # Load architect full data
-            conn = sqlite3.connect(DB_PATH)
+            with st.form('registro_arquitecto'):
+                col1, col2 = st.columns(2)
+                with col1:
+                    nombre = st.text_input('Nombre completo *')
+                    email = st.text_input('Email *')
+                    telefono = st.text_input('Teléfono')
+                with col2:
+                    empresa = st.text_input('Empresa/Estudio')
+                    nif = st.text_input('NIF/CIF *')
+                    colegiado = st.text_input('Nº Colegiado (opcional)')
+                
+                acepto_terminos = st.checkbox('Acepto los términos y condiciones')
+                submitted = st.form_submit_button('✅ Registrarse', width='stretch')
+                
+                if submitted:
+                    if not nombre or not email or not nif:
+                        st.error('⚠️ Nombre, email y NIF son obligatorios')
+                    elif not acepto_terminos:
+                        st.error('⚠️ Debes aceptar los términos y condiciones')
+                    else:
+                        # Crear arquitecto
+                        arch_id = str(uuid.uuid4())
+                        conn = sqlite3.connect(DB_PATH)
+                        c = conn.cursor()
+                        try:
+                            c.execute('''INSERT INTO architects (id, name, email, phone, company, nif, created_at)
+                                         VALUES (?,?,?,?,?,?,?)''', 
+                                      (arch_id, nombre, email, telefono, empresa, nif, datetime.now().isoformat()))
+                            conn.commit()
+                            st.success(f'✅ Registro completado. Bienvenido/a, {nombre}!')
+                            st.session_state['arch_id'] = arch_id
+                            st.session_state['arch_name'] = nombre
+                            st.rerun()
+                        except sqlite3.IntegrityError:
+                            st.error('❌ Este email ya está registrado')
+                        finally:
+                            conn.close()
+        
+        else:  # Iniciar Sesión
+            st.subheader("Accede a tu cuenta")
+            email_login = st.text_input('📧 Email registrado')
+            if st.button('🔓 Iniciar Sesión', width='stretch'):
+                if email_login:
+                    conn = sqlite3.connect(DB_PATH)
+                    df = pd.read_sql_query("SELECT * FROM architects WHERE email = ?", conn, params=(email_login,))
+                    conn.close()
+                    
+                    if df.shape[0] > 0:
+                        arch = df.iloc[0].to_dict()
+                        st.success(f"✅ Bienvenido/a, {arch['name']}")
+                        st.session_state['arch_id'] = arch['id']
+                        st.session_state['arch_name'] = arch['name']
+                        st.rerun()
+                    else:
+                        st.error('❌ Email no encontrado. ¿Necesitas registrarte?')
+                else:
+                    st.warning('⚠️ Introduce tu email')
+    
+    else:
+        # ARQUITECTO LOGUEADO → Dashboard principal
+        arch_id = st.session_state['arch_id']
+        arch_name = st.session_state.get('arch_name', 'Arquitecto')
+        
+        # Load architect full data
+        conn = sqlite3.connect(DB_PATH)
         df_arch = pd.read_sql_query("SELECT * FROM architects WHERE id = ?", conn, params=(arch_id,))
         conn.close()
         arch = df_arch.iloc[0].to_dict() if df_arch.shape[0] > 0 else {'name': arch_name, 'email': ''}
@@ -2471,11 +2468,6 @@ elif page == 'architects':
                         
                         if prop['status'] != 'pending':
                             st.caption(f"Respondida: {prop.get('responded_at', '')[:10] if prop.get('responded_at') else 'N/A'}")
-    
-    except Exception as e:
-        st.error(f"❌ Error en la página de arquitectos: {str(e)}")
-        st.exception(e)
-        st.info("Por favor, recarga la página o contacta con soporte.")
 
 elif page == 'clientes':
     from src.client_manager import ClientManager

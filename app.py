@@ -1746,8 +1746,8 @@ elif page == 'plots':
             submitted = st.form_submit_button('Registrar Finca')
 
             if submitted:
-                # Validar coordenadas
-                def gms_to_decimal(coord):
+                # Validar coordenadas (soporta N/S/E/W y O=Oeste)
+                def gms_to_decimal(coord, is_lon=False):
                     import re
                     # Ejemplo: 36º25'10'' o 36 25 10 o 36°25'10" o 36d25m10s
                     # Intenta múltiples formatos
@@ -1755,18 +1755,34 @@ elif page == 'plots':
                         r"([\d.]+)[º°d][\s]*(\d+)['\s][\s]*(\d+)[\"s]?",  # 36º 25' 10"
                         r"([\d.]+)[º°d][\s]*(\d+)[\s]*(\d+)",  # 36 25 10
                     ]
+                    text = str(coord or '').strip()
+                    # Detectar hemisferio o signo explícito
+                    hemi = text.upper()
+                    sign = 1
+                    if '-' in text:
+                        sign = -1
+                    else:
+                        if any(h in hemi for h in ['S']):
+                            sign = -1
+                        if any(h in hemi for h in ['W','O']):  # O = Oeste
+                            sign = -1
+
+                    # Limpiar letras para el parse
+                    clean = re.sub(r"[NnSsEeWwOo]", "", text)
+
                     for pattern in patterns:
-                        match = re.search(pattern, str(coord).strip())
+                        match = re.search(pattern, clean)
                         if match:
                             deg, min_, sec = map(float, match.groups())
-                            return deg + min_/60 + sec/3600
+                            return sign * (deg + min_/60 + sec/3600)
                     try:
-                        return float(str(coord).replace(',', '.').strip())
+                        val = float(clean.replace(',', '.').strip())
+                        return sign * val
                     except Exception:
                         return None
 
-                lat = gms_to_decimal(lat_input)
-                lon = gms_to_decimal(lon_input)
+                lat = gms_to_decimal(lat_input, is_lon=False)
+                lon = gms_to_decimal(lon_input, is_lon=True)
                 if not all([title, province, m2, price, lat, lon, owner_name, owner_email]):
                     st.error('Campos obligatorios incompletos o coordenadas inválidas')
                 else:

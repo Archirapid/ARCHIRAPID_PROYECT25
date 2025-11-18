@@ -96,16 +96,35 @@ def ensure_tables():
         )""")
         
         # Tabla proposals (propuestas de arquitectos a propietarios)
+        # Versión nueva simplificada (mantener compatibilidad con esquema anterior extenso)
         c.execute("""CREATE TABLE IF NOT EXISTS proposals (
             id TEXT PRIMARY KEY,
-            plot_id TEXT,
             architect_id TEXT,
-            project_id TEXT,
-            message TEXT,
-            price REAL,
+            plot_id TEXT,
+            proposal_text TEXT,
+            estimated_budget REAL,
+            deadline_days INTEGER,
+            sketch_image_path TEXT,
             status TEXT,
-            created_at TEXT
+            created_at TEXT,
+            responded_at TEXT,
+            delivery_format TEXT DEFAULT 'PDF',
+            delivery_price REAL DEFAULT 1200,
+            supervision_fee REAL DEFAULT 0,
+            visa_fee REAL DEFAULT 0,
+            total_cliente REAL DEFAULT 0,
+            commission REAL DEFAULT 0,
+            project_id TEXT
         )""")
+        # Migraciones seguras para columnas nuevas usadas por nueva API insert_proposal
+        try:
+            c.execute("ALTER TABLE proposals ADD COLUMN message TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE proposals ADD COLUMN price REAL")
+        except Exception:
+            pass
         
         # Migración segura: agregar columnas nuevas a projects si no existen
         try:
@@ -189,6 +208,30 @@ def ensure_tables():
         # Índices adicionales para acelerar búsquedas de reservas
         c.execute("CREATE INDEX IF NOT EXISTS idx_reservations_plot ON reservations(plot_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_reservations_kind ON reservations(kind)")
+        
+        # Tabla additional_services (servicios post-proyecto: dirección obra, visados, modificaciones)
+        c.execute("""CREATE TABLE IF NOT EXISTS additional_services (
+            id TEXT PRIMARY KEY,
+            proposal_id TEXT,
+            client_id TEXT,
+            architect_id TEXT,
+            service_type TEXT,
+            description TEXT,
+            price REAL,
+            commission REAL,
+            total_cliente REAL,
+            status TEXT,
+            created_at TEXT,
+            quoted_at TEXT,
+            accepted_at TEXT,
+            paid BOOLEAN DEFAULT 0
+        )""")
+        
+        # Índices para servicios adicionales
+        c.execute("CREATE INDEX IF NOT EXISTS idx_additional_services_client ON additional_services(client_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_additional_services_architect ON additional_services(architect_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_additional_services_proposal ON additional_services(proposal_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_additional_services_status ON additional_services(status)")
 
 def insert_plot(data: Dict):
     ensure_tables()
@@ -203,11 +246,16 @@ def insert_plot(data: Dict):
 def insert_project(data: Dict):
     ensure_tables()
     with transaction() as c:
+        # Insert or replace a project; architect_id is optional but supported so
+        # that project creation from UI flows is reliably linked to an architect.
         c.execute("""INSERT OR REPLACE INTO projects (
-            id,title,architect_name,area_m2,max_height,style,price,file_path,description,created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        (data['id'], data['title'], data['architect_name'], data['area_m2'], data['max_height'], data['style'],
-         data['price'], data.get('file_path'), data['description'], data['created_at']))
+            id,title,architect_name,architect_id,area_m2,max_height,style,price,file_path,description,created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            data['id'], data['title'], data.get('architect_name'), data.get('architect_id'),
+            data.get('area_m2'), data.get('max_height'), data.get('style'), data.get('price'),
+            data.get('file_path'), data.get('description'), data['created_at']
+        ))
 
 def insert_payment(data: Dict):
     ensure_tables()
@@ -234,6 +282,49 @@ def get_all_projects():
         conn.close()
     return df
 
+def insert_architect(data: Dict):
+    """Inserta o reemplaza un arquitecto."""
+    ensure_tables()
+    with transaction() as c:
+        c.execute("""INSERT OR REPLACE INTO architects (
+            id,name,email,phone,company,nif,created_at
+        ) VALUES (?,?,?,?,?,?,?)""", (
+            data['id'], data['name'], data['email'], data.get('phone'), data.get('company'), data.get('nif'), data['created_at']
+        ))
+
+def update_project_architect_id(project_id: str, architect_id: str):
+    """Actualiza el arquitecto asociado a un proyecto."""
+    ensure_tables()
+    with transaction() as c:
+        c.execute("UPDATE projects SET architect_id=? WHERE id=?", (architect_id, project_id))
+
+
+def update_project_fields(project_id: str, fields: Dict):
+    """Actualizar campos concretos de un proyecto.
+
+    Sólo actualiza las columnas proporcionadas en `fields`.
+    """
+    if not fields:
+        return
+    ensure_tables()
+    allowed = {
+        'title','architect_name','architect_id','area_m2','max_height','style','price','file_path','description',
+        'm2_construidos','m2_parcela_minima','m2_parcela_maxima','habitaciones','banos','garaje','plantas','certificacion_energetica',
+        'tipo_proyecto','foto_principal','galeria_fotos','modelo_3d_glb','planos_pdf','planos_dwg','memoria_pdf'
+    }
+    set_pairs = []
+    values = []
+    for k, v in fields.items():
+        if k in allowed:
+            set_pairs.append(f"{k}=?")
+            values.append(v)
+    if not set_pairs:
+        return
+    values.append(project_id)
+    sql = f"UPDATE projects SET {', '.join(set_pairs)} WHERE id=?"
+    with transaction() as c:
+        c.execute(sql, tuple(values))
+
 def get_plot_by_id(pid: str) -> Optional[Dict]:
     ensure_tables(); conn = get_conn(); c = conn.cursor(); c.execute('SELECT * FROM plots WHERE id=?', (pid,))
     row = c.fetchone(); conn.close()
@@ -249,6 +340,62 @@ def counts() -> Dict[str,int]:
         c.execute(f'SELECT COUNT(*) FROM {table}'); out[table] = c.fetchone()[0]
     conn.close(); return out
 
+def insert_proposal(data: Dict):
+    """Inserta propuesta en la tabla proposals."""
+    ensure_tables()
+    with transaction() as c:
+        # Detectar si columnas message/price existen (compatibilidad con esquema anterior)
+        has_message = True
+        has_price = True
+        try:
+            c.execute("SELECT message FROM proposals LIMIT 1")
+        except Exception:
+            has_message = False
+        try:
+            c.execute("SELECT price FROM proposals LIMIT 1")
+        except Exception:
+            has_price = False
+        if has_message and has_price:
+            c.execute("""INSERT OR REPLACE INTO proposals (
+                id,plot_id,architect_id,project_id,message,price,status,created_at
+            ) VALUES (?,?,?,?,?,?,?,?)""", (
+                data['id'], data['plot_id'], data['architect_id'], data.get('project_id'), data.get('message'),
+                data.get('price'), data.get('status','pending'), data['created_at']
+            ))
+        else:
+            # Insert en columnas legacy (proposal_text, estimated_budget) mapeando valores
+            c.execute("""INSERT OR REPLACE INTO proposals (
+                id,architect_id,plot_id,proposal_text,estimated_budget,deadline_days,sketch_image_path,status,created_at,project_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)""", (
+                data['id'], data['architect_id'], data['plot_id'], data.get('message'), data.get('price'),
+                data.get('deadline_days', 30), None, data.get('status','pending'), data['created_at'], data.get('project_id')
+            ))
+
+def get_proposals_for_plot(plot_id: str):
+    ensure_tables(); conn = get_conn(); import pandas as pd
+    try:
+        df = pd.read_sql_query('SELECT * FROM proposals WHERE plot_id = ?', conn, params=(plot_id,))
+    finally:
+        conn.close()
+    return df
+
+def update_proposal_status(proposal_id: str, new_status: str):
+    """Actualiza el estado de una propuesta (pending->accepted/rejected)."""
+    ensure_tables()
+    with transaction() as c:
+        # Asegurar columna responded_at (legacy ya la tiene, pero migración defensiva)
+        try:
+            c.execute("ALTER TABLE proposals ADD COLUMN responded_at TEXT")
+        except Exception:
+            pass
+        from datetime import datetime
+        responded_at = datetime.utcnow().isoformat()
+        try:
+            c.execute("UPDATE proposals SET status=?, responded_at=? WHERE id=?", (new_status, responded_at, proposal_id))
+        except Exception:
+            # Si no existe responded_at, degradar sin timestamp
+            c.execute("UPDATE proposals SET status=? WHERE id=?", (new_status, proposal_id))
+
 # Cache ligera en memoria para counts (TTL segundos)
 _COUNTS_CACHE: Dict[str,int] | None = None
 _COUNTS_TS: float | None = None
@@ -262,3 +409,88 @@ def cached_counts() -> Dict[str,int]:
         _COUNTS_CACHE = counts()
         _COUNTS_TS = now
     return _COUNTS_CACHE.copy()
+
+
+# =====================================================
+# SERVICIOS ADICIONALES (Post-Proyecto)
+# =====================================================
+
+def insert_additional_service(data: Dict):
+    """Inserta un nuevo servicio adicional solicitado por cliente."""
+    ensure_tables()
+    with transaction() as c:
+        c.execute("""INSERT INTO additional_services (
+            id, proposal_id, client_id, architect_id, service_type, 
+            description, price, commission, total_cliente, status, created_at, paid
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", (
+            data['id'], data.get('proposal_id'), data['client_id'], data['architect_id'],
+            data['service_type'], data.get('description', ''), 
+            data.get('price', 0), data.get('commission', 0), data.get('total_cliente', 0),
+            data.get('status', 'solicitado'), data['created_at'], data.get('paid', 0)
+        ))
+
+def get_additional_services_by_client(client_id: str):
+    """Obtiene todos los servicios adicionales de un cliente."""
+    ensure_tables()
+    conn = get_conn()
+    import pandas as pd
+    try:
+        df = pd.read_sql_query("""
+            SELECT s.*, a.name as architect_name, a.email as architect_email
+            FROM additional_services s
+            LEFT JOIN architects a ON s.architect_id = a.id
+            WHERE s.client_id = ?
+            ORDER BY s.created_at DESC
+        """, conn, params=(client_id,))
+    finally:
+        conn.close()
+    return df
+
+def get_additional_services_by_architect(architect_id: str):
+    """Obtiene todos los servicios adicionales para un arquitecto."""
+    ensure_tables()
+    conn = get_conn()
+    import pandas as pd
+    try:
+        df = pd.read_sql_query("""
+            SELECT s.*, c.name as client_name, c.email as client_email
+            FROM additional_services s
+            LEFT JOIN clients c ON s.client_id = c.id
+            WHERE s.architect_id = ?
+            ORDER BY s.created_at DESC
+        """, conn, params=(architect_id,))
+    finally:
+        conn.close()
+    return df
+
+def update_additional_service_quote(service_id: str, price: float, commission_rate: float):
+    """Arquitecto cotiza un servicio adicional (estado: solicitado -> cotizado)."""
+    ensure_tables()
+    commission = price * commission_rate
+    total_cliente = price + commission
+    
+    with transaction() as c:
+        from datetime import datetime
+        quoted_at = datetime.utcnow().isoformat()
+        c.execute("""UPDATE additional_services 
+                     SET price=?, commission=?, total_cliente=?, status='cotizado', quoted_at=?
+                     WHERE id=?""", 
+                  (price, commission, total_cliente, quoted_at, service_id))
+
+def update_additional_service_status(service_id: str, new_status: str):
+    """Actualiza estado de servicio adicional (cotizado -> aceptado/rechazado)."""
+    ensure_tables()
+    with transaction() as c:
+        from datetime import datetime
+        if new_status == 'aceptado':
+            accepted_at = datetime.utcnow().isoformat()
+            c.execute("UPDATE additional_services SET status=?, accepted_at=? WHERE id=?", 
+                      (new_status, accepted_at, service_id))
+        else:
+            c.execute("UPDATE additional_services SET status=? WHERE id=?", (new_status, service_id))
+
+def mark_additional_service_paid(service_id: str):
+    """Marca servicio adicional como pagado."""
+    ensure_tables()
+    with transaction() as c:
+        c.execute("UPDATE additional_services SET paid=1 WHERE id=?", (service_id,))

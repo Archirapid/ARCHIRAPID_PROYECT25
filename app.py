@@ -242,6 +242,203 @@ def get_project_by_id(project_id):
         return None
     return df.iloc[0].to_dict()
 
+# Convenience stable reference to avoid local-name import clashes in view functions
+APP_GET_PROJECT_BY_ID = get_project_by_id
+
+
+def render_create_project_page(architect_id: str, architect_name: str):
+    """Full-page project creation flow to replace @st.dialog modal.
+
+    Uses session_state for architect identity to avoid Streamlit @st.dialog rerun issues.
+    """
+    # Normalize identity from session_state
+    architect_id = st.session_state.get('arch_id') or architect_id
+    architect_name = st.session_state.get('arch_name') or architect_name
+
+    if not architect_id:
+        st.error("❌ No se detectó cuenta de arquitecto. Inicia sesión o regístrate.")
+        if st.button('Volver'):
+            st.session_state['arch_create_project'] = False
+            st.rerun()
+        return
+
+    st.header("➕ Crear Nuevo Proyecto (Full Page)")
+    st.caption(f"Arquitecto: {architect_name}")
+
+    with st.form('create_project_page'):
+        title = st.text_input('🏗️ Nombre del Proyecto *')
+        tipo_proyecto = st.selectbox('📐 Tipo', ['vivienda_unifamiliar', 'vivienda_plurifamiliar', 'nave_industrial', 'local_comercial', 'rehabilitacion'])
+        style = st.selectbox('🎨 Estilo', ['moderno', 'mediterraneo', 'industrial', 'rustico', 'minimalista', 'clasico'])
+
+        m2_construidos = st.number_input('📏 m² Construidos *', min_value=10, value=150)
+        m2_parcela_min = st.number_input('🔎 Parcela mínima (m²)', min_value=0, value=200)
+        m2_parcela_max = st.number_input('🔎 Parcela máxima (m²)', min_value=0, value=800)
+        max_height = st.number_input('📏 Altura Máxima (m)', min_value=0.0, value=7.0)
+        habitaciones = st.number_input('🛏️ Dormitorios', min_value=1, value=3)
+        banos = st.number_input('🚿 Baños', min_value=1, value=2)
+        plantas = st.number_input('📐 Plantas', min_value=1, value=2)
+        garaje = st.number_input('🚗 Plazas Garaje', min_value=0, value=2)
+        price = st.number_input('💰 Precio Estimado (€) *', min_value=0, value=150000)
+        description = st.text_area('📝 Descripción*', height=150)
+        foto_principal = st.file_uploader('🖼️ Foto Principal *', type=['jpg','jpeg','png'])
+        galeria = st.file_uploader('📷 Galería Adicional', type=['jpg','jpeg','png'], accept_multiple_files=True)
+        modelo_3d = st.file_uploader('🎮 Modelo 3D (.glb)', type=['glb'])
+        memoria = st.file_uploader('📋 Memoria Técnica (PDF)', type=['pdf'])
+
+        submitted = st.form_submit_button('✅ Crear Proyecto')
+
+        if submitted:
+            if not title or not description or m2_construidos <= 0:
+                st.error('Completa los campos obligatorios')
+                return
+            if not foto_principal:
+                st.error('Sube al menos una foto principal')
+                return
+
+            # Save files
+            foto_path = save_file(foto_principal, 'project_main', max_size_mb=5, allowed_mime_types=['image/jpeg','image/png'])
+            galeria_paths = []
+            if galeria:
+                for g in galeria:
+                    try:
+                        galeria_paths.append(save_file(g, 'project_gallery', max_size_mb=5, allowed_mime_types=['image/jpeg','image/png']))
+                    except ValueError:
+                        st.warning('Imagen de galería omitida por restricciones')
+
+            memoria_path = save_file(memoria, 'project_memoria', max_size_mb=20, allowed_mime_types=['application/pdf']) if memoria else None
+            modelo_path = save_file(modelo_3d, 'project_model', max_size_mb=50) if modelo_3d else None
+
+            project_id = str(uuid.uuid4())
+            insert_project({
+                'id': project_id,
+                'title': title,
+                'architect_name': architect_name,
+                'architect_id': architect_id,
+                'area_m2': m2_construidos,
+                'max_height': None,
+                'style': style,
+                'price': price,
+                'description': description,
+                'created_at': datetime.now().isoformat(),
+                'm2_construidos': m2_construidos,
+                'm2_parcela_minima': m2_parcela_min,
+                'm2_parcela_maxima': m2_parcela_max,
+                'habitaciones': habitaciones,
+                'banos': banos,
+                'garaje': garaje,
+                'plantas': plantas,
+                'certificacion_energetica': None,
+                'tipo_proyecto': tipo_proyecto,
+                'foto_principal': foto_path,
+                'galeria_fotos': json.dumps(galeria_paths),
+                'modelo_3d_glb': modelo_path,
+                'planos_pdf': None,
+                'planos_dwg': None,
+                'memoria_pdf': memoria_path,
+                'file_path': foto_path
+            })
+
+            # Ensure the project's architect_id matches the current session architect
+            try:
+                from src.db import update_project_architect_id
+                # session arch id is authoritative
+                current_arch = st.session_state.get('arch_id') or architect_id
+                if current_arch:
+                    update_project_architect_id(project_id, current_arch)
+            except Exception:
+                pass
+
+            # Keep session alive and clear cache
+            st.session_state['arch_id'] = architect_id
+            st.session_state['arch_name'] = architect_name
+            try:
+                # Auditar creación de proyecto para trazabilidad (para evitar regressions)
+                from src.logger import log
+                log('project_created', project_id=project_id, architect_id=architect_id, title=title)
+            except Exception:
+                pass
+            try:
+                get_all_projects_cached.clear()
+            except Exception:
+                pass
+
+            # Post-create: attempt to extract memoria metadata (best effort)
+            try:
+                if memoria_path:
+                    from archirapid_extract.parse_project_memoria import extract_and_parse_memoria
+                    extract_and_parse_memoria(memoria_path, project_id)
+                    # Map parsed fields into DB (non-destructive update)
+                    try:
+                        from archirapid_extract.parse_project_memoria import parse_memoria_text, extract_text_from_pdf
+                        from src import db as src_db
+                        meta_text = extract_text_from_pdf(memoria_path)
+                        meta = parse_memoria_text(meta_text)
+                        # Map to DB columns only if target columns are blank
+                        current = src_db.get_project_by_id(project_id)
+                        to_update = {}
+                        if meta.get('area_m2') and not current.get('m2_construidos'):
+                            # convert to int
+                            try:
+                                to_update['m2_construidos'] = int(float(str(meta['area_m2']).replace(' ', '').replace(',', '.')))
+                            except Exception:
+                                pass
+                        if meta.get('habitaciones') and not current.get('habitaciones'):
+                            to_update['habitaciones'] = int(meta['habitaciones'])
+                        if meta.get('banos') and not current.get('banos'):
+                            to_update['banos'] = int(meta['banos'])
+                        if meta.get('plantas') and not current.get('plantas'):
+                            to_update['plantas'] = int(meta['plantas'])
+                        if meta.get('garaje') and not current.get('garaje'):
+                            to_update['garaje'] = int(meta['garaje'])
+                        if meta.get('budget') and (not current.get('price') or current.get('price') == 0):
+                            # keep price as fallback; do not override if present
+                            try:
+                                currency_amt = meta.get('budget')
+                                import re
+                                num = re.search(r"([0-9][\d\.,]*)", str(currency_amt))
+                                if num:
+                                    to_update['price'] = float(num.group(1).replace('.', '').replace(',', '.'))
+                            except Exception:
+                                pass
+                        if to_update:
+                            src_db.update_project_fields(project_id, to_update)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            except Exception:
+                pass
+
+            st.success('🎉 Proyecto creado y sincronizado correctamente.')
+            st.balloons()
+            # show the new project inline
+            proj = APP_GET_PROJECT_BY_ID(project_id)
+            if proj:
+                st.markdown('---')
+                foto = proj.get('foto_principal')
+                # Safety: check file exists and not None to avoid PIL NoneType format error
+                if foto and isinstance(foto, str) and os.path.exists(foto):
+                    st.image(foto, width='stretch')
+                else:
+                    st.info('📸 Imagen no disponible')
+                st.write(proj.get('description',''))
+                # Guardar referencia al proyecto creado para acciones fuera del form
+                st.session_state['last_created_project'] = project_id
+            # NO USAR st.button dentro de st.form (genera StreamlitAPIException).
+            # El botón 'Volver a Mis Proyectos' se renderiza fuera del form (abajo).
+    # Botón 'Volver a Mis Proyectos' fuera del form: evita StreamlitAPIException
+    if st.session_state.get('last_created_project'):
+        if st.button('Volver a Mis Proyectos'):
+                st.session_state['arch_create_project'] = False
+                st.session_state['default_arch_tab'] = '📂 Mis Proyectos'
+                # Opcional: mostrar el proyecto creado en modo detalle
+                st.session_state['view_project_id'] = st.session_state.get('last_created_project')
+                try:
+                    del st.session_state['last_created_project']
+                except Exception:
+                    pass
+                st.rerun()
+
 def get_compatible_projects(plot_m2, plot_type='vivienda'):
     """
     Algoritmo de matching: encuentra proyectos compatibles con una finca
@@ -276,7 +473,26 @@ def delete_project(project_id):
 # =====================================================
 # DB FUNCTIONS - Delegate to src.db for consistency
 # =====================================================
-from src.db import insert_plot, get_all_plots, get_plot_by_id, insert_project, get_all_projects
+from src.db import insert_plot, get_all_plots, get_plot_by_id, get_all_projects
+
+# Cached data loaders (UI-only cache; does not affect writes)
+@st.cache_data(ttl=60, show_spinner=False)
+def get_all_projects_cached():
+    return get_all_projects()
+
+def get_architect_email_by_id(architect_id: str):
+    """Lookup architect email by id. Returns email or None."""
+    if not architect_id:
+        return None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        df = pd.read_sql_query("SELECT email FROM architects WHERE id = ? LIMIT 1", conn, params=(architect_id,))
+        conn.close()
+        if df.shape[0] > 0:
+            return df.iloc[0]['email']
+    except Exception:
+        return None
+    return None
 
 # --- AUTOFIX: Corrección de signos de longitud mal ingresados ---
 def fix_longitude_signs():
@@ -585,6 +801,22 @@ def show_proposal_modal(plot_id, architect_id):
                     
                     st.caption(f"💰 Presupuesto: €{estimated_budget:,.0f} (desde proyecto)")
                     st.caption("📅 Plazo de entrega: 90 días (ajustable después)")
+                    # Mostrar metadata extraída de la memoria si existe
+                    try:
+                        if selected_project.get('memoria_pdf') and os.path.exists(selected_project['memoria_pdf']):
+                            from pathlib import Path as _P
+                            meta_file = _P(selected_project['memoria_pdf']).with_name(f"{selected_project['id']}_memoria.json")
+                            if meta_file.exists():
+                                import json as _json
+                                meta = _json.loads(meta_file.read_text(encoding='utf-8'))
+                                if meta.get('budget'):
+                                    st.caption(f"🧾 Presupuesto (memoria): {meta.get('budget')}")
+                                if meta.get('execution_time'):
+                                    st.caption(f"⏳ Plazo (memoria): {meta.get('execution_time')}")
+                                if meta.get('visado'):
+                                    st.caption(f"🪪 Visado: {meta.get('visado')}")
+                    except Exception:
+                        pass
     
     if proposal_type == "✍️ Propuesta Personalizada" or selected_project is None:
         # Formulario de propuesta libre
@@ -726,6 +958,15 @@ def show_proposal_modal(plot_id, architect_id):
 @st.dialog("📋 Crear Nuevo Proyecto", width="large")
 def show_create_project_modal(architect_id, architect_name):
     """Modal para crear proyecto en portfolio del arquitecto"""
+    # NOTE: Streamlit's @st.dialog may re-run and not preserve function-scoped arguments
+    # Use session_state as the authoritative source of current architect identity.
+    architect_id = st.session_state.get('arch_id') or architect_id
+    architect_name = st.session_state.get('arch_name') or architect_name
+
+    # If still not present, force user to login first
+    if not architect_id:
+        st.error("❌ No se detectó tu cuenta de arquitecto. Por favor inicia sesión o regístrate.")
+        return
     
     st.markdown("### 📋 Información Básica")
     
@@ -842,8 +1083,25 @@ def show_create_project_modal(architect_id, architect_name):
                             'file_path': foto_path  # backward compatibility
                         })
                         
+                        # Post-create: attempt to extract memoria metadata (best effort)
+                        try:
+                            if memoria_path:
+                                from archirapid_extract.parse_project_memoria import extract_and_parse_memoria
+                                extract_and_parse_memoria(memoria_path, project_id)
+                        except Exception:
+                            pass
+
                         st.success("🎉 ¡Proyecto creado exitosamente!")
                         st.balloons()
+                        # Refuerzo: asegurar persistencia de arch_id y arch_name tras crear proyecto
+                        st.session_state['arch_id'] = architect_id
+                        st.session_state['arch_name'] = architect_name
+
+                        # Invalidar caché de proyectos para que Home y otros flujos vean el nuevo proyecto
+                        try:
+                            get_all_projects_cached.clear()
+                        except Exception:
+                            pass
                         st.session_state['show_project_modal'] = False
                         st.rerun()
                     except ValueError as e:
@@ -888,13 +1146,27 @@ def show_project_detail_modal(project):
     
     with tab2:
         col1, col2, col3 = st.columns(3)
+        # Try to load memoria metadata (if exists) to populate fields when DB is empty
+        meta = None
+        try:
+            if project.get('memoria_pdf') and os.path.exists(project['memoria_pdf']):
+                from pathlib import Path as _P
+                meta_path = _P(project['memoria_pdf']).with_name(f"{project['id']}_memoria.json")
+                if meta_path.exists():
+                    import json as _json
+                    meta = _json.loads(meta_path.read_text(encoding='utf-8'))
+        except Exception:
+            meta = None
         with col1:
-            st.metric("📏 m² Construidos", project.get('m2_construidos', '-'))
-            st.metric("🛏️ Dormitorios", project.get('habitaciones', '-'))
-            st.metric("🚿 Baños", project.get('banos', '-'))
+            m2_val = project.get('m2_construidos') or (meta.get('area_m2') if meta else None)
+            st.metric("📏 m² Construidos", m2_val or '-')
+            hab_val = project.get('habitaciones') or (meta.get('habitaciones') if meta else None)
+            st.metric("🛏️ Dormitorios", hab_val or '-')
+            ban_val = project.get('banos') or (meta.get('banos') if meta else None)
+            st.metric("🚿 Baños", ban_val or '-')
         with col2:
-            st.metric("📐 Plantas", project.get('plantas', '-'))
-            st.metric("🚗 Garaje", f"{project.get('garaje', 0)} plazas")
+            st.metric("📐 Plantas", project.get('plantas', meta.get('plantas') if meta else '-'))
+            st.metric("🚗 Garaje", f"{project.get('garaje') or (meta.get('garaje') if meta else 0)} plazas")
             st.metric("⚡ Certificación", project.get('certificacion_energetica', 'N/A'))
         with col3:
             st.metric("💰 Precio Estimado", f"€{project.get('price', 0):,.0f}")
@@ -938,6 +1210,22 @@ def show_project_detail_modal(project):
                     )
             else:
                 st.info("📄 No hay planos PDF disponibles")
+            # Allow upload of planos PDF right from project detail (best-effort, non-destructive)
+            try:
+                from src import db as src_db
+                planos_new = st.file_uploader("📄 Subir / Reemplazar Planos PDF", type=['pdf'], key=f"planos_upload_{project['id']}")
+                if planos_new:
+                    with st.spinner("Guardando Planos PDF..."):
+                        planos_path = save_file(planos_new, "project_plans_pdf", max_size_mb=20, allowed_mime_types=['application/pdf'])
+                        src_db.update_project_fields(project['id'], {'planos_pdf': planos_path})
+                        try:
+                            get_all_projects_cached.clear()
+                        except Exception:
+                            pass
+                        st.success("📄 Planos PDF guardados correctamente")
+                        st.experimental_rerun()
+            except Exception:
+                pass
         
         with doc_col2:
             if project.get('planos_dwg') and os.path.exists(project['planos_dwg']):
@@ -961,6 +1249,47 @@ def show_project_detail_modal(project):
                     mime="application/pdf",
                     width='stretch'
                 )
+                # Allow upload/replacement of Memoria from the project detail
+                try:
+                    memoria_new = st.file_uploader("📋 Subir / Reemplazar Memoria Técnica (PDF)", type=['pdf'], key=f"memoria_upload_{project['id']}")
+                    if memoria_new:
+                        with st.spinner("Guardando Memoria..."):
+                            memoria_path = save_file(memoria_new, "project_memoria", max_size_mb=40, allowed_mime_types=['application/pdf'])
+                            from src import db as src_db
+                            src_db.update_project_fields(project['id'], {'memoria_pdf': memoria_path})
+                            # best-effort: extract and parse new memoria
+                            try:
+                                from archirapid_extract.parse_project_memoria import extract_and_parse_memoria
+                                extract_and_parse_memoria(memoria_path, project['id'])
+                            except Exception:
+                                pass
+                            try:
+                                get_all_projects_cached.clear()
+                            except Exception:
+                                pass
+                            st.success("📋 Memoria guardada y procesada")
+                            st.experimental_rerun()
+                except Exception:
+                    pass
+            # Try to show parsed metadata stored next to the PDF
+            try:
+                from pathlib import Path as _P
+                meta_path = _P(project['memoria_pdf']).with_name(f"{project['id']}_memoria.json")
+                if meta_path.exists():
+                    import json as _json
+                    meta = _json.loads(meta_path.read_text(encoding='utf-8'))
+                    st.markdown('---')
+                    st.markdown('#### 🧾 Datos extraídos de la Memoria')
+                    if meta.get('budget'):
+                        st.write(f"💰 Presupuesto estimado: {meta.get('budget')}")
+                    if meta.get('execution_time'):
+                        st.write(f"⏳ Plazo estimado: {meta.get('execution_time')}")
+                    if meta.get('visado'):
+                        st.write(f"🪪 Visado: {meta.get('visado')}")
+                    if meta.get('calidades'):
+                        st.write(f"🧱 Memoria de calidades: {meta.get('calidades')}")
+            except Exception:
+                pass
     
     with tab4:
         if project.get('modelo_3d_glb') and os.path.exists(project['modelo_3d_glb']):
@@ -1404,6 +1733,23 @@ if page == 'Home':
             except Exception:
                 pass
 
+        # Allow upload / replacement of 3D model (.glb) from the project detail view
+        try:
+            modelo_new = st.file_uploader("🎮 Subir / Reemplazar Modelo 3D (.glb)", type=['glb'], key=f"modelo3d_upload_{project['id']}")
+            if modelo_new:
+                with st.spinner("Guardando Modelo 3D..."):
+                    model_path = save_file(modelo_new, "project_model", max_size_mb=200)
+                    from src import db as src_db
+                    src_db.update_project_fields(project['id'], {'modelo_3d_glb': model_path})
+                    try:
+                        get_all_projects_cached.clear()
+                    except Exception:
+                        pass
+                    st.success("🎮 Modelo 3D guardado correctamente")
+                    st.experimental_rerun()
+        except Exception:
+            pass
+
     with panel_col:
         st.subheader("📋 Preview de Finca")
         if selected_plot is None:
@@ -1584,7 +1930,7 @@ if page == 'Home':
             # Usar motor avanzado para scoring real (reemplaza get_compatible_projects legacy)
             try:
                 from src.compatibility_engine import rank_projects_for_plot
-                all_projects_df = get_all_projects()
+                all_projects_df = get_all_projects_cached()
                 ranked_df = rank_projects_for_plot(selected_plot, all_projects_df)
             except Exception as e:
                 ranked_df = pd.DataFrame([])
@@ -1601,15 +1947,23 @@ if page == 'Home':
                 cols_proj = st.columns(3)
                 for idx, (col, (_, proj)) in enumerate(zip(cols_proj, top_projects.iterrows())):
                     with col:
-                        # Badge de compatibilidad CON SCORE REAL
+                        # Badge de compatibilidad CON SCORE REAL (estilo consistente)
                         score = int(proj.get('score', 0))
                         if score >= 85:
-                            st.success(f"🎯 {score} / 100")
+                            bg, fg, emoji = "#DCFCE7", "#166534", "🎯"
                         elif score >= 60:
-                            st.warning(f"⚠️ {score} / 100")
+                            bg, fg, emoji = "#FEF3C7", "#92400E", "⚠️"
                         else:
-                            st.info(f"💡 {score} / 100")
-                        
+                            bg, fg, emoji = "#DBEAFE", "#1E3A8A", "💡"
+
+                        # Etiqueta 'Mejor ajuste' solo en el primero
+                        if idx == 0:
+                            st.caption("🏅 Mejor ajuste")
+
+                        st.markdown(
+                            f"<div style='display:inline-block;background:{bg};color:{fg};padding:4px 10px;border-radius:999px;font-weight:600;font-size:12px'>{emoji} {score} / 100</div>",
+                            unsafe_allow_html=True
+                        )
                         st.markdown(f"### {proj['title']}")
                         
                         # Foto con placeholder inteligente
@@ -1647,7 +2001,7 @@ if page == 'Home':
             # =====================================================
             try:
                 from src.compatibility_engine import rank_projects_for_plot
-                advanced_df = rank_projects_for_plot(selected_plot, get_all_projects())
+                advanced_df = rank_projects_for_plot(selected_plot, get_all_projects_cached())
             except Exception as e:
                 advanced_df = None
                 st.warning(f"⚠️ Motor avanzado no disponible: {e}")
@@ -1677,9 +2031,149 @@ if page == 'Home':
                     st.metric("Habitaciones", best.get('habitaciones','-'))
                 with st.expander("📌 Razones del Score"):
                     st.markdown((best.get('explanation','')).replace('\n','  \n'))
-                if st.button("👁️ Ver Detalles (Mejor Ajuste)", key=f"view_best_adv_{best.get('id','')}"):
-                    st.session_state['view_project_id'] = best.get('id')
-                    st.rerun()
+
+                # CTA: Contactar arquitecto (mailto) y ver detalles
+                cta_col1, cta_col2 = st.columns([1,1])
+                with cta_col1:
+                    if st.button("👁️ Ver Detalles (Mejor Ajuste)", key=f"view_best_adv_{best.get('id','')}"):
+                        st.session_state['view_project_id'] = best.get('id')
+                        st.rerun()
+                with cta_col2:
+                    # Fallback robusto: intentar varias rutas para obtener email
+                    try:
+                        from urllib.parse import quote
+                        architect_id = best.get('architect_id')
+                        architect_name = best.get('architect_name') or best.get('architect_name','')
+                        arch_email = None
+                        # Seed arquitecto de prueba si falta architect_id (una sola vez por sesión)
+                        if not architect_id and not st.session_state.get('demo_arch_seeded'):
+                            try:
+                                from datetime import datetime
+                                from src.db import insert_architect, update_project_architect_id
+                                test_arch_id = "arch_test"
+                                test_email = "demo@archirapid.test"
+                                # Insertar arquitecto demo (idempotente)
+                                insert_architect({
+                                    'id': test_arch_id,
+                                    'name': 'Arquitecto Demo',
+                                    'email': test_email,
+                                    'phone': None,
+                                    'company': 'Demo Studio',
+                                    'nif': 'DEMOTEST',
+                                    'created_at': datetime.utcnow().isoformat()
+                                })
+                                # Actualizar proyecto
+                                update_project_architect_id(best.get('id'), test_arch_id)
+                                st.session_state['demo_arch_seeded'] = True
+                                architect_id = test_arch_id
+                            except Exception:
+                                pass
+                        # 1) Por ID si existe
+                        if architect_id:
+                            arch_email = get_architect_email_by_id(architect_id)
+                        # 2) Lookup por nombre en tabla architects
+                        if not arch_email and architect_name:
+                            try:
+                                import sqlite3
+                                from src.db import DB_PATH
+                                conn = sqlite3.connect(DB_PATH); cur = conn.cursor()
+                                row = cur.execute("SELECT email FROM architects WHERE name = ?", (architect_name,)).fetchone()
+                                conn.close()
+                                if row and row[0]:
+                                    arch_email = row[0]
+                            except Exception:
+                                pass
+                        # 3) Fallback genérico
+                        if not arch_email:
+                            arch_email = "contacto@archirapid.com"
+                        plot_title = selected_plot.get('title','Finca')
+                        subject = quote(f"Interés en proyecto '{best.get('title','Proyecto')}' para {plot_title}")
+                        body_lines = [
+                            "Hola,",
+                            f"Me interesa el proyecto '{best.get('title','')}'.",
+                            f"Parcela: {int(selected_plot.get('m2',0)):,} m² en {selected_plot.get('province','')}",
+                            f"Score de compatibilidad: {score}/100",
+                            "¿Podemos hablar/visitar opciones?",
+                            "Gracias."
+                        ]
+                        body = quote("\n".join(body_lines))
+                        mailto = f"mailto:{arch_email}?subject={subject}&body={body}"
+                        st.markdown(f"[✉️ Quiero este proyecto]({mailto})", unsafe_allow_html=False)
+                        if arch_email == "contacto@archirapid.com":
+                            st.caption("Se enviará tu interés al buzón general y lo derivaremos al arquitecto adecuado.")
+                        elif arch_email == "demo@archirapid.test":
+                            st.caption("Arquitecto demo asignado automáticamente para probar el flujo de contacto.")
+                    except Exception:
+                        st.caption("No se pudo generar el enlace de contacto")
+
+                # =============================
+                # Descargar reporte compatibilidad
+                # =============================
+                try:
+                    st.subheader("📄 Reporte de Compatibilidad")
+                    report_top = advanced_df.head(5)
+                    lines = ["REPORTE DE COMPATIBILIDAD AVANZADA", "Parcela: " + selected_plot.get('title','(sin título)'), ""]
+                    for _, row in report_top.iterrows():
+                        lines.append(f"- {row.get('title','Proyecto')} :: Score {int(row.get('score',0))}/100")
+                        expl = (row.get('explanation','')).split('\n')
+                        for exl in expl:
+                            if exl.strip():
+                                lines.append(f"    * {exl.strip()}")
+                        lines.append("")
+                    txt = "\n".join(lines)
+                    st.download_button("⬇️ Descargar (TXT)", data=txt, file_name="reporte_compatibilidad.txt", mime="text/plain")
+                    # HTML simple
+                    html_lines = [
+                        "<html><head><meta charset='utf-8'><style>body{font-family:Arial;} .score{font-weight:bold;} ul{margin-top:4px;} li{margin-bottom:2px;} .card{border:1px solid #ddd;padding:8px;border-radius:6px;margin-bottom:10px;} .title{font-size:14px;margin:0;}</style></head><body>",
+                        f"<h2>Reporte de Compatibilidad Avanzada</h2>",
+                        f"<p><strong>Parcela:</strong> {selected_plot.get('title','(sin título)')}</p>"
+                    ]
+                    for _, row in report_top.iterrows():
+                        html_lines.append("<div class='card'>")
+                        html_lines.append(f"<p class='title'>🏗️ {row.get('title','Proyecto')} <span class='score'>(Score {int(row.get('score',0))}/100)</span></p>")
+                        expl = (row.get('explanation','')).split('\n')
+                        html_lines.append("<ul>")
+                        for exl in expl:
+                            if exl.strip():
+                                html_lines.append(f"<li>{exl.strip()}</li>")
+                        html_lines.append("</ul>")
+                        html_lines.append("</div>")
+                    html_lines.append("</body></html>")
+                    html_content = "".join(html_lines)
+                    st.download_button("⬇️ Descargar (HTML)", data=html_content, file_name="reporte_compatibilidad.html", mime="text/html")
+                except Exception as e:
+                    st.caption(f"No se pudo generar el reporte: {e}")
+
+                # =============================
+                # Formulario: Enviar Propuesta Demo
+                # =============================
+                st.markdown("#### 📨 Enviar Propuesta (Demo)")
+                with st.form(key="form_propuesta_demo"):
+                    prop_price = st.number_input("Presupuesto estimado (€)", min_value=1000, max_value=1000000, value=int(best.get('price', 50000)) or 50000, step=1000)
+                    prop_message = st.text_area("Mensaje al propietario", value="Hola, puedo adaptar este proyecto a tu parcela optimizando tiempos y coste.")
+                    submitted = st.form_submit_button("Enviar Propuesta")
+                if submitted:
+                    try:
+                        from datetime import datetime
+                        import uuid
+                        from src.db import insert_proposal
+                        architect_id = best.get('architect_id') or 'arch_test'
+                        proposal_id = f"prop_{uuid.uuid4().hex[:8]}"
+                        insert_proposal({
+                            'id': proposal_id,
+                            'plot_id': selected_plot.get('id'),
+                            'architect_id': architect_id,
+                            'project_id': best.get('id'),
+                            'message': prop_message,
+                            'price': float(prop_price),
+                            'status': 'pending',
+                            'created_at': datetime.utcnow().isoformat()
+                        })
+                        st.success("Propuesta enviada correctamente ✅")
+                        st.session_state['refresh_proposals'] = True
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error enviando propuesta: {e}")
 
             # =====================================================
             # PROPUESTAS RECIBIDAS (Arquitectos → Propietario)
@@ -1691,6 +2185,65 @@ if page == 'Home':
             # Asegurar variable current_pid definida (ya establecida en sección anterior)
             current_pid_safe = selected_plot.get('id')
             df_proposals = get_proposals_for_plot(current_pid_safe) if current_pid_safe else pd.DataFrame([])
+            # Filtros de visibilidad
+            col_filters = st.columns(3)
+            with col_filters[0]:
+                hide_accepted = st.checkbox("Ocultar aceptadas", value=False)
+            with col_filters[1]:
+                hide_rejected = st.checkbox("Ocultar rechazadas", value=False)
+            with col_filters[2]:
+                show_only_pending = st.checkbox("Solo pendientes", value=False)
+            if show_only_pending:
+                hide_accepted = True; hide_rejected = True
+            # Aplicar filtros
+            if hide_accepted:
+                df_proposals = df_proposals[df_proposals['status'] != 'accepted']
+            if hide_rejected:
+                df_proposals = df_proposals[df_proposals['status'] != 'rejected']
+
+            # Resumen
+            if df_proposals.shape[0] > 0:
+                # Usar columnas legacy/nuevas para presupuesto
+                presup_col = 'price' if 'price' in df_proposals.columns else ('estimated_budget' if 'estimated_budget' in df_proposals.columns else None)
+                accepted_mask = df_proposals['status'] == 'accepted'
+                pending_mask = df_proposals['status'] == 'pending'
+                rejected_mask = df_proposals['status'] == 'rejected'
+                total_accepted = float(df_proposals.loc[accepted_mask, presup_col].sum()) if presup_col else 0
+                total_pending = int(pending_mask.sum())
+                total_rejected = int(rejected_mask.sum())
+                st.caption(f"Resumen: Pendientes {total_pending} | Aceptadas {accepted_mask.sum()} (€{int(total_accepted):,}) | Rechazadas {total_rejected}")
+
+                # Export CSV
+                try:
+                    # Enriquecer CSV con columna de tiempo de respuesta
+                    df_export = df_proposals.copy()
+                    response_times = []
+                    for idx, row in df_export.iterrows():
+                        if row.get('responded_at') and row.get('created_at'):
+                            try:
+                                from datetime import datetime
+                                created = datetime.fromisoformat(str(row['created_at']))
+                                responded = datetime.fromisoformat(str(row['responded_at']))
+                                delta = responded - created
+                                hours = delta.total_seconds() / 3600
+                                response_times.append(f"{hours:.1f} horas" if hours < 24 else f"{delta.days} días")
+                            except Exception:
+                                response_times.append('')
+                        else:
+                            response_times.append('')
+                    df_export['tiempo_respuesta'] = response_times
+                    csv_data = df_export.to_csv(index=False).encode('utf-8')
+                    st.download_button("⬇️ Exportar CSV", data=csv_data, file_name="propuestas.csv", mime="text/csv")
+                except Exception as e:
+                    st.caption(f"No se pudo exportar CSV: {e}")
+            # Normalizar nombres esperados (compatibilidad legacy vs nuevo):
+            legacy = set(df_proposals.columns)
+            # Mapear para UI
+            def _get_val(row, candidates, default='-'):
+                for c in candidates:
+                    if c in row and pd.notna(row[c]):
+                        return row[c]
+                return default
             
             if df_proposals.shape[0] == 0:
                 st.info("📭 No has recibido propuestas todavía")
@@ -1703,45 +2256,82 @@ if page == 'Home':
                         'accepted': '🟢',
                         'rejected': '🔴'
                     }
-                    
-                    with st.expander(f"{status_color.get(prop['status'], '📨')} {prop['architect_name']} - {prop['status'].upper()}", expanded=(prop['status']=='pending')):
+                    architect_label = _get_val(prop, ['architect_name','architect_id'],'(sin arquitecto)')
+                    with st.expander(f"{status_color.get(prop.get('status','pending'), '📨')} {architect_label} - {prop.get('status','?').upper()}", expanded=(prop.get('status')=='pending')):
                         col_arch, col_details = st.columns([1, 2])
                         
                         with col_arch:
-                            st.markdown(f"**👤 Arquitecto:** {prop['architect_name']}")
-                            if prop.get('architect_company'):
-                                st.caption(f"🏢 {prop['architect_company']}")
-                            st.caption(f"📧 {prop['architect_email']}")
+                            st.markdown(f"**👤 Arquitecto:** {architect_label}")
+                            email_val = _get_val(prop, ['architect_email'],'demo@archirapid.test')
+                            st.caption(f"📧 {email_val}")
                         
                         with col_details:
-                            st.metric("💰 Presupuesto", f"€{int(prop['estimated_budget']):,}")
-                            st.metric("📅 Plazo", f"{prop['deadline_days']} días")
+                            presupuesto = _get_val(prop, ['price','estimated_budget'], 0)
+                            st.metric("💰 Presupuesto", f"€{int(float(presupuesto)):,}")
+                            plazo = _get_val(prop, ['deadline_days'], 30)
+                            st.metric("📅 Plazo", f"{int(plazo)} días")
                         
                         st.markdown("**📝 Propuesta:**")
-                        st.write(prop['proposal_text'])
+                        texto = _get_val(prop, ['message','proposal_text'], '(sin texto)')
+                        st.write(texto)
                         
                         if prop.get('sketch_image_path') and os.path.exists(prop['sketch_image_path']):
                             st.image(prop['sketch_image_path'], caption="Boceto inicial", width='stretch')
                         
                         st.caption(f"📅 Recibida: {prop['created_at'][:10]}")
                         
-                        if prop['status'] == 'pending':
+                        from src.db import update_proposal_status
+                        if prop.get('status') == 'pending':
                             col_accept, col_reject = st.columns(2)
                             with col_accept:
-                                if st.button("✅ Aceptar Propuesta", key=f"accept_{prop['id']}", type="primary", width='stretch'):
+                                if st.button("✅ Aceptar Propuesta", key=f"accept_{prop['id']}"):
                                     update_proposal_status(prop['id'], 'accepted')
                                     st.success("✅ Propuesta aceptada. El arquitecto será notificado.")
                                     st.rerun()
                             with col_reject:
-                                if st.button("❌ Rechazar", key=f"reject_{prop['id']}", width='stretch'):
+                                if st.button("❌ Rechazar", key=f"reject_{prop['id']}"):
                                     update_proposal_status(prop['id'], 'rejected')
                                     st.info("Propuesta rechazada.")
                                     st.rerun()
-                        elif prop['status'] == 'accepted':
+                        elif prop.get('status') == 'accepted':
                             st.success("✅ Propuesta aceptada")
-                            st.caption(f"Respondida: {prop.get('responded_at', '')[:10]}")
+                            responded_at_str = str(prop.get('responded_at',''))[:10]
+                            st.caption(f"Respondida: {responded_at_str}")
+                            # Calcular tiempo de respuesta
+                            if prop.get('responded_at') and prop.get('created_at'):
+                                try:
+                                    from datetime import datetime
+                                    created = datetime.fromisoformat(str(prop['created_at']))
+                                    responded = datetime.fromisoformat(str(prop['responded_at']))
+                                    delta = responded - created
+                                    hours = delta.total_seconds() / 3600
+                                    if hours < 24:
+                                        st.caption(f"⏱️ Tiempo de respuesta: {hours:.1f} horas")
+                                    else:
+                                        days = delta.days
+                                        st.caption(f"⏱️ Tiempo de respuesta: {days} día{'s' if days > 1 else ''}")
+                                except Exception:
+                                    pass
                         else:
                             st.error("❌ Propuesta rechazada")
+                            responded_at_str = str(prop.get('responded_at',''))[:10]
+                            if responded_at_str:
+                                st.caption(f"Respondida: {responded_at_str}")
+                                # Calcular tiempo de respuesta
+                                if prop.get('responded_at') and prop.get('created_at'):
+                                    try:
+                                        from datetime import datetime
+                                        created = datetime.fromisoformat(str(prop['created_at']))
+                                        responded = datetime.fromisoformat(str(prop['responded_at']))
+                                        delta = responded - created
+                                        hours = delta.total_seconds() / 3600
+                                        if hours < 24:
+                                            st.caption(f"⏱️ Tiempo de respuesta: {hours:.1f} horas")
+                                        else:
+                                            days = delta.days
+                                            st.caption(f"⏱️ Tiempo de respuesta: {days} día{'s' if days > 1 else ''}")
+                                    except Exception:
+                                        pass
                 
             st.markdown("---")
             if st.button("Close preview"):
@@ -2212,6 +2802,11 @@ elif page == 'architects':
         
         # Obtener suscripción activa
         subscription = get_architect_subscription(arch_id)
+
+        # If user triggered create project full page, show it here and stop further rendering of tabs
+        if st.session_state.get('arch_create_project'):
+            render_create_project_page(arch_id, arch_name)
+            st.stop()
         
         # Si hay flag de refresh, asegurarse de recargar
         if st.session_state.get('subscription_refresh'):
@@ -2307,7 +2902,7 @@ elif page == 'architects':
         # NAVEGACIÓN TABS
         # ============================================================================
         # Navegación interna del arquitecto
-        tabs_options = ['📊 Mi Suscripción', '📂 Mis Proyectos', '🏡 Fincas Disponibles', '📨 Mis Propuestas']
+        tabs_options = ['📊 Mi Suscripción', '📂 Mis Proyectos', '🏡 Fincas Disponibles', '📨 Mis Propuestas', '🛠️ Servicios Solicitados']
         default_tab = st.session_state.get('default_arch_tab', '📊 Mi Suscripción')
         try:
             default_index = tabs_options.index(default_tab)
@@ -2385,6 +2980,7 @@ elif page == 'architects':
             if should_show_modal:
                 pending = st.session_state.get('pending_subscription')
                 if pending:
+                    from src.payment_simulator import payment_modal
                     payment_modal(
                         amount=pending['plan_data']['price'],
                         concept=f"Suscripción Plan {pending['plan_name']} - 1 mes",
@@ -2394,16 +2990,19 @@ elif page == 'architects':
                 # IMPORTANTE: No poner stop() aquí, dejar que fluya
         
         elif arch_tab == '📂 Mis Proyectos':
+            # Refuerzo quirúrgico: si no hay arch_id en session_state, redirigir a login/registro
+            if 'arch_id' not in st.session_state or not st.session_state['arch_id']:
+                st.warning("⚠️ Debes iniciar sesión como arquitecto para ver tu portfolio.")
+                st.session_state['default_arch_tab'] = '📂 Mis Proyectos'
+                st.session_state['arch_tab_radio'] = 0
+                st.rerun()
             # Clear default tab flag (llegamos al destino correcto)
             if 'default_arch_tab' in st.session_state:
                 del st.session_state['default_arch_tab']
-            
             st.subheader("🏗️ Portfolio de Proyectos")
-            
             # DEBUG: Mostrar estado subscription
             if st.session_state.get('subscription_refresh'):
                 st.info(f"🔄 Subscription recargada: {subscription is not None}")
-            
             # Check subscription
             if not subscription:
                 st.warning("⚠️ Necesitas una suscripción activa para gestionar tu portfolio")
@@ -2421,7 +3020,8 @@ elif page == 'architects':
                             # Limpiar cualquier modal de detalle abierto para evitar dialogs anidados
                             if st.session_state.get('view_project_id'):
                                 del st.session_state['view_project_id']
-                            st.session_state['show_project_modal'] = True
+                            # use page-level flow instead of @st.dialog: open full page create flow
+                            st.session_state['arch_create_project'] = True
                             st.rerun()
                     else:
                         # Aviso explícito (solicitado): guía para continuar por la pestaña superior
@@ -2429,10 +3029,8 @@ elif page == 'architects':
                         st.button("Ir a ‘📂 Mis Proyectos’", key="btn_hint_go_projects", help="Abre la sección donde podrás crear tu primer proyecto")
                         # Limpiar la marca para que en la siguiente navegación aparezca el botón con normalidad
                         del st.session_state['hide_new_project_once']
-                
-                # Get existing projects
-                projects_df = get_architect_projects(arch_id)
-                
+                # Get existing projects (siempre tras crear uno, se recarga y muestra)
+                projects_df = get_architect_projects(st.session_state['arch_id'])
                 if projects_df.shape[0] == 0:
                     st.info("📂 Aún no has subido proyectos. ¡Comienza tu portfolio!")
                     st.markdown("""
@@ -2445,7 +3043,6 @@ elif page == 'architects':
                 else:
                     # Grid de proyectos (3 columnas)
                     st.markdown(f"**{projects_df.shape[0]} proyecto(s) en tu portfolio**")
-                    
                     for idx in range(0, len(projects_df), 3):
                         cols = st.columns(3)
                         for col_idx, col in enumerate(cols):
@@ -2454,13 +3051,11 @@ elif page == 'architects':
                                 with col:
                                     # Card del proyecto
                                     st.markdown(f"### {proj['title']}")
-                                    
                                     # Mostrar foto principal si existe
                                     if proj.get('foto_principal') and os.path.exists(proj['foto_principal']):
                                         st.image(proj['foto_principal'], width='stretch')
                                     else:
                                         st.image("https://via.placeholder.com/300x200?text=Sin+Imagen", width='stretch')
-                                    
                                     # Specs
                                     spec_cols = st.columns(2)
                                     with spec_cols[0]:
@@ -2469,7 +3064,6 @@ elif page == 'architects':
                                     with spec_cols[1]:
                                         st.metric("🛏️ Hab", proj.get('habitaciones', '-'))
                                         st.caption(f"📐 {proj.get('plantas', '-')} plantas")
-                                    
                                     # Acciones
                                     act_col1, act_col2 = st.columns(2)
                                     with act_col1:
@@ -2481,18 +3075,16 @@ elif page == 'architects':
                                             delete_project(proj['id'])
                                             st.success("✅ Proyecto eliminado")
                                             st.rerun()
-                
                 # Gestor de modales arquitecto: asegurar exclusividad
                 show_create_flag = st.session_state.get('show_project_modal')
                 view_flag = st.session_state.get('view_project_id')
-                
                 # Si ambos están activos (condición inesperada) priorizar creación y limpiar vista
                 if show_create_flag and view_flag:
                     del st.session_state['view_project_id']
                     view_flag = None
-                
                 if show_create_flag:
-                    show_create_project_modal(arch_id, arch_name)
+                    # Backward compat (unlikely): create modal but recommend full page flow
+                    show_create_project_modal(st.session_state['arch_id'], st.session_state.get('arch_name','Arquitecto'))
                 elif view_flag:
                     project_data = get_project_by_id(view_flag)
                     if project_data:
@@ -2555,7 +3147,7 @@ elif page == 'architects':
                                 st.session_state['send_proposal_to'] = row['id']
                                 st.rerun()
         
-        else:  # Mis Propuestas
+        elif arch_tab == '📨 Mis Propuestas':
             st.subheader("📨 Propuestas Enviadas")
             
             conn = sqlite3.connect(DB_PATH)
@@ -2582,7 +3174,141 @@ elif page == 'architects':
                         st.caption(f"Enviada: {prop['created_at'][:10]}")
                         
                         if prop['status'] != 'pending':
-                            st.caption(f"Respondida: {prop.get('responded_at', '')[:10] if prop.get('responded_at') else 'N/A'}")
+                            responded_at_str = prop.get('responded_at', '')[:10] if prop.get('responded_at') else 'N/A'
+                            st.caption(f"Respondida: {responded_at_str}")
+                            # Calcular tiempo de respuesta
+                            if prop.get('responded_at') and prop.get('created_at'):
+                                try:
+                                    from datetime import datetime
+                                    created = datetime.fromisoformat(str(prop['created_at']))
+                                    responded = datetime.fromisoformat(str(prop['responded_at']))
+                                    delta = responded - created
+                                    hours = delta.total_seconds() / 3600
+                                    if hours < 24:
+                                        st.caption(f"⏱️ Tiempo de respuesta: {hours:.1f} horas")
+                                    else:
+                                        days = delta.days
+                                        st.caption(f"⏱️ Tiempo de respuesta: {days} día{'s' if days > 1 else ''}")
+                                except Exception:
+                                    pass
+        
+        elif arch_tab == '🛠️ Servicios Solicitados':
+            st.subheader('🛠️ Servicios Adicionales Solicitados')
+            st.caption('Cotiza servicios post-proyecto: dirección de obra, visados, modificaciones, etc.')
+            
+            from src.db import (
+                get_additional_services_by_architect,
+                update_additional_service_quote
+            )
+            
+            # Obtener servicios solicitados al arquitecto
+            services_df = get_additional_services_by_architect(arch_id)
+            
+            if services_df.shape[0] == 0:
+                st.info('📭 Aún no tienes solicitudes de servicios adicionales')
+                st.caption('💡 Los clientes pueden solicitar servicios después de aceptar tus propuestas')
+            else:
+                # Filtros
+                filter_status = st.selectbox(
+                    'Filtrar por estado:',
+                    ['Todos', 'Pendientes de cotizar', 'Cotizados', 'Aceptados', 'Rechazados']
+                )
+                
+                status_filter_map = {
+                    'Pendientes de cotizar': 'solicitado',
+                    'Cotizados': 'cotizado',
+                    'Aceptados': 'aceptado',
+                    'Rechazados': 'rechazado'
+                }
+                
+                filtered_df = services_df
+                if filter_status != 'Todos':
+                    filtered_df = services_df[services_df['status'] == status_filter_map[filter_status]]
+                
+                st.caption(f"📊 {len(filtered_df)} solicitudes encontradas")
+                st.markdown('---')
+                
+                # Mostrar servicios
+                for idx, serv in filtered_df.iterrows():
+                    with st.container():
+                        st.markdown('---')
+                        
+                        scol1, scol2 = st.columns([3, 1])
+                        
+                        with scol1:
+                            st.markdown(f"### {serv['service_type']}")
+                            st.caption(f"👤 Cliente: **{serv['client_name']}** ({serv['client_email']})")
+                            st.caption(f"📅 Solicitado: {serv['created_at'][:10]}")
+                            
+                            # Estado
+                            status_map = {
+                                'solicitado': ('⏳', 'Pendiente de tu cotización', 'orange'),
+                                'cotizado': ('💰', 'Cotizado - Esperando respuesta cliente', 'blue'),
+                                'aceptado': ('✅', 'Aceptado por cliente', 'green'),
+                                'rechazado': ('❌', 'Rechazado por cliente', 'red'),
+                                'completado': ('🎉', 'Servicio completado', 'green')
+                            }
+                            emoji, text, color = status_map.get(serv['status'], ('❓', 'Desconocido', 'gray'))
+                            st.markdown(f"**Estado:** :{color}[{emoji} {text}]")
+                        
+                        with scol2:
+                            if serv['status'] in ['cotizado', 'aceptado', 'completado']:
+                                st.metric('💰 Tu Ingreso', f"€{serv['price']:,.0f}")
+                                st.caption(f"Total cliente: €{serv['total_cliente']:,.0f}")
+                                if serv['paid']:
+                                    st.success('✅ Pagado')
+                        
+                        # Descripción del servicio
+                        with st.expander('📝 Ver descripción del cliente', expanded=(serv['status'] == 'solicitado')):
+                            st.write(serv['description'])
+                        
+                        # Formulario de cotización (solo si está en estado 'solicitado')
+                        if serv['status'] == 'solicitado':
+                            with st.expander('💰 Cotizar Servicio', expanded=True):
+                                with st.form(f'quote_form_{serv["id"]}'):
+                                    st.caption('Define el precio de tu servicio. La comisión se calculará automáticamente.')
+                                    
+                                    # Precio del servicio
+                                    quote_price = st.number_input(
+                                        'Precio del Servicio (€)',
+                                        min_value=0.0,
+                                        value=5000.0,
+                                        step=100.0,
+                                        help='Tu ingreso neto por este servicio'
+                                    )
+                                    
+                                    # Obtener tasa de comisión de la suscripción
+                                    commission_rate = subscription['commission_rate'] if subscription else 0.12
+                                    
+                                    # Calcular totales
+                                    commission = quote_price * commission_rate
+                                    total_cliente = quote_price + commission
+                                    
+                                    st.markdown('---')
+                                    st.caption(f"**Tu ingreso neto:** €{quote_price:,.0f}")
+                                    st.caption(f"**Comisión ARCHIRAPID ({commission_rate*100:.0f}%):** +€{commission:,.0f}")
+                                    st.markdown(f"**TOTAL CLIENTE:** €{total_cliente:,.0f}")
+                                    
+                                    submit_quote = st.form_submit_button('📤 Enviar Cotización', type='primary')
+                                    
+                                    if submit_quote:
+                                        update_additional_service_quote(serv['id'], quote_price, commission_rate)
+                                        st.success(f'✅ Cotización enviada al cliente')
+                                        st.info('💡 El cliente recibirá tu cotización y podrá aceptarla o rechazarla')
+                                        time.sleep(2)
+                                        st.rerun()
+                        
+                        # Mostrar desglose si ya está cotizado
+                        elif serv['status'] in ['cotizado', 'aceptado', 'completado']:
+                            with st.expander('💵 Ver desglose de cotización'):
+                                st.caption(f"**Tu ingreso neto:** €{serv['price']:,.0f}")
+                                st.caption(f"**Comisión ARCHIRAPID:** +€{serv['commission']:,.0f}")
+                                st.markdown(f"**TOTAL CLIENTE:** €{serv['total_cliente']:,.0f}")
+                                
+                                if serv['quoted_at']:
+                                    st.caption(f"📅 Cotizado el: {serv['quoted_at'][:10]}")
+                                if serv['accepted_at']:
+                                    st.caption(f"✅ Aceptado el: {serv['accepted_at'][:10]}")
 
 elif page == 'clientes':
     from src.client_manager import ClientManager
@@ -2751,7 +3477,7 @@ elif page == 'clientes':
                 st.markdown('---')
                 
                 # Tabs del panel cliente
-                client_tab = st.radio('', ['📊 Mi Perfil', '📨 Propuestas Recibidas', '🗺️ Buscar Fincas'], horizontal=True, key='client_tab_radio')
+                client_tab = st.radio('', ['📊 Mi Perfil', '📨 Propuestas Recibidas', '�️ Servicios Adicionales', '�🗺️ Buscar Fincas'], horizontal=True, key='client_tab_radio')
                 
                 if client_tab == '📊 Mi Perfil':
                     col1, col2 = st.columns(2)
@@ -2966,7 +3692,193 @@ elif page == 'clientes':
                                     time.sleep(3)
                                     st.rerun()
                 
-                elif client_tab == '🗺️ Buscar Fincas':
+                elif client_tab == '�️ Servicios Adicionales':
+                    st.subheader('🛠️ Solicitar Servicios Post-Proyecto')
+                    st.caption('Dirección de obra, visados, modificaciones y más servicios para tus proyectos aceptados')
+                    
+                    # Importar funciones de servicios adicionales
+                    from src.db import (
+                        get_additional_services_by_client, 
+                        insert_additional_service,
+                        update_additional_service_status
+                    )
+                    
+                    # Obtener propuestas aceptadas del cliente (proyectos activos)
+                    accepted_proposals_df = get_client_proposals(client['email'])
+                    accepted_proposals_df = accepted_proposals_df[accepted_proposals_df['status'] == 'accepted']
+                    
+                    if accepted_proposals_df.shape[0] == 0:
+                        st.info('📭 Aún no tienes proyectos aceptados')
+                        st.caption('💡 Primero debes aceptar una propuesta de arquitecto en la sección "📨 Propuestas Recibidas"')
+                    else:
+                        st.markdown('---')
+                        
+                        # Formulario para solicitar nuevo servicio
+                        with st.expander('➕ Solicitar Nuevo Servicio', expanded=False):
+                            with st.form('solicitar_servicio_form'):
+                                st.caption('Selecciona el proyecto y tipo de servicio que necesitas')
+                                
+                                # Selector de proyecto
+                                project_options = {}
+                                for idx, prop in accepted_proposals_df.iterrows():
+                                    label = f"{prop.get('project_title', 'Proyecto personalizado')} - {prop['architect_name']}"
+                                    project_options[label] = prop
+                                
+                                selected_project_label = st.selectbox('Proyecto', list(project_options.keys()))
+                                selected_proposal = project_options[selected_project_label]
+                                
+                                # Tipo de servicio
+                                service_type = st.selectbox(
+                                    'Tipo de Servicio',
+                                    [
+                                        '🏗️ Dirección de Obra',
+                                        '📋 Visado Colegial',
+                                        '📐 Modificaciones de Proyecto',
+                                        '🏛️ Tramitación de Licencias',
+                                        '🎨 Renders Adicionales',
+                                        '📄 Documentación Técnica Extra'
+                                    ]
+                                )
+                                
+                                # Descripción
+                                description = st.text_area(
+                                    'Descripción del servicio',
+                                    placeholder='Describe con detalle qué necesitas...',
+                                    height=100
+                                )
+                                
+                                submit_service = st.form_submit_button('📤 Enviar Solicitud', type='primary')
+                                
+                                if submit_service:
+                                    if not description.strip():
+                                        st.error('❌ Por favor describe el servicio que necesitas')
+                                    else:
+                                        # Crear registro de servicio adicional
+                                        service_id = str(uuid.uuid4())
+                                        service_data = {
+                                            'id': service_id,
+                                            'proposal_id': selected_proposal['id'],
+                                            'client_id': client['id'],
+                                            'architect_id': selected_proposal['architect_id'],
+                                            'service_type': service_type,
+                                            'description': description,
+                                            'status': 'solicitado',
+                                            'created_at': datetime.now().isoformat(),
+                                            'price': 0,
+                                            'commission': 0,
+                                            'total_cliente': 0,
+                                            'paid': 0
+                                        }
+                                        
+                                        insert_additional_service(service_data)
+                                        st.success(f'✅ Solicitud enviada a {selected_proposal["architect_name"]}')
+                                        st.info('💡 El arquitecto recibirá tu solicitud y te enviará una cotización pronto')
+                                        time.sleep(2)
+                                        st.rerun()
+                        
+                        st.markdown('---')
+                        st.subheader('📋 Mis Solicitudes de Servicios')
+                        
+                        # Obtener servicios adicionales del cliente
+                        services_df = get_additional_services_by_client(client['id'])
+                        
+                        if services_df.shape[0] == 0:
+                            st.info('📭 No has solicitado servicios adicionales todavía')
+                        else:
+                            # Mostrar servicios
+                            for idx, serv in services_df.iterrows():
+                                with st.container():
+                                    st.markdown('---')
+                                    
+                                    scol1, scol2 = st.columns([3, 1])
+                                    
+                                    with scol1:
+                                        st.markdown(f"### {serv['service_type']}")
+                                        st.caption(f"👤 Arquitecto: **{serv['architect_name']}**")
+                                        st.caption(f"📅 Solicitado: {serv['created_at'][:10]}")
+                                        
+                                        # Estado
+                                        status_map = {
+                                            'solicitado': ('⏳', 'Pendiente de cotización', 'orange'),
+                                            'cotizado': ('💰', 'Cotizado - Esperando tu respuesta', 'blue'),
+                                            'aceptado': ('✅', 'Aceptado - En proceso', 'green'),
+                                            'rechazado': ('❌', 'Rechazado', 'red'),
+                                            'completado': ('🎉', 'Completado', 'green')
+                                        }
+                                        emoji, text, color = status_map.get(serv['status'], ('❓', 'Desconocido', 'gray'))
+                                        st.markdown(f"**Estado:** :{color}[{emoji} {text}]")
+                                    
+                                    with scol2:
+                                        if serv['status'] == 'cotizado':
+                                            st.metric('💰 Precio Total', f"€{serv['total_cliente']:,.0f}")
+                                        elif serv['status'] == 'aceptado':
+                                            if serv['paid']:
+                                                st.success('✅ Pagado')
+                                            else:
+                                                st.warning('⏳ Pago pendiente')
+                                    
+                                    # Descripción
+                                    with st.expander('📝 Ver descripción'):
+                                        st.write(serv['description'])
+                                    
+                                    # Si está cotizado, mostrar desglose y permitir aceptar/rechazar
+                                    if serv['status'] == 'cotizado':
+                                        with st.expander('💵 Ver desglose económico', expanded=True):
+                                            st.caption(f"**Precio del servicio:** €{serv['price']:,.0f}")
+                                            st.caption(f"**Comisión ARCHIRAPID:** +€{serv['commission']:,.0f}")
+                                            st.markdown(f"**TOTAL A PAGAR:** €{serv['total_cliente']:,.0f}")
+                                        
+                                        bcol1, bcol2 = st.columns(2)
+                                        with bcol1:
+                                            if st.button(f"✅ Aceptar Cotización", key=f"accept_service_{serv['id']}", type='primary'):
+                                                update_additional_service_status(serv['id'], 'aceptado')
+                                                st.session_state['pending_payment_service'] = serv['id']
+                                                st.success('✅ Cotización aceptada. Procede al pago...')
+                                                time.sleep(1)
+                                                st.rerun()
+                                        
+                                        with bcol2:
+                                            if st.button(f"❌ Rechazar", key=f"reject_service_{serv['id']}"):
+                                                update_additional_service_status(serv['id'], 'rechazado')
+                                                st.info('Cotización rechazada')
+                                                time.sleep(1)
+                                                st.rerun()
+                        
+                        # Modal de pago para servicio aceptado
+                        if st.session_state.get('pending_payment_service'):
+                            from src.payment_simulator import payment_modal
+                            
+                            pending_service_id = st.session_state['pending_payment_service']
+                            pending_service = services_df[services_df['id'] == pending_service_id].iloc[0] if pending_service_id in services_df['id'].values else None
+                            
+                            if pending_service is not None:
+                                payment_modal(
+                                    amount=pending_service['total_cliente'],
+                                    concept=f"Servicio adicional: {pending_service['service_type']}",
+                                    buyer_name=client['name'],
+                                    buyer_email=client['email']
+                                )
+                                
+                                # Si el pago se completó
+                                if st.session_state.get('payment_completed'):
+                                    from src.payment_simulator import show_payment_success
+                                    from src.db import mark_additional_service_paid
+                                    
+                                    st.success('🎉 ¡Pago procesado exitosamente!')
+                                    show_payment_success(st.session_state.get('last_payment'), download_receipt=True)
+                                    
+                                    # Marcar servicio como pagado
+                                    mark_additional_service_paid(pending_service_id)
+                                    
+                                    # Limpiar flags
+                                    del st.session_state['pending_payment_service']
+                                    st.session_state['payment_completed'] = False
+                                    st.session_state['last_payment'] = None
+                                    
+                                    time.sleep(2)
+                                    st.rerun()
+                
+                elif client_tab == '�🗺️ Buscar Fincas':
                     st.info('🗺️ Redirigiendo al mapa de fincas...')
                     if st.button('Ir al Mapa', type='primary'):
                         st.query_params.update(page='Home')

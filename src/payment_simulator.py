@@ -12,9 +12,6 @@ import io
 import uuid
 from src.utils_validation import first_error, file_size_ok, validate_email
 from src.logger import log
-
-
-@st.dialog("💳 Checkout - Pago Seguro", width="small")
 def payment_modal(amount, concept, buyer_name="", buyer_email=""):
     """
     Modal de pago con formulario amplio y profesional

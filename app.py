@@ -1801,7 +1801,7 @@ if theme_choice == 'Oscuro':
     st.markdown(DARK_CSS, unsafe_allow_html=True)
 
 # Navigation bar (styled buttons — safe, does not change routing)
-qp_nav = st.experimental_get_query_params()
+qp_nav = st.query_params
 nav_raw = qp_nav.get('page', ['Home'])
 nav_raw = nav_raw[0] if isinstance(nav_raw, list) else nav_raw
 nav_norm = str(nav_raw).strip().lower() if nav_raw else 'home'

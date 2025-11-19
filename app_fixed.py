@@ -137,7 +137,7 @@ st.markdown("""
 </nav>
 """, unsafe_allow_html=True)
 
-qp = st.experimental_get_query_params()
+qp = st.query_params
 page = qp.get('page', ['Home'])[0]
 
 if page == 'Home':

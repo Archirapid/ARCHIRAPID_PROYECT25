@@ -1620,9 +1620,10 @@ if logo_data_uri:
         recent = get_recent_events(limit=50)
         has_errors = any(ev.get('level') == 'ERROR' for ev in recent)
         kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
-        kpi_col1.markdown(f"<div class='ar-card'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
-        kpi_col2.markdown(f"<div class='ar-card'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
-        kpi_col3.markdown(f"<div class='ar-card'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
+        # Use compact KPI cards for a slimmer look
+        kpi_col1.markdown(f"<div class='ar-card ar-card-sm'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
+        kpi_col2.markdown(f"<div class='ar-card ar-card-sm'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
+        kpi_col3.markdown(f"<div class='ar-card ar-card-sm'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
         if has_errors:
             kpi_col4.markdown("<div class='ar-card' style='background:#fef2f2;border-color:#fecaca'><h4>⚠️ Errores</h4><div class='ar-metric-value' style='color:#dc2626'>Sí</div></div>", unsafe_allow_html=True)
         else:
@@ -1644,9 +1645,9 @@ else:
         recent = get_recent_events(limit=50)
         has_errors = any(ev.get('level') == 'ERROR' for ev in recent)
         kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
-        kpi_col1.markdown(f"<div class='ar-card'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
-        kpi_col2.markdown(f"<div class='ar-card'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
-        kpi_col3.markdown(f"<div class='ar-card'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
+        kpi_col1.markdown(f"<div class='ar-card ar-card-sm'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
+        kpi_col2.markdown(f"<div class='ar-card ar-card-sm'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
+        kpi_col3.markdown(f"<div class='ar-card ar-card-sm'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
         if has_errors:
             kpi_col4.markdown("<div class='ar-card' style='background:#fef2f2;border-color:#fecaca'><h4>⚠️ Errores</h4><div class='ar-metric-value' style='color:#dc2626'>Sí</div></div>", unsafe_allow_html=True)
         else:
@@ -1665,6 +1666,9 @@ html, body, [class*='css'] { font-family: 'Inter', 'Segoe UI', system-ui, sans-s
 .ar-badge { display:inline-block; background:#eef2ff; color:#4338ca; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:500; }
 .ar-metric { display:flex; align-items:center; gap:10px; }
 .ar-metric-value { font-size:20px; font-weight:600; color:#111827; }
+.ar-card-sm { padding: 6px 10px; border-radius: 10px; }
+.ar-card-sm h4 { font-size:12px; margin:0 0 6px 0; }
+.ar-card-sm .ar-metric-value { font-size:13px; font-weight:700; color:#0f172a; }
 .ar-btn-primary { background:#4f46e5; color:#fff; padding:10px 18px; border-radius:8px; text-decoration:none; display:inline-block; font-weight:600; }
 .ar-btn-primary:hover { background:#4338ca; }
 @media (max-width: 900px){ .ar-responsive-hide { display:none !important; } }
@@ -1677,6 +1681,12 @@ html { scroll-behavior:smooth; }
  .level-WARN { color:#d97706; font-weight:600; }
  .level-INFO { color:#2563eb; }
  .level-DEBUG { color:#64748b; }
+/* NAV buttons */
+.ar-nav-btn { display:inline-flex; align-items:center; gap:8px; padding:6px 12px; margin-right:8px; background:#fff; border:1px solid #e6edf3; border-radius:10px; text-decoration:none; color:#0f172a; font-weight:600; }
+.ar-nav-btn:hover{ background:#f1f5ff; transform:translateY(-1px); }
+.ar-nav-btn.active{ background:#4f46e5; color:#fff; border-color:#4f46e5; }
+/* Search compact */
+.filter-row input[type="text"] { font-size:14px !important; padding:6px 10px !important; }
 </style>
 """
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
@@ -1790,17 +1800,39 @@ if theme_choice == 'Oscuro':
     """
     st.markdown(DARK_CSS, unsafe_allow_html=True)
 
-# Navigation bar
-st.markdown("""
-<nav style='background:#f8f9fa;padding:8px;border-radius:6px;margin-bottom:12px;'>
-  <a href='/?page=Home' style='margin-right:12px;'>🏠 Inicio</a>
-  <a href='/?page=plots' style='margin-right:12px;'>🏡 Registro Fincas</a>
-  <a href='/?page=architects' style='margin-right:12px;'>🏛️ Arquitectos</a>
-  <a href='/?page=constructores' style='margin-right:12px;'>🏗️ Constructores</a>
-  <a href='/?page=clientes' style='margin-right:12px;'>👤 Clientes</a>
-  <a href='/?page=servicios' style='margin-right:12px;'>⚙️ Servicios</a>
-</nav>
-""", unsafe_allow_html=True)
+# Navigation bar (styled buttons — safe, does not change routing)
+qp_nav = st.experimental_get_query_params()
+nav_raw = qp_nav.get('page', ['Home'])
+nav_raw = nav_raw[0] if isinstance(nav_raw, list) else nav_raw
+nav_norm = str(nav_raw).strip().lower() if nav_raw else 'home'
+if nav_norm in ['plots','plot','p','fincas']:
+    nav_active = 'plots'
+elif nav_norm in ['architects','architect','a','arquitectos']:
+    nav_active = 'architects'
+elif nav_norm in ['constructores','constructor','c']:
+    nav_active = 'constructores'
+elif nav_norm in ['clientes','cliente','cl']:
+    nav_active = 'clientes'
+elif nav_norm in ['servicios','servicio','s']:
+    nav_active = 'servicios'
+else:
+    nav_active = 'Home'
+
+nav_html = "<nav style='background:#f8f9fa;padding:8px;border-radius:6px;margin-bottom:12px;'>"
+cls = 'ar-nav-btn active' if nav_active == 'Home' else 'ar-nav-btn'
+nav_html += f"<a class='{cls}' href='/?page=Home'>🏠 Inicio</a>"
+cls = 'ar-nav-btn active' if nav_active == 'plots' else 'ar-nav-btn'
+nav_html += f"<a class='{cls}' href='/?page=plots'>🏡 Registro Fincas</a>"
+cls = 'ar-nav-btn active' if nav_active == 'architects' else 'ar-nav-btn'
+nav_html += f"<a class='{cls}' href='/?page=architects'>🏛️ Arquitectos</a>"
+cls = 'ar-nav-btn active' if nav_active == 'constructores' else 'ar-nav-btn'
+nav_html += f"<a class='{cls}' href='/?page=constructores'>🏗️ Constructores</a>"
+cls = 'ar-nav-btn active' if nav_active == 'clientes' else 'ar-nav-btn'
+nav_html += f"<a class='{cls}' href='/?page=clientes'>👤 Clientes</a>"
+cls = 'ar-nav-btn active' if nav_active == 'servicios' else 'ar-nav-btn'
+nav_html += f"<a class='{cls}' href='/?page=servicios'>⚙️ Servicios</a>"
+nav_html += "</nav>"
+st.markdown(nav_html, unsafe_allow_html=True)
 
 # =====================================================
 # ⏱️ PANEL RENDIMIENTO (Sidebar)
@@ -1881,8 +1913,9 @@ if page == 'Home':
     with col4:
         province = st.text_input("Provincia", value="", key="filter_province")
     
-    # Row 2
-    col5, col6, col7, col8 = st.columns(4)
+    # Row 2 (compact search input) -> adjust column widths, wrap in filter-row container for targeted CSS
+    st.markdown("<div class='filter-row'>", unsafe_allow_html=True)
+    col5, col6, col7, col8 = st.columns([1, 1, 0.7, 1.2])
     with col5:
         min_price = st.number_input("Min precio (€)", min_value=0, value=0, key="filter_min_price")
     with col6:
@@ -1891,6 +1924,7 @@ if page == 'Home':
         q = st.text_input("Buscar texto", "", key="filter_search_text")
     with col8:
         st.write("")  # Spacer
+    st.markdown("</div>", unsafe_allow_html=True)
     if st.button("📋 Registrar nueva finca", width='stretch'):
             st.query_params.update({"page": "plots"})
             st.rerun()

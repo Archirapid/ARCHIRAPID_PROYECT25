@@ -2459,7 +2459,13 @@ if page == 'Home':
                 # =============================
                 st.markdown("#### 📨 Enviar Propuesta (Demo)")
                 with st.form(key="form_propuesta_demo"):
-                    prop_price = st.number_input("Presupuesto estimado (€)", min_value=1000, max_value=1000000, value=int(best.get('price', 50000)) or 50000, step=1000)
+                    # Ensure default doesn't exceed max_value (Streamlit raises otherwise)
+                    try:
+                        default_price = int(best.get('price', 50000)) if best else 50000
+                    except Exception:
+                        default_price = 50000
+                    default_price = min(default_price, 1000000)
+                    prop_price = st.number_input("Presupuesto estimado (€)", min_value=1000, max_value=1000000, value=default_price, step=1000)
                     prop_message = st.text_area("Mensaje al propietario", value="Hola, puedo adaptar este proyecto a tu parcela optimizando tiempos y coste.")
                     submitted = st.form_submit_button("Enviar Propuesta")
                 if submitted:

@@ -1619,14 +1619,17 @@ if logo_data_uri:
     try:
         from src.db import cached_counts as counts_fn
         from src.logger import get_recent_events
+        # Compact KPIs toggle lets the user switch between normal and slim tiles
+        compact_kpis = st.sidebar.checkbox('Compact KPIs (slim view)', value=True, key='compact_kpis')
         k = counts_fn()
         recent = get_recent_events(limit=50)
         has_errors = any(ev.get('level') == 'ERROR' for ev in recent)
         kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
-        # Use compact KPI cards for a slimmer look
-        kpi_col1.markdown(f"<div class='ar-card ar-card-sm'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
-        kpi_col2.markdown(f"<div class='ar-card ar-card-sm'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
-        kpi_col3.markdown(f"<div class='ar-card ar-card-sm'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
+        # Use compact KPI cards for a slimmer look if toggled
+        card_class = 'ar-card ar-card-sm' if st.session_state.get('compact_kpis', True) else 'ar-card'
+        kpi_col1.markdown(f"<div class='{card_class}'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
+        kpi_col2.markdown(f"<div class='{card_class}'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
+        kpi_col3.markdown(f"<div class='{card_class}'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
         if has_errors:
             kpi_col4.markdown("<div class='ar-card' style='background:#fef2f2;border-color:#fecaca'><h4>⚠️ Errores</h4><div class='ar-metric-value' style='color:#dc2626'>Sí</div></div>", unsafe_allow_html=True)
         else:
@@ -1648,9 +1651,10 @@ else:
         recent = get_recent_events(limit=50)
         has_errors = any(ev.get('level') == 'ERROR' for ev in recent)
         kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
-        kpi_col1.markdown(f"<div class='ar-card ar-card-sm'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
-        kpi_col2.markdown(f"<div class='ar-card ar-card-sm'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
-        kpi_col3.markdown(f"<div class='ar-card ar-card-sm'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
+        card_class = 'ar-card ar-card-sm' if st.session_state.get('compact_kpis', True) else 'ar-card'
+        kpi_col1.markdown(f"<div class='{card_class}'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
+        kpi_col2.markdown(f"<div class='{card_class}'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
+        kpi_col3.markdown(f"<div class='{card_class}'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
         if has_errors:
             kpi_col4.markdown("<div class='ar-card' style='background:#fef2f2;border-color:#fecaca'><h4>⚠️ Errores</h4><div class='ar-metric-value' style='color:#dc2626'>Sí</div></div>", unsafe_allow_html=True)
         else:

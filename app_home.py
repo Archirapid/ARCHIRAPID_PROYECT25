@@ -50,7 +50,9 @@ def show_home():
                 st.session_state["selected_plot"] = val
                 # remove plot_id from URL to keep it clean
                 new_q = {k: v for k, v in qp.items() if k != "plot_id"}
-                st.experimental_set_query_params(**new_q)
+                # Use the stable query params API instead of experimental APIs to
+                # avoid mixing APIs that raises StreamlitAPIException.
+                st.query_params = new_q
                 try:
                     with open(os.path.join(BASE, 'debug_trace.log'), 'a', encoding='utf-8') as fh:
                         fh.write(f"app_home.show_home detected plot_id={val}\n")

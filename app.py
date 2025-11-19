@@ -3926,30 +3926,30 @@ elif page == 'clientes':
                         if st.button('🤖 Diseñar con IA', width='stretch'):
                             st.info('Selecciona primero una finca en el mapa')
 
-                # Mostrar fincas del propietario si los hay
-                st.markdown('---')
-                st.subheader('🏡 Mis Fincas')
-                try:
-                    conn = sqlite3.connect(DB_PATH)
-                    df_plots_owner = pd.read_sql_query("SELECT id, title, province, m2, price FROM plots WHERE owner_email = ? ORDER BY created_at DESC", conn, params=(client['email'],))
-                    conn.close()
-                except Exception:
-                    df_plots_owner = pd.DataFrame()
+                    # Mostrar fincas del propietario si los hay
+                    st.markdown('---')
+                    st.subheader('🏡 Mis Fincas')
+                    try:
+                        conn = sqlite3.connect(DB_PATH)
+                        df_plots_owner = pd.read_sql_query("SELECT id, title, province, m2, price FROM plots WHERE owner_email = ? ORDER BY created_at DESC", conn, params=(client['email'],))
+                        conn.close()
+                    except Exception:
+                        df_plots_owner = pd.DataFrame()
 
-                if df_plots_owner.shape[0] == 0:
-                    st.info('No tienes fincas registradas. Ve a "Registro Fincas" para añadir una.')
-                else:
-                    for idx, p in df_plots_owner.iterrows():
-                        with st.container():
-                            st.markdown('---')
-                            c1, c2 = st.columns([3, 1])
-                            with c1:
-                                st.markdown(f"### 🏷️ {p['title']} — {p['province']}")
-                                st.write(f"{int(p['m2']):,} m² • €{int(p['price']):,}")
-                            with c2:
-                                if st.button('🔍 Ver en Mapa', key=f"view_plot_{p['id']}"):
-                                    update_query_params(page='Home', plot_id=p['id'])
-                                    st.rerun()
+                    if df_plots_owner.shape[0] == 0:
+                        st.info('No tienes fincas registradas. Ve a "Registro Fincas" para añadir una.')
+                    else:
+                        for idx, p in df_plots_owner.iterrows():
+                            with st.container():
+                                st.markdown('---')
+                                c1, c2 = st.columns([3, 1])
+                                with c1:
+                                    st.markdown(f"### 🏷️ {p['title']} — {p['province']}")
+                                    st.write(f"{int(p['m2']):,} m² • €{int(p['price']):,}")
+                                with c2:
+                                    if st.button('🔍 Ver en Mapa', key=f"view_plot_{p['id']}"):
+                                        update_query_params(page='Home', plot_id=p['id'])
+                                        st.rerun()
                 
                 elif client_tab == '📨 Propuestas Recibidas':
                     st.subheader('📬 Propuestas de Arquitectos')

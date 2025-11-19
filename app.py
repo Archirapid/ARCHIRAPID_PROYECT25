@@ -2971,8 +2971,27 @@ elif page == 'plots':
                     
                     st.success(f'✅ Finca registrada correctamente usando **{coord_method}** para las coordenadas: {lat:.6f}, {lon:.6f}')
                     
-                    # Si eligió "Construir", auto-crear cuenta de cliente
-                    if purpose_value == 'construir':
+                    # Auto-crear cuenta de cliente para el propietario (si no existe)
+                    # Esta operación es segura y evita que propietarios no puedan acceder al portal clientes
+                    from src.client_manager import ClientManager
+                    cm = ClientManager(DB_PATH)
+                    existing_client = cm.get_client(email=owner_email)
+                    if existing_client:
+                        st.info(f"🔐 Puedes acceder al panel de clientes con tu email: {owner_email}")
+                    else:
+                        client_data = {
+                            'name': owner_name or owner_email,
+                            'email': owner_email,
+                            'phone': owner_phone or '',
+                            'address': f"{locality}, {province}" if locality else province
+                        }
+                        success, result = cm.register_client(client_data)
+                        if success:
+                            st.success('✅ Finca registrada y cuenta de propietario creada automáticamente')
+                            st.info(f"🔐 Accede al Panel de Clientes con: {owner_email}")
+                        else:
+                            # If registration fails due to duplicate or other DB error, just show info
+                            st.warning(f'⚠️ No se pudo crear automáticamente la cuenta del propietario: {result}')
                         from src.client_manager import ClientManager
                         cm = ClientManager(DB_PATH)
                         
@@ -3706,16 +3725,91 @@ elif page == 'clientes':
     else:
         tab_options = ['🔑 Acceso', '📝 Registro']
     
+    # Allow the user to choose which profile they want to use (Propietario / Constructor / Empresa / Servicios)
+    profile_types = ['Propietario', 'Constructor / Proveedor', 'Empresa / Comercial', 'Servicios']
+    profile_choice = st.selectbox('Entrar como:', profile_types, index=0)
+
+    # ⚡ UX: the tabs depend on whether the user is logged in as a client
     tab = st.radio('Seleccione una opción:', tab_options, horizontal=True)
     
     if tab == '📝 Registro':
         st.subheader('Crear nueva cuenta')
-        with st.form('registro_cliente_form'):
-            nombre = st.text_input('Nombre completo*')
-            email = st.text_input('Email*')
-            telefono = st.text_input('Teléfono')
-            direccion = st.text_input('Dirección')
-            submitted = st.form_submit_button('Registrar')
+        # Different registration flow per profile
+        if profile_choice == 'Propietario':
+            with st.form('registro_cliente_form'):
+                nombre = st.text_input('Nombre completo*')
+                email = st.text_input('Email*')
+                telefono = st.text_input('Teléfono')
+                direccion = st.text_input('Dirección')
+                submitted = st.form_submit_button('Registrar como Propietario')
+
+                if submitted:
+                    if not nombre or not email:
+                        st.error('Nombre y email son obligatorios')
+                    else:
+                        success, result = client_manager.register_client({
+                            'name': nombre,
+                            'email': email,
+                            'phone': telefono,
+                            'address': direccion
+                        })
+                        if success:
+                            st.success('✅ ¡Registro completado con éxito!')
+                            st.session_state['client_id'] = result
+                            st.session_state['client_name'] = nombre
+                            st.info(f'Tu ID de cliente: {result[:8]}...')
+                            st.balloons()
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f'❌ Error: {result}')
+        else:
+            # Contractor / Empresa / Servicios registration
+            from src.contractor_manager import ContractorManager
+            contractor_manager = ContractorManager(DB_PATH)
+            with st.form('registro_contractor_form'):
+                if profile_choice == 'Constructor / Proveedor':
+                    title_label = 'Registrar Constructor / Proveedor'
+                    category_default = 'Construcción General'
+                elif profile_choice == 'Empresa / Comercial':
+                    title_label = 'Registrar Empresa / Compañía'
+                    category_default = 'Empresa'
+                else:
+                    title_label = 'Registrar Proveedor de Servicios'
+                    category_default = 'Servicios'
+
+                st.subheader(title_label)
+                company = st.text_input('Nombre de la Empresa*')
+                contact = st.text_input('Nombre del Contacto*')
+                email = st.text_input('Email*')
+                phone = st.text_input('Teléfono')
+                category = st.text_input('Categoría', value=category_default)
+                description = st.text_area('Descripción (opcional)')
+                submitted = st.form_submit_button('Registrar')
+
+                if submitted:
+                    if not company or not contact or not email:
+                        st.error('Empresa, Contacto y Email son obligatorios')
+                    else:
+                        success, res = contractor_manager.register_contractor({
+                            'company_name': company,
+                            'contact_name': contact,
+                            'email': email,
+                            'phone': phone,
+                            'category': category,
+                            'specialty': None,
+                            'zone': None,
+                            'description': description
+                        })
+                        if success:
+                            st.success('✅ ¡Registro completado con éxito!')
+                            st.session_state['contractor_id'] = res
+                            st.session_state['contractor_email'] = email
+                            st.balloons()
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f'❌ Error: {res}')
             
             if submitted:
                 if not nombre or not email:
@@ -3731,6 +3825,7 @@ elif page == 'clientes':
                         st.success('✅ ¡Registro completado con éxito!')
                         st.session_state['client_id'] = result
                         st.session_state['client_name'] = nombre
+                        st.session_state['client_email'] = email
                         st.info(f'Tu ID de cliente: {result[:8]}...')
                         st.balloons()
                         time.sleep(1)
@@ -3757,17 +3852,56 @@ elif page == 'clientes':
         email_login = st.text_input('Email registrado', key='client_login_email', placeholder="ejemplo@email.com", value=prefilled_email)
         if st.button('🔓 Acceder', key='client_login_btn'):
             if email_login:
-                client = client_manager.get_client(email=email_login)
-                if client:
-                    st.success(f"✅ Bienvenido/a, {client['name']}")
-                    st.session_state['client_id'] = client['id']
-                    st.session_state['client_name'] = client['name']
-                    st.balloons()
-                    time.sleep(1)
-                    # Forzar recarga para mostrar el panel
-                    st.rerun()
+                # Branch based on selected profile
+                if profile_choice == 'Propietario':
+                    client = client_manager.get_client(email=email_login)
+                    if client:
+                        st.success(f"✅ Bienvenido/a, {client['name']}")
+                        st.session_state['client_id'] = client['id']
+                        st.session_state['client_name'] = client['name']
+                        st.session_state['client_email'] = client['email']
+                        st.balloons()
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        # If not found, check if there are plots for this email - if yes, create a minimal client account
+                        try:
+                            conn = sqlite3.connect(DB_PATH)
+                            df_plot = pd.read_sql_query("SELECT owner_name FROM plots WHERE owner_email = ? LIMIT 1", conn, params=(email_login,))
+                            conn.close()
+                        except Exception:
+                            df_plot = None
+
+                        if df_plot is not None and df_plot.shape[0] > 0:
+                            owner_name = df_plot.iloc[0]['owner_name'] or email_login
+                            success, result = client_manager.register_client({'name': owner_name, 'email': email_login, 'phone': '', 'address': ''})
+                            if success:
+                                st.success('✅ Cuenta de propietario creada automáticamente.')
+                                st.session_state['client_id'] = result
+                                st.session_state['client_name'] = owner_name
+                                st.session_state['client_email'] = email_login
+                                st.balloons()
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Error creando cuenta de propietario: {result}")
+                        else:
+                            st.error('❌ Email no encontrado. Regístrate primero o verifica el email.')
+
                 else:
-                    st.error('❌ Email no encontrado en nuestra base de datos')
+                    # For other roles we use ContractorManager (constructors, services, company)
+                    from src.contractor_manager import ContractorManager
+                    cm = ContractorManager(DB_PATH)
+                    contractor = cm.get_contractor(email=email_login)
+                    if contractor:
+                        st.success(f"✅ Bienvenido/a, {contractor['contact_name']} ({contractor['company_name']})")
+                        st.session_state['contractor_id'] = contractor['id']
+                        st.session_state['contractor_email'] = contractor['email']
+                        st.balloons()
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error('❌ Email no encontrado. Regístrate primero como Constructor/Empresa/Servicio')
                     st.warning('⚠️ ¿Primera vez aquí? Ve a la pestaña "📝 Registro" para crear tu cuenta')
             else:
                 st.warning('⚠️ Introduce tu email')
@@ -3823,6 +3957,31 @@ elif page == 'clientes':
                     with acol3:
                         if st.button('🤖 Diseñar con IA', width='stretch'):
                             st.info('Selecciona primero una finca en el mapa')
+
+                # Mostrar fincas del propietario si los hay
+                st.markdown('---')
+                st.subheader('🏡 Mis Fincas')
+                try:
+                    conn = sqlite3.connect(DB_PATH)
+                    df_plots_owner = pd.read_sql_query("SELECT id, title, province, m2, price FROM plots WHERE owner_email = ? ORDER BY created_at DESC", conn, params=(client['email'],))
+                    conn.close()
+                except Exception:
+                    df_plots_owner = pd.DataFrame()
+
+                if df_plots_owner.shape[0] == 0:
+                    st.info('No tienes fincas registradas. Ve a "Registro Fincas" para añadir una.')
+                else:
+                    for idx, p in df_plots_owner.iterrows():
+                        with st.container():
+                            st.markdown('---')
+                            c1, c2 = st.columns([3, 1])
+                            with c1:
+                                st.markdown(f"### 🏷️ {p['title']} — {p['province']}")
+                                st.write(f"{int(p['m2']):,} m² • €{int(p['price']):,}")
+                            with c2:
+                                if st.button('🔍 Ver en Mapa', key=f"view_plot_{p['id']}"):
+                                    update_query_params(page='Home', plot_id=p['id'])
+                                    st.rerun()
                 
                 elif client_tab == '📨 Propuestas Recibidas':
                     st.subheader('📬 Propuestas de Arquitectos')

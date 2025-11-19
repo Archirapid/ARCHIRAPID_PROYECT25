@@ -3502,7 +3502,12 @@ elif page == 'architects':
                     status_emoji = {"pending": "⏳", "accepted": "✅", "rejected": "❌"}
                     with st.expander(f"{status_emoji.get(prop['status'], '📨')} {prop['plot_title']} - {prop['status'].upper()}", expanded=False):
                         st.write(f"**📍 Finca:** {prop['plot_title']}, {prop['province']}")
-                        st.write(f"**💰 Presupuesto:** €{int(prop['estimated_budget']):,}")
+                        budget_val = prop.get('estimated_budget') if prop.get('estimated_budget') is not None else 0
+                        try:
+                            budget_val = int(budget_val)
+                        except Exception:
+                            budget_val = 0
+                        st.write(f"**💰 Presupuesto:** €{budget_val:,}")
                         st.write(f"**📅 Plazo:** {prop['deadline_days']} días")
                         st.write(f"**📝 Propuesta:**")
                         st.write(prop['proposal_text'])

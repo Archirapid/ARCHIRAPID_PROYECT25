@@ -2992,44 +2992,7 @@ elif page == 'plots':
                         else:
                             # If registration fails due to duplicate or other DB error, just show info
                             st.warning(f'⚠️ No se pudo crear automáticamente la cuenta del propietario: {result}')
-                        from src.client_manager import ClientManager
-                        cm = ClientManager(DB_PATH)
-                        
-                        # Verificar si cliente ya existe
-                        existing_client = cm.get_client(email=owner_email)
-                        if existing_client:
-                            st.success(f'✅ Finca registrada con éxito. Ya tienes cuenta de cliente.')
-                            st.info(f"🔐 Puedes acceder al panel de clientes con tu email: {owner_email}")
-                        else:
-                            # Crear cliente
-                            client_data = {
-                                'name': owner_name,
-                                'email': owner_email,
-                                'phone': '',
-                                'address': f"{locality}, {province}" if locality else province
-                            }
-                            success, result = cm.register_client(client_data)
-                            if success:
-                                st.success(f'✅ Finca registrada y cuenta de cliente creada con éxito!')
-                                st.balloons()
-                                st.info(f"""
-                                **🎉 Tu cuenta está lista**
-                                
-                                **Email:** {owner_email}
-                                
-                                **Próximos pasos:**
-                                1. 📧 Accede al **Panel de Clientes** con tu email
-                                2. 📬 Recibe propuestas de arquitectos para tu proyecto
-                                3. 🏗️ O diseña tu propia casa con asistencia de IA
-                                
-                                **Opciones disponibles:**
-                                - 📋 **Recibir propuestas**: Los arquitectos podrán enviarte propuestas para tu finca
-                                - 🎨 **Diseñar tu casa**: Usa nuestro diseñador con IA que valida según los datos de tu finca
-                                - 📦 **Descargar proyectos**: Filtra proyectos compatibles (m², habitaciones, estilo) y descarga vistas previas
-                                """)
-                            else:
-                                st.warning(f'✅ Finca registrada. ⚠️ Error creando cuenta de cliente: {result}')
-                    else:
+                    if purpose_value == 'vender':
                         st.success('✅ Finca registrada con éxito para venta')
     else:
         st.title('Fincas Registradas')

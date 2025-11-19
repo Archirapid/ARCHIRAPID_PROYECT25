@@ -3,6 +3,7 @@ import io
 import json
 import base64
 from PIL import Image
+from src.query_params import get_query_params, set_query_params, update_query_params, clear_query_params
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
@@ -43,7 +44,7 @@ def show_home():
     # If a plot_id arrived directly to this page (e.g. from a folium popup link using window.top),
     # ensure session_state is set so the right-side preview opens.
     try:
-        qp = st.query_params
+        qp = get_query_params()
         if "plot_id" in qp and qp.get("plot_id"):
             val = qp.get("plot_id")[0] if isinstance(qp.get("plot_id"), (list, tuple)) else qp.get("plot_id")
             if val:
@@ -52,7 +53,7 @@ def show_home():
                 new_q = {k: v for k, v in qp.items() if k != "plot_id"}
                 # Use the stable query params API instead of experimental APIs to
                 # avoid mixing APIs that raises StreamlitAPIException.
-                st.query_params = new_q
+                set_query_params(new_q)
                 try:
                     with open(os.path.join(BASE, 'debug_trace.log'), 'a', encoding='utf-8') as fh:
                         fh.write(f"app_home.show_home detected plot_id={val}\n")
@@ -163,7 +164,7 @@ def show_home():
     with panel_col:
         # --- DEBUG INFO (temporary) ---
         st.markdown("**DEBUG**")
-        st.write("query_params:", st.query_params)
+        st.write("query_params:", get_query_params())
         st.write("session selected_plot:", st.session_state.get("selected_plot"))
         # show whether df_plots contains the selected id
         selid = st.session_state.get("selected_plot")

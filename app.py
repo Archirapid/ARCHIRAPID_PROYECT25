@@ -28,6 +28,9 @@ os.makedirs(UPLOADS, exist_ok=True)
 
 st.set_page_config(page_title="ARCHIRAPID MVP", layout="wide")
 
+# Use shared query param helpers to avoid mixing experimental & stable APIs.
+from src.query_params import get_query_params, set_query_params, update_query_params, clear_query_params
+
 def init_db():
     """Initialize database using centralized src.db module."""
     from src.db import ensure_tables
@@ -1801,7 +1804,7 @@ if theme_choice == 'Oscuro':
     st.markdown(DARK_CSS, unsafe_allow_html=True)
 
 # Navigation bar (styled buttons — safe, does not change routing)
-qp_nav = st.query_params
+qp_nav = get_query_params()
 nav_raw = qp_nav.get('page', ['Home'])
 nav_raw = nav_raw[0] if isinstance(nav_raw, list) else nav_raw
 nav_norm = str(nav_raw).strip().lower() if nav_raw else 'home'
@@ -1861,7 +1864,7 @@ def render_perf_panel():
 render_perf_panel()
 
 # Get current page from query params (robust resolver)
-raw_page = st.query_params.get('page', 'Home')
+raw_page = get_query_params().get('page', 'Home')
 if isinstance(raw_page, list):
     raw_page = raw_page[0]
 page = str(raw_page) if raw_page is not None else 'Home'
@@ -1926,7 +1929,7 @@ if page == 'Home':
         st.write("")  # Spacer
     st.markdown("</div>", unsafe_allow_html=True)
     if st.button("📋 Registrar nueva finca", width='stretch'):
-            st.query_params.update({"page": "plots"})
+            update_query_params(page="plots")
             st.rerun()
 
     st.markdown("---")  # Separator
@@ -1998,7 +2001,7 @@ if page == 'Home':
         map_data = st_folium(m, width="100%", height=650, key="folium_map")
 
     # detect incoming plot_id from URL (robust handling)
-    qp = st.query_params
+    qp = get_query_params()
     if "plot_id" in qp:
         plot_id_value = qp["plot_id"]
         if isinstance(plot_id_value, list):
@@ -2007,9 +2010,9 @@ if page == 'Home':
         # Limpiar parámetro sin forzar rerun (evita perder selección en ciclo siguiente)
         new_qp = {k: v for k, v in qp.items() if k != "plot_id"}
         if len(new_qp) > 0:
-            st.query_params.update(new_qp)
+            update_query_params(**new_qp)
         else:
-            st.query_params.clear()
+            clear_query_params()
 
     # Detect marker click from map
     if map_data and map_data.get("last_object_clicked") is not None:
@@ -2199,7 +2202,7 @@ if page == 'Home':
                     if st.button("🚀 IR AL PANEL DE CLIENTES", use_container_width=True, type="primary", key="goto_clients"):
                         st.session_state["page"] = "clientes"
                         try:
-                            st.query_params.update(page='clientes')
+                            _update_query_params(page='clientes')
                         except Exception:
                             pass
                         st.session_state["client_email_prefill"] = payment_data.get("buyer_email")
@@ -3799,7 +3802,7 @@ elif page == 'clientes':
                     acol1, acol2, acol3 = st.columns(3)
                     with acol1:
                         if st.button('🗺️ Ver Mapa Fincas', width='stretch'):
-                            st.query_params.update(page='Home')
+                            update_query_params(page='Home')
                             st.rerun()
                     
                     with acol2:
@@ -4184,7 +4187,7 @@ elif page == 'clientes':
                 elif client_tab == '�🗺️ Buscar Fincas':
                     st.info('🗺️ Redirigiendo al mapa de fincas...')
                     if st.button('Ir al Mapa', type='primary'):
-                        st.query_params.update(page='Home')
+                        update_query_params(page='Home')
                         st.rerun()
 
 
@@ -4326,7 +4329,7 @@ elif page == 'servicios':
         st.markdown('---')
         st.markdown('**¿Eres profesional del sector?**')
         if st.button('🏗️ Registra tu empresa'):
-            st.query_params.update(page='constructores')
+            update_query_params(page='constructores')
             st.rerun()
     else:
         st.success(f'📊 **{len(df)} servicios encontrados**')

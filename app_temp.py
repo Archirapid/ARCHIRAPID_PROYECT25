@@ -173,7 +173,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Get current page from query params
-page = st.query_params.get('page', ['Home'])[0]
+from src.query_params import get_query_params, set_query_params, update_query_params, clear_query_params
+page = get_query_params().get('page', ['Home'])[0]
 
 if page == 'Home':
     st.title('ARCHIRAPID — Home')

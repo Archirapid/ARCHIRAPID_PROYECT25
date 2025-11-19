@@ -1,5 +1,6 @@
 import streamlit as st
 from streamlit_folium import st_folium
+from src.query_params import get_query_params, set_query_params, update_query_params, clear_query_params
 import folium
 import pandas as pd
 import sqlite3
@@ -137,7 +138,7 @@ st.markdown("""
 </nav>
 """, unsafe_allow_html=True)
 
-qp = st.query_params
+qp = get_query_params()
 page = qp.get('page', ['Home'])[0]
 
 if page == 'Home':

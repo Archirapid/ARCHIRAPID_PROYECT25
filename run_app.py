@@ -21,7 +21,8 @@ st.markdown("""
 </nav>
 """, unsafe_allow_html=True)
 
-qp = st.query_params
+from src.query_params import get_query_params, set_query_params, update_query_params, clear_query_params
+qp = get_query_params()
 page = qp.get("page", ["home"])[0]
 
 arch_manager = ArchitectManager(DB_PATH, UPLOADS)

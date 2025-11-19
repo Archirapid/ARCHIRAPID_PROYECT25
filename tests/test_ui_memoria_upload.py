@@ -18,3 +18,8 @@ def test_memoria_field_present_in_code():
     assert 'Subir / Reemplazar Planos PDF' in source2 or 'Subir / Reemplazar Planos' in source2
     assert 'Subir / Reemplazar Memoria' in source2 or 'Subir / Reemplazar Memoria Técnica' in source2
     assert 'Modelo 3D' in source2 or 'Subir / Reemplazar Modelo 3D' in source2
+    # Ensure RV tab and RV uploader exist
+    assert 'Realidad Virtual' in source or 'Archivo Realidad Virtual' in source or 'Render RV' in source
+    assert '🕶️' in source2 or 'Subir / Reemplazar RV' in source2 or 'RV' in source2
+    # Ensure RV uploader accepts 360 image extensions
+    assert '.jpg' in source or '.png' in source or 'imagen 360' in source

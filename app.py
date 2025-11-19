@@ -84,6 +84,165 @@ def save_file(uploaded_file, prefix="file", max_size_mb=10, allowed_mime_types=N
     return path
 
 
+def resolve_asset_path(path: str) -> str | None:
+    """Resuelve rutas de assets guardadas en DB.
+
+    - Acepta rutas absolutas o relativas.
+    - Si no existe en disco, intenta resolver respecto a `BASE`.
+    - Normaliza separadores para Windows/Unix.
+    """
+    if not path:
+        return None
+    try:
+        # Si ya es absoluto y existe, devolvemos
+        if os.path.isabs(path):
+            return path if os.path.exists(path) else None
+
+        # Probamos la ruta relativa a la carpeta base del proyecto
+        candidate = os.path.join(BASE, path)
+        if os.path.exists(candidate):
+            return candidate
+
+        # Normalizar separadores y reevaluar (por si la DB guardó \ en Windows)
+        candidate_norm = os.path.join(BASE, path.replace('\\', os.sep).replace('/', os.sep))
+        if os.path.exists(candidate_norm):
+            return candidate_norm
+
+        # Finalmente tratar de devolver None si no existe
+        return None
+    except Exception:
+        return None
+
+
+def extract_glb_from_zip(zip_path: str, dest_dir: str = UPLOADS, max_file_size: int = 200 * 1024 * 1024, depth: int = 0) -> str | None:
+    """Extrae el primer archivo .glb seguro desde un zip a la carpeta `dest_dir`.
+
+    - Evita path traversal (solo nombres base)
+    - Limita tamaño de cada miembro a `max_file_size`
+    - Devuelve la ruta absoluta del .glb extraído o None si no hay .glb
+    """
+    import zipfile
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            # First pass: search direct .glb members
+            for info in z.infolist():
+                name = info.filename
+                # Skip directories
+                if name.endswith('/'):
+                    continue
+                # Only allow .glb
+                # If the member is a .glb, extract normally
+                if name.lower().endswith('.glb'):
+                    pass
+                else:
+                    # Some ZIPs incorrectly store a GLB with (.zip) extension
+                    # Read a little chunk and detect glb magic header (b'glTF')
+                    try:
+                        with z.open(info) as chk:
+                            head = chk.read(8)
+                        if head.startswith(b'glTF'):
+                            # Treat as glb even if the name endswith .zip
+                            # We will use the original base name but force .glb ext
+                            name = os.path.splitext(name)[0] + '.glb'
+                        else:
+                            continue
+                    except Exception:
+                        continue
+                # prevent absolute paths and traversal
+                base = os.path.basename(name)
+                if base != name and ('..' in name or ':' in name):
+                    continue
+                # Check file size (from zip info)
+                if info.file_size > max_file_size:
+                    continue
+                # Extract securely to dest_dir
+                out_path = os.path.join(dest_dir, f"project_model_{uuid.uuid4().hex}{os.path.splitext(base)[1]}")
+                with z.open(info) as member, open(out_path, 'wb') as out_f:
+                    # streaming copy
+                    while True:
+                        chunk = member.read(64 * 1024)
+                        if not chunk:
+                            break
+                        out_f.write(chunk)
+                return out_path
+            # Second pass: support nested zip (depth guard)
+            if depth < 1:
+                for info in z.infolist():
+                    name = info.filename
+                    if name.lower().endswith('.zip') and info.file_size <= max_file_size:
+                        # write nested zip to temp and recurse
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmpf:
+                            # stream copy
+                            with z.open(info) as member:
+                                while True:
+                                    chunk = member.read(64 * 1024)
+                                    if not chunk:
+                                        break
+                                    tmpf.write(chunk)
+                            tmpf.flush()
+                            tmpf_path = tmpf.name
+                        # Special-case: the nested member may be misnamed (e.g., .zip) but contain GLB bytes.
+                        try:
+                            with open(tmpf_path, 'rb') as fh:
+                                start = fh.read(8)
+                            if start.startswith(b'glTF'):
+                                # rename temporary file to glb and return
+                                new_glb = os.path.join(dest_dir, f"project_model_{uuid.uuid4().hex}.glb")
+                                with open(tmpf_path, 'rb') as fh, open(new_glb, 'wb') as out_f:
+                                    out_f.write(fh.read())
+                                try:
+                                    os.remove(tmpf_path)
+                                except Exception:
+                                    pass
+                                return new_glb
+                        except Exception:
+                            # ignore and continue with recursion
+                            pass
+                        # Recurse once
+                        extracted = extract_glb_from_zip(tmpf_path, dest_dir=dest_dir, max_file_size=max_file_size, depth=depth + 1)
+                        try:
+                            os.remove(tmpf_path)
+                        except Exception:
+                            pass
+                        if extracted:
+                            return extracted
+    except Exception:
+        return None
+    return None
+
+
+def _inspect_zip_for_glb(zip_path: str) -> dict:
+    """Devuelve diagnóstico simple sobre por qué no se encontró un .glb.
+
+    - Busca si existe glb directo
+    - Si encuentra miembros .zip, comprueba si su contenido comienza con b'glTF' (misnamed glb)
+    - Retorna dict con keys: found_glb(bool), found_misnamed_zip(list of names), members(list)
+    """
+    import zipfile, io, hashlib
+    data = {'found_glb': False, 'found_misnamed_zip': [], 'members': []}
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            for info in z.infolist():
+                if info.filename.endswith('/'):
+                    continue
+                data['members'].append({'name': info.filename, 'size': info.file_size})
+                if info.filename.lower().endswith('.glb'):
+                    data['found_glb'] = True
+                if info.filename.lower().endswith('.zip'):
+                    try:
+                        # Check first bytes of nested file
+                        with z.open(info) as inner_f:
+                            b = inner_f.read(8)
+                    except Exception:
+                        b = None
+                    if b and b.startswith(b'glTF'):
+                        data['found_misnamed_zip'].append(info.filename)
+    except Exception:
+        pass
+    return data
+
+
 # =====================================================
 # SUBSCRIPTION & PROPOSALS HELPERS
 # =====================================================
@@ -283,6 +442,7 @@ def render_create_project_page(architect_id: str, architect_name: str):
         foto_principal = st.file_uploader('🖼️ Foto Principal *', type=['jpg','jpeg','png'])
         galeria = st.file_uploader('📷 Galería Adicional', type=['jpg','jpeg','png'], accept_multiple_files=True)
         modelo_3d = st.file_uploader('🎮 Modelo 3D (.glb)', type=['glb'])
+        render_vr = st.file_uploader('🕶️ Archivo Realidad Virtual (VR - .zip / .mp4 / .webm / .jpg / .png / .glb)', type=['zip','mp4','webm','jpg','jpeg','png','glb'])
         memoria = st.file_uploader('📋 Memoria Técnica (PDF)', type=['pdf'])
 
         submitted = st.form_submit_button('✅ Crear Proyecto')
@@ -307,6 +467,7 @@ def render_create_project_page(architect_id: str, architect_name: str):
 
             memoria_path = save_file(memoria, 'project_memoria', max_size_mb=20, allowed_mime_types=['application/pdf']) if memoria else None
             modelo_path = save_file(modelo_3d, 'project_model', max_size_mb=50) if modelo_3d else None
+            render_vr_path = save_file(render_vr, 'project_vr', max_size_mb=200, allowed_mime_types=['application/zip','video/mp4','video/webm','image/jpeg','image/png','model/gltf-binary','application/octet-stream']) if render_vr else None
 
             project_id = str(uuid.uuid4())
             insert_project({
@@ -332,6 +493,7 @@ def render_create_project_page(architect_id: str, architect_name: str):
                 'foto_principal': foto_path,
                 'galeria_fotos': json.dumps(galeria_paths),
                 'modelo_3d_glb': modelo_path,
+                'render_vr': render_vr_path,
                 'planos_pdf': None,
                 'planos_dwg': None,
                 'memoria_pdf': memoria_path,
@@ -1019,6 +1181,7 @@ def show_create_project_modal(architect_id, architect_name):
         foto_principal = st.file_uploader("🖼️ Foto Principal*", type=['jpg', 'jpeg', 'png'], help="Imagen destacada del proyecto", key="foto_principal_uploader")
         galeria = st.file_uploader("📷 Galería Adicional", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="galeria_uploader")
         modelo_3d = st.file_uploader("🎮 Modelo 3D (.glb)", type=['glb'], help="Modelo 3D para visualización interactiva", key="modelo_3d_uploader")
+        render_vr = st.file_uploader("🕶️ Archivo Realidad Virtual (VR - .zip / .mp4 / .webm / .jpg / .png / .glb)", type=['zip','mp4','webm','jpg','jpeg','png','glb'], help="Sube tu paquete VR o video 360 o imagen 360 o modelo .glb", key="render_vr_uploader")
     with col_f2:
         planos_pdf = st.file_uploader("📄 Planos PDF", type=['pdf'], key="planos_pdf_uploader")
         planos_dwg = st.file_uploader("📐 Planos DWG/DXF", type=['dwg', 'dxf'], key="planos_dwg_uploader")
@@ -1052,6 +1215,10 @@ def show_create_project_modal(architect_id, architect_name):
                         planos_dwg_path = save_file(planos_dwg, "project_plans_dwg", max_size_mb=50) if planos_dwg else None
                         memoria_path = save_file(memoria, "project_memoria", max_size_mb=20, allowed_mime_types=['application/pdf']) if memoria else None
                         
+                        # Save RV file (zip / mp4 / webm / images) if provided
+                        render_vr_path = save_file(render_vr, "project_vr", max_size_mb=200,
+                                                  allowed_mime_types=['application/zip','video/mp4','video/webm','image/jpeg','image/png','model/gltf-binary','application/octet-stream']) if render_vr else None
+
                         # Create project
                         project_id = str(uuid.uuid4())
                         insert_project({
@@ -1077,6 +1244,7 @@ def show_create_project_modal(architect_id, architect_name):
                             'foto_principal': foto_path,
                             'galeria_fotos': json.dumps(galeria_paths),
                             'modelo_3d_glb': modelo_path,
+                            'render_vr': render_vr_path,
                             'planos_pdf': planos_pdf_path,
                             'planos_dwg': planos_dwg_path,
                             'memoria_pdf': memoria_path,
@@ -1123,7 +1291,7 @@ def show_project_detail_modal(project):
     st.caption(f"Por {project['architect_name']} • {project['created_at'][:10]}")
     
     # Tabs para organizar información
-    tab1, tab2, tab3, tab4 = st.tabs(["📸 Galería", "📊 Especificaciones", "📄 Documentación", "🎮 Modelo 3D"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📸 Galería", "📊 Especificaciones", "📄 Documentación", "🎮 Modelo 3D", "🕶️ RV"])
     
     with tab1:
         # Foto principal
@@ -1292,8 +1460,9 @@ def show_project_detail_modal(project):
                 pass
     
     with tab4:
-        if project.get('modelo_3d_glb') and os.path.exists(project['modelo_3d_glb']):
-            with open(project['modelo_3d_glb'], 'rb') as f:
+        model_glb_path = resolve_asset_path(project.get('modelo_3d_glb')) if project.get('modelo_3d_glb') else None
+        if model_glb_path:
+            with open(model_glb_path, 'rb') as f:
                 glb_data = f.read()
             
             import base64 as b64
@@ -1316,6 +1485,106 @@ def show_project_detail_modal(project):
             )
         else:
             st.info("🎮 No hay modelo 3D disponible")
+
+    # RV tab content (use the existing tabs created above)
+    with tab5:
+        path = resolve_asset_path(project.get('render_vr')) if project.get('render_vr') else None
+        if path:
+            ext = os.path.splitext(path)[1].lower()
+            if ext == '.glb':
+                # Show GLB inline using model-viewer (same as Modelo 3D)
+                try:
+                    with open(path, 'rb') as f:
+                        glb_data = f.read()
+                    import base64 as b64
+                    glb_b64 = b64.b64encode(glb_data).decode()
+                    st.components.v1.html(
+                        f"""
+                        <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+                        <model-viewer src="data:model/gltf-binary;base64,{glb_b64}" camera-controls auto-rotate style="width:100%;height:520px;" shadow-intensity=1></model-viewer>
+                        """,
+                        height=540,
+                    )
+                except Exception:
+                    st.info('No se pudo visualizar el .glb')
+            elif ext in ('.mp4', '.webm'):
+                st.video(path)
+            elif ext in ('.jpg', '.jpeg', '.png'):
+                # 360 viewer (pannellum) embedding
+                try:
+                    from base64 import b64encode
+                    raw = open(path, 'rb').read()
+                    encoded = b64encode(raw).decode('ascii')
+                    html = f"""
+                    <link rel='stylesheet' href='https://unpkg.com/pannellum@2.5.6/build/pannellum.css'/>
+                    <script src='https://unpkg.com/pannellum@2.5.6/build/pannellum.js'></script>
+                    <div id='panorama' style='width:100%; height:520px;'></div>
+                    <script>
+                        pannellum.viewer('panorama', {
+                            "type": "equirectangular",
+                            "panorama": "data:image/jpeg;base64,{encoded}",
+                            "autoLoad": true
+                        });
+                    </script>
+                    """
+                    st.components.v1.html(html, height=540)
+                except Exception:
+                    st.image(path, caption='🕶️ Imagen 360 (prueba)', use_column_width=True)
+            else:
+                with open(path, 'rb') as f:
+                    st.download_button(
+                        "🕶️ Descargar Recurso RV",
+                        f.read(),
+                        file_name=os.path.basename(path),
+                        width='stretch'
+                    )
+                    # If the resource is a zip, allow extracting a .glb as the 3D model safely
+                    if ext == '.zip':
+                        from src import db as src_db
+                        if st.button('🔧 Extraer .glb del ZIP y usar como Modelo 3D'):
+                            extracted = extract_glb_from_zip(path)
+                            if extracted:
+                                try:
+                                    src_db.update_project_fields(project['id'], {'modelo_3d_glb': extracted})
+                                    st.success('✅ .glb extraído y guardado como Modelo 3D')
+                                    st.experimental_rerun()
+                                except Exception as e:
+                                    st.error(f'Error al actualizar DB: {e}')
+                            else:
+                                # Provide diagnostics to user to understand failure
+                                diag = _inspect_zip_for_glb(path)
+                                if diag.get('found_misnamed_zip'):
+                                    st.error(f"El ZIP contiene miembros .zip que son en realidad .glb (misnamed): {', '.join(diag['found_misnamed_zip'])}. Pulsa 'Extraer .glb' de nuevo o descarga y sube directamente el .glb.")
+                                elif any(m['name'].lower().endswith('.zip') for m in diag.get('members', [])):
+                                    st.error('.glb no encontrado: el ZIP contiene zips anidados que no incluyen .glb (el zip interno puede estar protegido o ser otro formato). Descarga y revisa el contenido internamente.')
+                                else:
+                                    st.error('.glb no encontrado dentro del ZIP o el archivo excede tamaño máximo')
+        else:
+            st.info("🕶️ No hay recurso de Realidad Virtual disponible")
+
+        # Allow uploader to replace RV asset
+        try:
+            from src import db as src_db
+            rv_new = st.file_uploader(
+                f"🕶️ Subir / Reemplazar RV (.zip / .mp4 / .webm / .jpg / .png / .glb)",
+                type=['zip','mp4','webm','jpg','jpeg','png','glb'],
+                key=f"render_vr_upload_{project['id']}"
+            )
+            if rv_new:
+                with st.spinner("Guardando RV..."):
+                    rv_path = save_file(
+                        rv_new, "project_vr", max_size_mb=200,
+                        allowed_mime_types=['application/zip','video/mp4','video/webm','image/jpeg','image/png','model/gltf-binary','application/octet-stream']
+                    )
+                    src_db.update_project_fields(project['id'], {'render_vr': rv_path})
+                    try:
+                        get_all_projects_cached.clear()
+                    except Exception:
+                        pass
+                    st.success("🕶️ Recurso RV guardado correctamente")
+                    st.experimental_rerun()
+        except Exception:
+            pass
     
     if st.button("✅ Cerrar", type="primary"):
         st.session_state['view_project_id'] = None
@@ -1735,12 +2004,12 @@ if page == 'Home':
 
         # Allow upload / replacement of 3D model (.glb) from the project detail view
         try:
-            modelo_new = st.file_uploader("🎮 Subir / Reemplazar Modelo 3D (.glb)", type=['glb'], key=f"modelo3d_upload_{project['id']}")
+            modelo_new = st.file_uploader("🎮 Subir / Reemplazar Modelo 3D (.glb)", type=['glb'], key=f"modelo3d_upload_{selected_plot['id']}")
             if modelo_new:
                 with st.spinner("Guardando Modelo 3D..."):
                     model_path = save_file(modelo_new, "project_model", max_size_mb=200)
                     from src import db as src_db
-                    src_db.update_project_fields(project['id'], {'modelo_3d_glb': model_path})
+                    src_db.update_project_fields(selected_plot['id'], {'modelo_3d_glb': model_path})
                     try:
                         get_all_projects_cached.clear()
                     except Exception:

@@ -27,5 +27,6 @@
   "tests/test_payment_purchase.py": true,
   "tests/test_preflight_purge.py": true,
   "tests/test_validation_negative.py": true,
-  "tests/test_backup_FUNCIONA_PERFECTO.py::test_create_funciona_perfecto_backup": true
+  "tests/test_backup_FUNCIONA_PERFECTO.py::test_create_funciona_perfecto_backup": true,
+  "tests/test_ui_memoria_upload.py": true
 }

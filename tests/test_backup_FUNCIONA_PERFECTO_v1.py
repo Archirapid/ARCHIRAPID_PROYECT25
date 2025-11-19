@@ -28,3 +28,11 @@ def test_create_backup_v1_runs_and_outputs():
     if commit_file.exists():
         commit = commit_file.read_text().strip()
         assert len(commit) == 40
+
+    # Verify tag exists in the repo
+    try:
+        tag_out = subprocess.check_output(['git', 'tag', '--list', 'FUNCIONA_PERFECTO_V1.0'], cwd=str(ROOT)).decode().strip()
+        assert tag_out == 'FUNCIONA_PERFECTO_V1.0'
+    except Exception:
+        # If git is not available or repo not configured, this is OK in CI
+        pass

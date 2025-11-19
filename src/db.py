@@ -310,7 +310,7 @@ def update_project_fields(project_id: str, fields: Dict):
     allowed = {
         'title','architect_name','architect_id','area_m2','max_height','style','price','file_path','description',
         'm2_construidos','m2_parcela_minima','m2_parcela_maxima','habitaciones','banos','garaje','plantas','certificacion_energetica',
-        'tipo_proyecto','foto_principal','galeria_fotos','modelo_3d_glb','planos_pdf','planos_dwg','memoria_pdf'
+        'tipo_proyecto','foto_principal','galeria_fotos','modelo_3d_glb','render_vr','planos_pdf','planos_dwg','memoria_pdf'
     }
     set_pairs = []
     values = []

@@ -1,6 +1,10 @@
 #!/usr/bin/env pwsh
 # Script de restauración para FUNCIONA_PERFECTO_V1.0
 
+param(
+    [switch]$Test
+)
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
@@ -19,17 +23,25 @@ if (-not (Test-Path $backupZip)) {
     exit 1
 }
 
-Write-Host "⚠️  ADVERTENCIA: Esta operación sobrescribirá los archivos actuales en:" -ForegroundColor Yellow
-Write-Host "   $targetDir" -ForegroundColor White
-Write-Host ""
-$confirm = Read-Host "¿Desea continuar? (S/N)"
-if ($confirm -notmatch "^[Ss]$") {
-    Write-Host "❌ Restauración cancelada" -ForegroundColor Red
-    exit 0
+if (-not $Test) {
+    Write-Host "⚠️  ADVERTENCIA: Esta operación sobrescribirá los archivos actuales en:" -ForegroundColor Yellow
+    Write-Host "   $targetDir" -ForegroundColor White
+    Write-Host ""
+    $confirm = Read-Host "¿Desea continuar? (S/N)"
+    if ($confirm -notmatch "^[Ss]$") {
+        Write-Host "❌ Restauración cancelada" -ForegroundColor Red
+        exit 0
+    }
+} else {
+    Write-Host "🔬 Ejecutando RESTAURACIÓN EN MODO TEST (no se sobrescribirá)" -ForegroundColor Yellow
 }
 
 Write-Host "📦 Creando backup del estado actual antes de restaurar..." -ForegroundColor Yellow
-$preRestoreBackup = "D:\ARCHIRAPID_PROYECT25_PRE_RESTORE_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+if ($Test) {
+    $preRestoreBackup = "$env:TEMP\ARCHIRAPID_PRE_RESTORE_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+} else {
+    $preRestoreBackup = "D:\ARCHIRAPID_PROYECT25_PRE_RESTORE_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+}
 if (Test-Path $targetDir) {
     Copy-Item -Path $targetDir -Destination $preRestoreBackup -Recurse -Force
     Write-Host "✅ Backup previo creado en: $preRestoreBackup" -ForegroundColor Green
@@ -46,14 +58,22 @@ $filesToRestore = @("app.py", "requirements.txt", "archirapid_extract", "src", "
 foreach ($item in $filesToRestore) {
     $sourcePath = "$($actualBackupPath.FullName)\$item"
     if (Test-Path $sourcePath) {
-        Copy-Item -Path $sourcePath -Destination "$targetDir\" -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Host "  ✅ Restaurado: $item" -ForegroundColor Green
+        if ($Test) {
+            Write-Host "  (test) ✅ Encontrado: $item" -ForegroundColor Green
+        } else {
+            Copy-Item -Path $sourcePath -Destination "$targetDir\" -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "  ✅ Restaurado: $item" -ForegroundColor Green
+        }
     }
 }
 
 if (Test-Path "$($actualBackupPath.FullName)\data_BACKUP.db") {
-    Copy-Item "$($actualBackupPath.FullName)\data_BACKUP.db" -Destination "$targetDir\data.db" -Force
-    Write-Host "  ✅ Restaurado: data.db" -ForegroundColor Green
+    if ($Test) {
+        Write-Host "  (test) ✅ Encontrado: data_BACKUP.db" -ForegroundColor Green
+    } else {
+        Copy-Item "$($actualBackupPath.FullName)\data_BACKUP.db" -Destination "$targetDir\data.db" -Force
+        Write-Host "  ✅ Restaurado: data.db" -ForegroundColor Green
+    }
 }
 
 Remove-Item "$backupDir\temp_extract" -Recurse -Force

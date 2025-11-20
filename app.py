@@ -2164,7 +2164,21 @@ if page == 'Home':
             ).add_to(m)
 
     # --- 50/50 SPLIT: Map (left) + Preview Panel (right) ---
-    map_col, panel_col = st.columns([1, 1])
+    # Inicializar flag de expansión si no existe
+    if 'preview_expanded' not in st.session_state:
+        st.session_state['preview_expanded'] = False
+
+    # Resetear expansión al cambiar de finca seleccionada (para evitar estado inconsistente)
+    selected_plot_id = st.session_state.get('selected_plot')
+    if st.session_state.get('selected_plot_id') != selected_plot_id:
+        st.session_state['preview_expanded'] = False
+        st.session_state['selected_plot_id'] = selected_plot_id
+
+    # Layout condicional: normal [1,1], expandido [0,1] (mapa oculto)
+    if st.session_state['preview_expanded']:
+        map_col, panel_col = st.columns([0, 1])  # Mapa oculto, preview full-width
+    else:
+        map_col, panel_col = st.columns([1, 1])  # Normal: mapa y preview lado a lado
     with map_col:
         st.subheader("🗺️ Mapa Interactivo")
         map_data = st_folium(m, width="100%", height=650, key="folium_map")
@@ -2230,81 +2244,167 @@ if page == 'Home':
         if selected_plot is None:
             st.info("👈 Selecciona una finca en el mapa para ver detalles rápidos aquí.")
         else:
-            st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
-            # Fix: Mostrar placeholder si no hay imagen
-            img_path = selected_plot.get("image_path")
-            if img_path and os.path.exists(img_path):
-                st.image(img_path, width='stretch')
+            if st.session_state['preview_expanded']:
+                # Modo expandido: mostrar todo en full-width con secciones organizadas
+                # Botón para colapsar
+                if st.button("⬅️ Volver a Vista Normal", key="collapse_preview", type="secondary"):
+                    st.session_state['preview_expanded'] = False
+                    st.rerun()
+                
+                # Sección 1: Preview básico
+                with st.expander("📋 Preview de la Finca", expanded=True):
+                    st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
+                    img_path = selected_plot.get("image_path")
+                    if img_path and os.path.exists(img_path):
+                        st.image(img_path, width='stretch')
+                    else:
+                        plot_id = selected_plot.get('id', '')
+                        plot_idx = (hash(plot_id) % 3) + 1
+                        placeholder = f"assets/fincas/finca{plot_idx}_1.png"
+                        if os.path.exists(placeholder):
+                            st.image(placeholder, width='stretch', caption="Imagen de referencia")
+                        else:
+                            st.info("Imagen no disponible")
+                    st.markdown(f"**{selected_plot.get('description','-')}**")
+                    st.write(f"**Superficie:** {int(selected_plot.get('m2',0)):,} m²")
+                    st.write(f"**Precio:** €{int(selected_plot.get('price',0)):,}")
+                    st.write(f"**Tipo:** {selected_plot.get('type','-')}")
+                    st.write(f"**Ubicación:** {selected_plot.get('province','-')} / {selected_plot.get('locality','-')}")
+                
+                # Sección 2: Opciones de adquisición
+                with st.expander("💰 Opciones de Adquisición"):
+                    price = float(selected_plot.get("price", 0))
+                    col_res, col_buy = st.columns(2)
+                    with col_res:
+                        amount_reserve = price * 0.10
+                        st.metric("🔒 Reservar", f"{amount_reserve:,.2f} €", "10% del precio")
+                        if st.button("📝 Reservar Finca", key="btn_reserve_exp", width='stretch'):
+                            st.session_state['trigger_reserve_payment'] = True
+                            st.rerun()
+                    with col_buy:
+                        st.metric("✅ Comprar", f"{price:,.2f} €", "100% del precio")
+                        if st.button("🏡 Comprar Finca", key="btn_buy_exp", width='stretch', type="primary"):
+                            st.session_state['trigger_buy_payment'] = True
+                            st.rerun()
+                
+                # Sección 3: Proyectos compatibles
+                with st.expander("🏗️ Proyectos Compatibles"):
+                    projects = get_compatible_projects(selected_plot['m2'])
+                    if projects.shape[0] > 0:
+                        for _, proj in projects.iterrows():
+                            st.markdown(f"**{proj['title']}** - Score: {proj['match_score']}%")
+                            st.write(f"Arquitecto: {proj.get('architect_name', 'N/A')}")
+                            st.write(f"Precio: €{int(proj.get('price', 0)):,} | Área: {proj.get('m2_construidos', 0)} m²")
+                            if st.button(f"Ver Detalles {proj['id']}", key=f"view_proj_{proj['id']}"):
+                                st.session_state['view_project_id'] = proj['id']
+                                st.rerun()
+                            st.markdown("---")
+                    else:
+                        st.info("No hay proyectos compatibles encontrados.")
+                
+                # Sección 4: Evaluación avanzada
+                with st.expander("📊 Evaluación Avanzada de Compatibilidad"):
+                    current_pid = selected_plot.get('id')
+                    has_cache = bool(st.session_state.get('analysis_cache', {}).get(current_pid))
+                    if has_cache:
+                        show_analysis_modal_fullpage(current_pid)
+                    else:
+                        if st.button("🔍 Analizar Nota Catastral", key="analyze_exp", type="primary"):
+                            st.session_state['trigger_analysis'] = True
+                            st.rerun()
+                
+                # Sección 5: Propuestas de arquitectos
+                with st.expander("📨 Propuestas de Arquitectos"):
+                    proposals = get_proposals_for_plot(selected_plot['id'])
+                    if proposals.shape[0] > 0:
+                        for _, prop in proposals.iterrows():
+                            st.markdown(f"**{prop['architect_name']}** - {prop['created_at']}")
+                            st.write(f"Propuesta: {prop['proposal_text']}")
+                            st.write(f"Presupuesto: €{int(prop.get('estimated_budget', 0)):,}")
+                            st.markdown("---")
+                    else:
+                        st.info("No hay propuestas para esta finca aún.")
             else:
-                # Asignar placeholder basado en ID para consistencia visual
-                plot_id = selected_plot.get('id', '')
-                plot_idx = (hash(plot_id) % 3) + 1  # 1, 2 o 3
-                placeholder = f"assets/fincas/finca{plot_idx}_1.png"
-                if os.path.exists(placeholder):
-                    st.image(placeholder, width='stretch', caption="Imagen de referencia")
+                # Modo normal: preview compacto
+                # Botón para expandir a full-width
+                if st.button("🔍 Expandir Vista Completa", key="expand_preview", type="secondary"):
+                    st.session_state['preview_expanded'] = True
+                    st.rerun()
+                st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
+                # Fix: Mostrar placeholder si no hay imagen
+                img_path = selected_plot.get("image_path")
+                if img_path and os.path.exists(img_path):
+                    st.image(img_path, width='stretch')
                 else:
-                    st.info("Imagen no disponible")
+                    # Asignar placeholder basado en ID para consistencia visual
+                    plot_id = selected_plot.get('id', '')
+                    plot_idx = (hash(plot_id) % 3) + 1  # 1, 2 o 3
+                    placeholder = f"assets/fincas/finca{plot_idx}_1.png"
+                    if os.path.exists(placeholder):
+                        st.image(placeholder, width='stretch', caption="Imagen de referencia")
+                    else:
+                        st.info("Imagen no disponible")
 
-            st.markdown(f"**{selected_plot.get('description','-')}**")
-            st.write(f"**Superficie:** {int(selected_plot.get('m2',0)):,} m²")
-            st.write(f"**Precio:** €{int(selected_plot.get('price',0)):,}")
-            st.write(f"**Tipo:** {selected_plot.get('type','-')}")
-            st.write(f"**Ubicación:** {selected_plot.get('province','-')} / {selected_plot.get('locality','-')}")
+                st.markdown(f"**{selected_plot.get('description','-')}**")
+                st.write(f"**Superficie:** {int(selected_plot.get('m2',0)):,} m²")
+                st.write(f"**Precio:** €{int(selected_plot.get('price',0)):,}")
+                st.write(f"**Tipo:** {selected_plot.get('type','-')}")
+                st.write(f"**Ubicación:** {selected_plot.get('province','-')} / {selected_plot.get('locality','-')}")
 
-            # =====================================================
-            # 📄 NOTA CATASTRAL Y ANÁLISIS (antes de opciones pago)
-            # =====================================================
-            if selected_plot.get("registry_note_path") and os.path.exists(selected_plot.get("registry_note_path")):
+                # =====================================================
+                # 📄 NOTA CATASTRAL Y ANÁLISIS (antes de opciones pago)
+                # =====================================================
+                if selected_plot.get("registry_note_path") and os.path.exists(selected_plot.get("registry_note_path")):
+                    st.markdown("---")
+                    st.subheader("📄 Documentación Catastral")
+                    
+                    with open(selected_plot["registry_note_path"], 'rb') as f:
+                        registry_data = f.read()
+                    st.download_button(
+                        "📥 Descargar Nota Simple",
+                        data=registry_data,
+                        file_name=os.path.basename(selected_plot["registry_note_path"]),
+                        mime="application/pdf",
+                        width='stretch',
+                        type="secondary"
+                    )
+
+                    # Análisis automático
+                    st.markdown("**🔍 Análisis Inteligente**")
+                    current_pid = selected_plot.get('id')
+                    has_cache = bool(st.session_state.get('analysis_cache', {}).get(current_pid))
+                    
+                    if has_cache:
+                        if st.button("📊 VER RESULTADOS ANÁLISIS", key="view_results", type="primary", width='stretch'):
+                            show_analysis_modal(current_pid)
+                    else:
+                        if st.button("🔍 ANALIZAR NOTA CATASTRAL", key="analyze_catastral", type="primary", width='stretch'):
+                            st.session_state['trigger_analysis'] = True
+                            st.rerun()
+
                 st.markdown("---")
-                st.subheader("📄 Documentación Catastral")
+                st.subheader("💰 Opciones de Adquisición")
                 
-                with open(selected_plot["registry_note_path"], 'rb') as f:
-                    registry_data = f.read()
-                st.download_button(
-                    "📥 Descargar Nota Simple",
-                    data=registry_data,
-                    file_name=os.path.basename(selected_plot["registry_note_path"]),
-                    mime="application/pdf",
-                    width='stretch',
-                    type="secondary"
-                )
-
-                # Análisis automático
-                st.markdown("**🔍 Análisis Inteligente**")
-                current_pid = selected_plot.get('id')
-                has_cache = bool(st.session_state.get('analysis_cache', {}).get(current_pid))
+                price = float(selected_plot.get("price", 0))
                 
-                if has_cache:
-                    if st.button("📊 VER RESULTADOS ANÁLISIS", key="view_results", type="primary", width='stretch'):
-                        show_analysis_modal(current_pid)
-                else:
-                    if st.button("🔍 ANALIZAR NOTA CATASTRAL", key="analyze_catastral", type="primary", width='stretch'):
-                        st.session_state['trigger_analysis'] = True
+                col_res, col_buy = st.columns(2)
+                
+                # RESERVAR (10%)
+                with col_res:
+                    amount_reserve = price * 0.10
+                    st.metric("🔒 Reservar", f"{amount_reserve:,.2f} €", "10% del precio")
+                    
+                    if st.button("📝 Reservar Finca", key="btn_reserve", width='stretch'):
+                        st.session_state['trigger_reserve_payment'] = True
                         st.rerun()
-
-            st.markdown("---")
-            st.subheader("💰 Opciones de Adquisición")
-            
-            price = float(selected_plot.get("price", 0))
-            
-            col_res, col_buy = st.columns(2)
-            
-            # RESERVAR (10%)
-            with col_res:
-                amount_reserve = price * 0.10
-                st.metric("🔒 Reservar", f"{amount_reserve:,.2f} €", "10% del precio")
                 
-                if st.button("📝 Reservar Finca", key="btn_reserve", width='stretch'):
-                    st.session_state['trigger_reserve_payment'] = True
-                    st.rerun()
-            
-            # COMPRAR (100%)
-            with col_buy:
-                st.metric("✅ Comprar", f"{price:,.2f} €", "100% del precio")
-                
-                if st.button("🏡 Comprar Finca", key="btn_buy", width='stretch', type="primary"):
-                    st.session_state['trigger_buy_payment'] = True
-                    st.rerun()
+                # COMPRAR (100%)
+                with col_buy:
+                    st.metric("✅ Comprar", f"{price:,.2f} €", "100% del precio")
+                    
+                    if st.button("🏡 Comprar Finca", key="btn_buy", width='stretch', type="primary"):
+                        st.session_state['trigger_buy_payment'] = True
+                        st.rerun()
     
     # =====================================================
     # 🎯 POST-PAGO: CONFIRMACIÓN COMPLETA PARA TODOS

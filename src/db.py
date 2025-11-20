@@ -257,6 +257,13 @@ def insert_project(data: Dict):
             data.get('file_path'), data.get('description'), data['created_at']
         ))
 
+        # Record event for observability and tests
+        try:
+            from src.logger import log
+            log('project_created', project_id=data['id'], architect_id=data.get('architect_id'), title=data.get('title'))
+        except Exception:
+            pass
+
 def insert_payment(data: Dict):
     ensure_tables()
     with transaction() as c:

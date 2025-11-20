@@ -5,116 +5,190 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import pandas as pd
-import sqlite3
-import os
-import uuid
-from datetime import datetime
-import base64
-import json
-import sys
-import time
-from pathlib import Path
 from geopy.geocoders import Nominatim
+import os
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
+import base64
+import uuid
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# --- Query Param Helpers (must be before any usage) ---
+def update_query_params(**kwargs):
+    try:
+        st.experimental_set_query_params(**kwargs)
+    except Exception:
+        pass
+def get_query_params():
+    try:
+        return st.query_params
+    except Exception:
+        return {}
+import streamlit as st
+st.set_page_config(layout='wide')
 
-# Configuration
+def clear_query_params():
+    try:
+        st.experimental_set_query_params()
+    except Exception:
+        pass
+
+import sqlite3
+
 BASE = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE, "data.db")
 UPLOADS = os.path.join(BASE, "uploads")
 os.makedirs(UPLOADS, exist_ok=True)
 
-st.set_page_config(page_title="ARCHIRAPID MVP", layout="wide")
-
-# Use shared query param helpers to avoid mixing experimental & stable APIs.
-from src.query_params import get_query_params, set_query_params, update_query_params, clear_query_params
-
 def init_db():
-    """Initialize database using centralized src.db module."""
-    from src.db import ensure_tables
-    ensure_tables()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS plots (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            description TEXT,
+            lat REAL,
+            lon REAL,
+            m2 INTEGER,
+            height REAL,
+            price REAL,
+            type TEXT,
+            province TEXT,
+            locality TEXT,
+            owner_name TEXT,
+            owner_email TEXT,
+            image_path TEXT,
+            registry_note_path TEXT,
+            created_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS projects (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            architect_name TEXT,
+            architect_id TEXT,
+            area_m2 INTEGER,
+            max_height REAL,
+            style TEXT,
+            price REAL,
+            file_path TEXT,
+            description TEXT,
+            created_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS reservations (
+            id TEXT PRIMARY KEY,
+            plot_id TEXT,
+            buyer_name TEXT,
+            buyer_email TEXT,
+            amount REAL,
+            kind TEXT,
+            created_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS architects (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            email TEXT UNIQUE,
+            phone TEXT,
+            company TEXT,
+            nif TEXT,
+            created_at TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-def save_file(uploaded_file, prefix="file", max_size_mb=10, allowed_mime_types=None):
-    """
-    Guarda archivo uploaded con validaciones de seguridad.
-    
-    Args:
-        uploaded_file: Archivo de Streamlit file_uploader
-        prefix: Prefijo para nombre del archivo
-        max_size_mb: Tamaño máximo en MB (default 10MB)
-        allowed_mime_types: Lista de MIME types permitidos (None = permitir todos)
-    
-    Returns:
-        str: Path del archivo guardado
-    
-    Raises:
-        ValueError: Si el archivo excede tamaño o MIME type no permitido
-    """
-    # Validar tamaño
-    file_size_mb = uploaded_file.size / (1024 * 1024)
-    if file_size_mb > max_size_mb:
-        raise ValueError(f"Archivo demasiado grande ({file_size_mb:.1f}MB). Máximo: {max_size_mb}MB")
-    
-    # Validar MIME type real (no solo extensión)
-    if allowed_mime_types:
-        file_bytes = uploaded_file.getvalue()
-        detected_mime = uploaded_file.type  # Default: confiar en browser
-        
-        # Intentar detección real con python-magic si está disponible
+# Carpeta de uploads para modelos 3D y otros archivos
+UPLOADS = os.path.abspath("uploads")
+os.makedirs(UPLOADS, exist_ok=True)
+def show_analysis_modal_fullpage(plot_id):
+    """Versión full-page: muestra la documentación catastral y lo que sigue ocupando toda la anchura debajo del mapa y preview."""
+    from pathlib import Path
+    cache_all = st.session_state.get('analysis_cache', {})
+    cache = cache_all.get(plot_id)
+    if not cache:
+        st.error("❌ No hay datos de análisis disponibles.")
+        return
+    plot_data = get_plot_by_id(plot_id)
+    if not plot_data:
+        st.error("❌ No se encontró la finca en la base de datos.")
+        return
+    edata = cache.get('edata') or {}
+    vdata = cache.get('vdata') or {}
+    output_dir = Path(cache.get('output_dir', 'archirapid_extract/catastro_output'))
+    overlay_img = output_dir / "contours_visualization.png"
+    clean_img = output_dir / "contours_clean.png"
+    user_has_paid = st.session_state.get('payment_completed', False)
+    plot_type = plot_data.get('type', 'rural').lower()
+    is_buildable = plot_type in ['urban', 'industrial']
+    tab_names = ["📊 Métricas", "🗺️ Plano", "📥 DXF"]
+    if user_has_paid and is_buildable:
+        tab_names.append("🏗️ Diseñador IA")
+    tabs = st.tabs(tab_names)
+    with tabs[0]:
+        if is_buildable:
+            st.success(f"### ✅ FINCA EDIFICABLE - Tipo: {plot_data.get('type', 'N/A').upper()}")
+        else:
+            st.error(f"### ❌ NO EDIFICABLE - Tipo: {plot_data.get('type', 'N/A').upper()}")
+        st.markdown("---")
+        st.markdown("### 📋 Información Registrada (Base de Datos)")
+        bc1, bc2, bc3 = st.columns(3)
+        with bc1:
+            st.metric("📍 Tipo de Finca", plot_data.get('type', 'N/A').upper())
+        with bc2:
+            st.metric("📏 Superficie Registrada", f"{plot_data.get('m2', 0):,.0f} m²")
+        with bc3:
+            st.metric("💰 Precio", f"€{plot_data.get('price', 0):,.0f}")
+        st.markdown("---")
+        st.markdown("### 🔍 Datos del Análisis Catastral (OCR)")
+        mc1, mc2 = st.columns(2)
+        with mc1:
+            st.metric("Ref. Catastral", edata.get("cadastral_ref") or "N/A")
+            st.metric("Superficie Detectada", f"{edata.get('surface_m2', 0):,.0f} m²")
+        with mc2:
+            st.metric("Máx. Edificable (estimado)", f"{edata.get('max_buildable_m2', 0):,.1f} m²")
+            perc = edata.get('edificability_percent') or 0
+            st.metric("% Edificabilidad", f"{perc*100:.1f}%")
+        ocr_type = vdata.get('classification', {}).get('terrain_type', '') if vdata else ''
+        if ocr_type and ocr_type.lower() not in ['', 'desconocido', plot_type]:
+            st.info(f"ℹ️ **Nota:** El OCR detectó '{ocr_type}' en el PDF, pero prevalecen los datos registrados ('{plot_type.upper()}'). La clasificación definitiva la determina el registro oficial.")
+    with tabs[1]:
+        if clean_img.exists():
+            st.image(str(clean_img), width='stretch')
+    with tabs[2]:
         try:
-            import magic
-            detected_mime = magic.from_buffer(file_bytes, mime=True)
-        except ImportError:
-            pass  # Usar tipo reportado por browser
-        except Exception:
-            pass  # Fallback silencioso
-        
-        if detected_mime not in allowed_mime_types:
-            raise ValueError(f"Tipo de archivo no permitido ({detected_mime}). Permitidos: {', '.join(allowed_mime_types)}")
-    
-    # Guardar archivo
-    ext = os.path.splitext(uploaded_file.name)[1]
-    fname = f"{prefix}_{uuid.uuid4().hex}{ext}"
-    path = os.path.join(UPLOADS, fname)
-    with open(path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    
-    from src.logger import log
-    log('file_upload_success', prefix=prefix, size_mb=round(file_size_mb, 2), mime=uploaded_file.type)
-    
-    return path
+            from archirapid_extract.export_dxf import create_dxf_from_cadastral_output
+            dxf_bytes = create_dxf_from_cadastral_output(output_dir=str(output_dir), scale_factor=0.1)
+            if dxf_bytes:
+                ref = edata.get("cadastral_ref") or "parcela"
+                st.download_button("⬇️ Descargar DXF", dxf_bytes, f"ARCHIRAPID_{ref}.dxf", "application/dxf", width='stretch')
+        except Exception as e:
+            st.error(f"Error: {e}")
+    if user_has_paid and is_buildable and len(tabs) > 3:
+        with tabs[3]:
+            st.caption("🎯 Diseño paramétrico 3D")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                beds = st.selectbox("Dormitorios", [1,2,3,4], 1, key=f"beds_{plot_id}")
+            with c2:
+                floors = st.selectbox("Plantas", [1,2,3], 0, key=f"floors_{plot_id}")
+            with c3:
+                setback = st.slider("Retranqueo (m)", 1.0, 8.0, 3.0, 0.5, key=f"set_{plot_id}")
+            if st.button("🚀 Generar Diseño", key=f"gen_{plot_id}", type="primary", width='stretch'):
+                st.session_state['design_requested'] = {'bedrooms': beds, 'floors': floors, 'setback': setback, 'plot_id': plot_id}
+                st.rerun()
+            design_key = f"design_result_{plot_id}"
+            if st.session_state.get(design_key):
+                res = st.session_state[design_key]
+                if res.get('success'):
+                    pass
+    elif is_buildable and not user_has_paid:
+        st.info("💡 Reserva o compra para acceder al Diseñador IA")
 
-
-def resolve_asset_path(path: str) -> str | None:
-    """Resuelve rutas de assets guardadas en DB.
-
-    - Acepta rutas absolutas o relativas.
-    - Si no existe en disco, intenta resolver respecto a `BASE`.
-    - Normaliza separadores para Windows/Unix.
-    """
-    if not path:
-        return None
-    try:
-        # Si ya es absoluto y existe, devolvemos
-        if os.path.isabs(path):
-            return path if os.path.exists(path) else None
-
-        # Probamos la ruta relativa a la carpeta base del proyecto
-        candidate = os.path.join(BASE, path)
-        if os.path.exists(candidate):
-            return candidate
-
-        # Normalizar separadores y reevaluar (por si la DB guardó \ en Windows)
-        candidate_norm = os.path.join(BASE, path.replace('\\', os.sep).replace('/', os.sep))
-        if os.path.exists(candidate_norm):
-            return candidate_norm
-
-        # Finalmente tratar de devolver None si no existe
-        return None
-    except Exception:
-        return None
+    # Fin de la función show_analysis_modal_fullpage
 
 
 def extract_glb_from_zip(zip_path: str, dest_dir: str = UPLOADS, max_file_size: int = 200 * 1024 * 1024, depth: int = 0) -> str | None:
@@ -386,6 +460,12 @@ def insert_project(data):
     ))
     conn.commit()
     conn.close()
+    # Audit: register project creation event for observability and tests
+    try:
+        from src.logger import log
+        log('project_created', project_id=data['id'], architect_id=data.get('architect_id'), title=data.get('title'))
+    except Exception:
+        pass
 
 def get_architect_projects(architect_id):
     """Obtiene todos los proyectos de un arquitecto"""
@@ -444,7 +524,7 @@ def render_create_project_page(architect_id: str, architect_name: str):
         description = st.text_area('📝 Descripción*', height=150)
         foto_principal = st.file_uploader('🖼️ Foto Principal *', type=['jpg','jpeg','png'])
         galeria = st.file_uploader('📷 Galería Adicional', type=['jpg','jpeg','png'], accept_multiple_files=True)
-        modelo_3d = st.file_uploader('🎮 Modelo 3D (.glb)', type=['glb'])
+        # modelo_3d = st.file_uploader('🎮 Modelo 3D (.glb)', type=['glb'])  # Eliminado del preview de finca
         render_vr = st.file_uploader('🕶️ Archivo Realidad Virtual (VR - .zip / .mp4 / .webm / .jpg / .png / .glb)', type=['zip','mp4','webm','jpg','jpeg','png','glb'])
         memoria = st.file_uploader('📋 Memoria Técnica (PDF)', type=['pdf'])
 
@@ -469,7 +549,8 @@ def render_create_project_page(architect_id: str, architect_name: str):
                         st.warning('Imagen de galería omitida por restricciones')
 
             memoria_path = save_file(memoria, 'project_memoria', max_size_mb=20, allowed_mime_types=['application/pdf']) if memoria else None
-            modelo_path = save_file(modelo_3d, 'project_model', max_size_mb=50) if modelo_3d else None
+            modelo_3d = None  # Campo eliminado, mantener compatibilidad
+            modelo_path = None
             render_vr_path = save_file(render_vr, 'project_vr', max_size_mb=200, allowed_mime_types=['application/zip','video/mp4','video/webm','image/jpeg','image/png','model/gltf-binary','application/octet-stream']) if render_vr else None
 
             project_id = str(uuid.uuid4())
@@ -660,6 +741,28 @@ def get_architect_email_by_id(architect_id: str):
     return None
 
 # --- AUTOFIX: Corrección de signos de longitud mal ingresados ---
+
+# --- Helper: save_file ---
+def resolve_asset_path(path):
+    """Devuelve la ruta absoluta de un asset si existe, o None."""
+    if not path:
+        return None
+    abs_path = os.path.abspath(path)
+    return abs_path if os.path.exists(abs_path) else None
+def save_file(uploaded_file, prefix, max_size_mb=5, allowed_mime_types=None):
+    """Guarda un archivo subido por Streamlit y devuelve la ruta local."""
+    if uploaded_file is None:
+        return None
+    if allowed_mime_types and uploaded_file.type not in allowed_mime_types:
+        raise ValueError("Tipo de archivo no permitido")
+    if uploaded_file.size > max_size_mb * 1024 * 1024:
+        raise ValueError("Archivo demasiado grande")
+    ext = os.path.splitext(uploaded_file.name)[1]
+    filename = f"{prefix}_{uuid.uuid4().hex}{ext}"
+    path = os.path.join(UPLOADS, filename)
+    with open(path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return path
 def fix_longitude_signs():
     """Detecta fincas españolas con lon positiva improbable y corrige a negativa.
     Criterios:
@@ -1580,6 +1683,32 @@ def show_project_detail_modal(project):
                         allowed_mime_types=['application/zip','video/mp4','video/webm','image/jpeg','image/png','model/gltf-binary','application/octet-stream']
                     )
                     src_db.update_project_fields(project['id'], {'render_vr': rv_path})
+                    # Auto-extract .glb non-destructively if we saved a ZIP
+                    try:
+                        if os.path.splitext(rv_path)[1].lower() == '.zip':
+                            extracted = extract_glb_from_zip(rv_path, dest_dir=UPLOADS)
+                            if extracted:
+                                # Link the extracted model to the project (do not remove the original zip)
+                                try:
+                                    src_db.update_project_fields(project['id'], {'modelo_3d_glb': extracted})
+                                    try:
+                                        from src.logger import log
+                                        log('glb_extracted_from_zip', project_id=project['id'], source=rv_path, glb_path=extracted)
+                                    except Exception:
+                                        pass
+                                    st.success('✅ Se extrajo .glb del ZIP y se enlazó como Modelo 3D')
+                                except Exception as e:
+                                    st.warning(f'⚠️ Error al enlazar .glb en DB: {e}')
+                            else:
+                                # Informativo: diagnosticar por qué no fue posible extraer
+                                try:
+                                    diag = _inspect_zip_for_glb(rv_path)
+                                    if diag.get('found_misnamed_zip'):
+                                        st.info('⚠️ El ZIP contiene miembros .zip que parecen .glb. Puedes pulsar "Extraer .glb" manualmente en la vista RV.')
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
                     try:
                         get_all_projects_cached.clear()
                     except Exception:
@@ -1808,8 +1937,14 @@ if theme_choice == 'Oscuro':
     st.markdown(DARK_CSS, unsafe_allow_html=True)
 
 # Navigation bar (styled buttons — safe, does not change routing)
+
+def clear_query_params():
+    try:
+        st.experimental_set_query_params()
+    except Exception:
+        pass
 qp_nav = get_query_params()
-nav_raw = qp_nav.get('page', ['Home'])
+nav_raw = (qp_nav or {}).get('page', ['Home'])
 nav_raw = nav_raw[0] if isinstance(nav_raw, list) else nav_raw
 nav_norm = str(nav_raw).strip().lower() if nav_raw else 'home'
 if nav_norm in ['plots','plot','p','fincas']:
@@ -2206,7 +2341,7 @@ if page == 'Home':
                     if st.button("🚀 IR AL PANEL DE CLIENTES", use_container_width=True, type="primary", key="goto_clients"):
                         st.session_state["page"] = "clientes"
                         try:
-                            _update_query_params(page='clientes')
+                            update_query_params(page='clientes')
                         except Exception:
                             pass
                         st.session_state["client_email_prefill"] = payment_data.get("buyer_email")

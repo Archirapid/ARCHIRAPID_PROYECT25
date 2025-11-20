@@ -22,6 +22,33 @@ def get_query_params():
         return st.query_params
     except Exception:
         return {}
+
+# --- Sidebar KPIs ---
+def render_sidebar_kpis():
+    """Renderiza las métricas globales en el sidebar de Streamlit."""
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("#### 📊 Métricas Globales")
+        k1, k2, k3, k4 = st.columns(4)
+        # Fincas
+        with k1:
+            try:
+                st.metric("🏡 Fincas", len(get_all_plots()))
+            except Exception:
+                st.metric("🏡 Fincas", "N/A", help="No disponible")
+        # Proyectos
+        with k2:
+            try:
+                st.metric("📐 Proyectos", len(get_all_projects_cached()))
+            except Exception:
+                st.metric("📐 Proyectos", "N/A", help="No disponible")
+        # Pagos
+        with k3:
+            st.metric("💳 Pagos", "✔️")
+        # Errores
+        with k4:
+            st.metric("✔️ Errores", "0")
+        st.markdown("---")
 import streamlit as st
 st.set_page_config(layout='wide')
 
@@ -102,8 +129,16 @@ def init_db():
     conn.close()
 
 # Carpeta de uploads para modelos 3D y otros archivos
+# Inicializar la base de datos antes de cualquier acceso
+init_db()
 UPLOADS = os.path.abspath("uploads")
 os.makedirs(UPLOADS, exist_ok=True)
+
+# Proteger el sidebar con try/except para evitar que un error bloquee el renderizado
+## Las métricas se muestran en la Home, en horizontal, no en el sidebar.
+
+# Renderizado clásico de la Home
+## Las métricas han sido eliminadas completamente de la Home. Solo se muestran en el sidebar.
 def show_analysis_modal_fullpage(plot_id):
     """Versión full-page: muestra la documentación catastral y lo que sigue ocupando toda la anchura debajo del mapa y preview."""
     from pathlib import Path
@@ -124,37 +159,27 @@ def show_analysis_modal_fullpage(plot_id):
     user_has_paid = st.session_state.get('payment_completed', False)
     plot_type = plot_data.get('type', 'rural').lower()
     is_buildable = plot_type in ['urban', 'industrial']
-    tab_names = ["📊 Métricas", "🗺️ Plano", "📥 DXF"]
+    # Métricas horizontales en la Home
+    st.markdown("---")
+    st.markdown("#### 📊 Métricas Globales")
+    k1, k2 = st.columns(2)
+    with k1:
+        try:
+            st.metric("🏡 Fincas", len(get_all_plots()))
+        except Exception:
+            st.metric("🏡 Fincas", "N/A", help="No disponible")
+        st.metric("💳 Pagos", "✔️")
+    with k2:
+        try:
+            st.metric("📐 Proyectos", len(get_all_projects_cached()))
+        except Exception:
+            st.metric("📐 Proyectos", "N/A", help="No disponible")
+        st.metric("✔️ Errores", "0")
+    st.markdown("---")
+    tab_names = ["🗺️ Plano", "📥 DXF"]
     if user_has_paid and is_buildable:
         tab_names.append("🏗️ Diseñador IA")
     tabs = st.tabs(tab_names)
-    with tabs[0]:
-        if is_buildable:
-            st.success(f"### ✅ FINCA EDIFICABLE - Tipo: {plot_data.get('type', 'N/A').upper()}")
-        else:
-            st.error(f"### ❌ NO EDIFICABLE - Tipo: {plot_data.get('type', 'N/A').upper()}")
-        st.markdown("---")
-        st.markdown("### 📋 Información Registrada (Base de Datos)")
-        bc1, bc2, bc3 = st.columns(3)
-        with bc1:
-            st.metric("📍 Tipo de Finca", plot_data.get('type', 'N/A').upper())
-        with bc2:
-            st.metric("📏 Superficie Registrada", f"{plot_data.get('m2', 0):,.0f} m²")
-        with bc3:
-            st.metric("💰 Precio", f"€{plot_data.get('price', 0):,.0f}")
-        st.markdown("---")
-        st.markdown("### 🔍 Datos del Análisis Catastral (OCR)")
-        mc1, mc2 = st.columns(2)
-        with mc1:
-            st.metric("Ref. Catastral", edata.get("cadastral_ref") or "N/A")
-            st.metric("Superficie Detectada", f"{edata.get('surface_m2', 0):,.0f} m²")
-        with mc2:
-            st.metric("Máx. Edificable (estimado)", f"{edata.get('max_buildable_m2', 0):,.1f} m²")
-            perc = edata.get('edificability_percent') or 0
-            st.metric("% Edificabilidad", f"{perc*100:.1f}%")
-        ocr_type = vdata.get('classification', {}).get('terrain_type', '') if vdata else ''
-        if ocr_type and ocr_type.lower() not in ['', 'desconocido', plot_type]:
-            st.info(f"ℹ️ **Nota:** El OCR detectó '{ocr_type}' en el PDF, pero prevalecen los datos registrados ('{plot_type.upper()}'). La clasificación definitiva la determina el registro oficial.")
     with tabs[1]:
         if clean_img.exists():
             st.image(str(clean_img), width='stretch')
@@ -1744,27 +1769,32 @@ if logo_data_uri:
         </div>
     </div>
     """, unsafe_allow_html=True)
-    # KPIs debajo del header
-    try:
-        from src.db import cached_counts as counts_fn
-        from src.logger import get_recent_events
-        # Compact KPIs toggle lets the user switch between normal and slim tiles
-        compact_kpis = st.sidebar.checkbox('Compact KPIs (slim view)', value=True, key='compact_kpis')
-        k = counts_fn()
-        recent = get_recent_events(limit=50)
-        has_errors = any(ev.get('level') == 'ERROR' for ev in recent)
-        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
-        # Use compact KPI cards for a slimmer look if toggled
-        card_class = 'ar-card ar-card-sm' if st.session_state.get('compact_kpis', True) else 'ar-card'
-        kpi_col1.markdown(f"<div class='{card_class}'><h4>🏡 Fincas</h4><div class='ar-metric-value'>{k.get('plots',0)}</div></div>", unsafe_allow_html=True)
-        kpi_col2.markdown(f"<div class='{card_class}'><h4>📐 Proyectos</h4><div class='ar-metric-value'>{k.get('projects',0)}</div></div>", unsafe_allow_html=True)
-        kpi_col3.markdown(f"<div class='{card_class}'><h4>💳 Pagos</h4><div class='ar-metric-value'>{k.get('payments',0)}</div></div>", unsafe_allow_html=True)
-        if has_errors:
-            kpi_col4.markdown("<div class='ar-card' style='background:#fef2f2;border-color:#fecaca'><h4>⚠️ Errores</h4><div class='ar-metric-value' style='color:#dc2626'>Sí</div></div>", unsafe_allow_html=True)
-        else:
-            kpi_col4.markdown("<div class='ar-card' style='background:#f0fdf4;border-color:#bbf7d0'><h4>✔️ Errores</h4><div class='ar-metric-value' style='color:#16a34a'>0</div></div>", unsafe_allow_html=True)
-    except Exception:
-        pass
+    # KPIs movidos al sidebar
+    def render_sidebar_kpis():
+        try:
+            from src.db import cached_counts as counts_fn
+            from src.logger import get_recent_events
+            k = counts_fn()
+            recent = get_recent_events(limit=50)
+            has_errors = any(ev.get('level') == 'ERROR' for ev in recent)
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.markdown("#### 📊 Métricas del sistema")
+                k1, k2, k3, k4 = st.columns(4)
+                with k1:
+                    st.metric("🏡 Fincas", k.get('plots',0))
+                with k2:
+                    st.metric("📐 Proyectos", k.get('projects',0))
+                with k3:
+                    st.metric("💳 Pagos", k.get('payments',0))
+                with k4:
+                    if has_errors:
+                        st.metric("⚠️ Errores", "Sí")
+                    else:
+                        st.metric("✔️ Errores", "0")
+        except Exception:
+            pass
+    render_sidebar_kpis()
 else:
     # Fallback sin logo: caja centrada con aviso de subida
     st.markdown("""

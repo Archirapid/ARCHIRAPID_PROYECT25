@@ -10,6 +10,7 @@ import os
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import base64
 import uuid
+import datetime
 
 # --- Query Param Helpers (must be before any usage) ---
 def update_query_params(**kwargs):
@@ -49,6 +50,11 @@ def render_sidebar_kpis():
         with k4:
             st.metric("✔️ Errores", "0")
         st.markdown("---")
+        
+        # Acceso a Intranet para empleados
+        if st.button("🏢 Intranet", help="Acceso para empleados"):
+            st.session_state['show_intranet'] = True
+            st.rerun()
 import streamlit as st
 st.set_page_config(layout='wide')
 
@@ -122,6 +128,18 @@ def init_db():
             phone TEXT,
             company TEXT,
             nif TEXT,
+            created_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS commercial_leads (
+            id TEXT PRIMARY KEY,
+            project_id TEXT,
+            plot_id TEXT,
+            name TEXT,
+            email TEXT,
+            budget REAL,
+            message TEXT,
             created_at TEXT
         )
     ''')
@@ -864,6 +882,14 @@ def insert_reservation(data):
     conn.commit()
     conn.close()
 
+def insert_commercial_lead(data):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('INSERT INTO commercial_leads (id, project_id, plot_id, name, email, budget, message, created_at) VALUES (?,?,?,?,?,?,?,?)',
+              (data['id'], data['project_id'], data['plot_id'], data['name'], data['email'], data['budget'], data['message'], data['created_at']))
+    conn.commit()
+    conn.close()
+
 def get_image_base64(image_path):
     try:
         with open(image_path, 'rb') as f:
@@ -1414,9 +1440,8 @@ def show_create_project_modal(architect_id, architect_name):
 # =====================================================
 # MODAL: DETALLE PROYECTO (Vista completa)
 # =====================================================
-@st.dialog("🏗️ Detalle del Proyecto", width="large")
 def show_project_detail_modal(project):
-    """Modal para ver detalles completos de un proyecto"""
+    """Vista de detalles completos de un proyecto (sin modal para evitar conflictos)"""
     
     st.markdown(f"## {project['title']}")
     st.caption(f"Por {project['architect_name']} • {project['created_at'][:10]}")
@@ -1522,7 +1547,7 @@ def show_project_detail_modal(project):
                         except Exception:
                             pass
                         st.success("📄 Planos PDF guardados correctamente")
-                        st.experimental_rerun()
+                        st.rerun()
             except Exception:
                 pass
         
@@ -1567,7 +1592,7 @@ def show_project_detail_modal(project):
                             except Exception:
                                 pass
                             st.success("📋 Memoria guardada y procesada")
-                            st.experimental_rerun()
+                            st.rerun()
                 except Exception:
                     pass
             # Try to show parsed metadata stored next to the PDF
@@ -1678,7 +1703,7 @@ def show_project_detail_modal(project):
                                 try:
                                     src_db.update_project_fields(project['id'], {'modelo_3d_glb': extracted})
                                     st.success('✅ .glb extraído y guardado como Modelo 3D')
-                                    st.experimental_rerun()
+                                    st.rerun()
                                 except Exception as e:
                                     st.error(f'Error al actualizar DB: {e}')
                             else:
@@ -1739,13 +1764,187 @@ def show_project_detail_modal(project):
                     except Exception:
                         pass
                     st.success("🕶️ Recurso RV guardado correctamente")
-                    st.experimental_rerun()
+                    st.rerun()
         except Exception:
             pass
     
     if st.button("✅ Cerrar", type="primary"):
         st.session_state['view_project_id'] = None
         st.rerun()
+
+
+# =====================================================
+# MODAL: PROCESAR PAGO (Reserva/Compra)
+# =====================================================
+@st.dialog("💳 Procesar Pago", width="small")
+def show_payment_modal(kind, plot_id):
+    """Modal para procesar pago simulado de reserva o compra"""
+    plot = get_plot_by_id(plot_id)
+    if not plot:
+        st.error("❌ Finca no encontrada")
+        return
+    
+    if kind == 'reserve':
+        amount = float(plot.get("price", 0)) * 0.10
+        title = f"📝 Reserva de Finca: {plot.get('title', 'Sin título')}"
+    else:
+        amount = float(plot.get("price", 0))
+        title = f"🏡 Compra de Finca: {plot.get('title', 'Sin título')}"
+    
+    st.header(title)
+    st.metric("💰 Monto a pagar", f"€{amount:,.2f}")
+    
+    with st.form("payment_form"):
+        buyer_name = st.text_input("👤 Nombre completo *", value=st.session_state.get('client_name', ''))
+        buyer_email = st.text_input("📧 Email *", value=st.session_state.get('client_email', ''))
+        card_number = st.text_input("💳 Número de tarjeta (simulado)", placeholder="1234 5678 9012 3456")
+        expiry = st.text_input("📅 Fecha de expiración (MM/YY)", placeholder="12/25")
+        cvv = st.text_input("🔒 CVV", placeholder="123", type="password")
+        
+        submitted = st.form_submit_button("✅ Procesar Pago", type="primary")
+        
+        if submitted:
+            if not buyer_name.strip() or not buyer_email.strip():
+                st.error("❌ Completa nombre y email")
+                return
+            
+            # Simular procesamiento de pago
+            with st.spinner("Procesando pago..."):
+                import time
+                time.sleep(1)  # Simular delay
+            
+            st.success("🎉 ¡Pago procesado exitosamente!")
+            
+            # Guardar datos del cliente
+            st.session_state['client_name'] = buyer_name.strip()
+            st.session_state['client_email'] = buyer_email.strip()
+            st.session_state['payment_completed'] = True
+            
+            # Registrar la transacción
+            transaction_id = str(uuid.uuid4())
+            if kind == 'reserve':
+                insert_reservation({
+                    'id': transaction_id,
+                    'plot_id': plot_id,
+                    'buyer_name': buyer_name.strip(),
+                    'buyer_email': buyer_email.strip(),
+                    'amount': amount,
+                    'kind': 'reserve',
+                    'created_at': datetime.now().isoformat()
+                })
+            else:
+                # Para compra completa, podríamos marcar la finca como vendida
+                # Por ahora, solo registrar como reserva de 100%
+                insert_reservation({
+                    'id': transaction_id,
+                    'plot_id': plot_id,
+                    'buyer_name': buyer_name.strip(),
+                    'buyer_email': buyer_email.strip(),
+                    'amount': amount,
+                    'kind': 'purchase',
+                    'created_at': datetime.now().isoformat()
+                })
+            
+            # Mostrar recibo detallado
+            st.markdown("---")
+            st.markdown("### 📄 Recibo de Transacción")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"**ID Transacción:** {transaction_id[:8]}...")
+                st.markdown(f"**Fecha:** {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+                st.markdown(f"**Tipo:** {'Reserva (10%)' if kind == 'reserve' else 'Compra Completa'}")
+            with col2:
+                st.markdown(f"**Cliente:** {buyer_name.strip()}")
+                st.markdown(f"**Email:** {buyer_email.strip()}")
+                st.markdown(f"**Monto Pagado:** €{amount:,.2f}")
+            
+            st.markdown("---")
+            st.markdown("### 🏡 Detalles de la Finca")
+            
+            finca_cols = st.columns(3)
+            with finca_cols[0]:
+                st.markdown(f"**Título:** {plot.get('title', 'N/A')}")
+                st.markdown(f"**Superficie:** {plot.get('m2', 0):,.0f} m²")
+            with finca_cols[1]:
+                st.markdown(f"**Tipo:** {plot.get('type', 'N/A').upper()}")
+                st.markdown(f"**Precio Total:** €{plot.get('price', 0):,.2f}")
+            with finca_cols[2]:
+                st.markdown(f"**Provincia:** {plot.get('province', 'N/A')}")
+                st.markdown(f"**Localidad:** {plot.get('locality', 'N/A')}")
+            
+            # Mostrar datos catastrales si disponibles
+            cache_all = st.session_state.get('analysis_cache', {})
+            cache = cache_all.get(plot_id)
+            if cache:
+                edata = cache.get('edata') or {}
+                st.markdown("---")
+                st.markdown("### 📊 Datos Catastrales")
+                cat_cols = st.columns(2)
+                with cat_cols[0]:
+                    st.markdown(f"**Ref. Catastral:** {edata.get('cadastral_ref', 'N/A')}")
+                    st.markdown(f"**Superficie Registrada:** {edata.get('surface_m2', 0):,.0f} m²")
+                with cat_cols[1]:
+                    edificable = edata.get('max_buildable_m2', 0)
+                    st.markdown(f"**Máx. Edificable:** {edificable:,.1f} m²")
+                    perc = edata.get('edificability_percent', 0)
+                    st.markdown(f"**% Edificabilidad:** {perc*100:.1f}%")
+            
+            st.markdown("---")
+            st.info("📧 Recibirás confirmación detallada por email con todos los documentos.")
+            
+            # Cerrar modal automáticamente después de éxito
+            st.balloons()
+
+
+def show_commercial_contact_modal(project_id, plot_id):
+    """Formulario para contactar departamento comercial (sin modal para evitar conflictos)"""
+    project = get_project_by_id(project_id)
+    plot = get_plot_by_id(plot_id)
+    if not project or not plot:
+        st.error("❌ Proyecto o finca no encontrada")
+        return
+    
+    st.header(f"📞 Contactar sobre {project['title']}")
+    st.markdown(f"**Finca:** {plot['title']} - {plot.get('province', 'N/A')}")
+    
+    # Auto-fill budget from project price
+    budget = float(project.get('price', 0))
+    st.metric("💰 Presupuesto Estimado", f"€{budget:,.0f}", help="Basado en el precio del proyecto seleccionado")
+    
+    with st.form("commercial_contact_form"):
+        name = st.text_input("👤 Nombre completo *", value=st.session_state.get('client_name', ''))
+        email = st.text_input("📧 Email *", value=st.session_state.get('client_email', ''))
+        message = st.text_area("💬 Mensaje a ARCHIRAPID", placeholder="Describe tus necesidades, preguntas sobre el proyecto, o cualquier consulta...", height=100)
+        
+        submitted = st.form_submit_button("✅ Enviar Consulta", type="primary")
+        
+        if submitted:
+            if not name.strip() or not email.strip():
+                st.error("❌ Completa nombre y email")
+                return
+            
+            # Insert lead
+            lead_id = str(uuid.uuid4())
+            insert_commercial_lead({
+                'id': lead_id,
+                'project_id': project_id,
+                'plot_id': plot_id,
+                'name': name.strip(),
+                'email': email.strip(),
+                'budget': budget,
+                'message': message.strip() if message else '',
+                'created_at': datetime.now().isoformat()
+            })
+            
+            st.success("🎉 ¡Consulta enviada exitosamente!")
+            st.info("📧 Nuestro departamento comercial se pondrá en contacto contigo pronto.")
+            
+            # Save client data
+            st.session_state['client_name'] = name.strip()
+            st.session_state['client_email'] = email.strip()
+            
+            st.balloons()
 
 
 # Initialize DB
@@ -1771,29 +1970,24 @@ if logo_data_uri:
     """, unsafe_allow_html=True)
     # KPIs movidos al sidebar
     def render_sidebar_kpis():
-        try:
-            from src.db import cached_counts as counts_fn
-            from src.logger import get_recent_events
-            k = counts_fn()
-            recent = get_recent_events(limit=50)
-            has_errors = any(ev.get('level') == 'ERROR' for ev in recent)
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                st.markdown("#### 📊 Métricas del sistema")
-                k1, k2, k3, k4 = st.columns(4)
-                with k1:
-                    st.metric("🏡 Fincas", k.get('plots',0))
-                with k2:
-                    st.metric("📐 Proyectos", k.get('projects',0))
-                with k3:
-                    st.metric("💳 Pagos", k.get('payments',0))
-                with k4:
-                    if has_errors:
-                        st.metric("⚠️ Errores", "Sí")
-                    else:
-                        st.metric("✔️ Errores", "0")
-        except Exception:
-            pass
+        with st.sidebar:
+            st.markdown("---")
+            st.markdown("#### 📊 Métricas Globales")
+            k1, k2, k3, k4 = st.columns(4)
+            with k1:
+                st.metric("🏡 Fincas", len(get_all_plots()))
+            with k2:
+                st.metric("📐 Proyectos", len(get_all_projects_cached()))
+            with k3:
+                st.metric("💳 Pagos", "✔️")
+            with k4:
+                st.metric("✔️ Errores", "0")
+            st.markdown("---")
+            
+            # Acceso a Intranet para empleados
+            if st.button("🏢 Intranet", help="Acceso para empleados"):
+                st.session_state['show_intranet'] = True
+                st.rerun()
     render_sidebar_kpis()
 else:
     # Fallback sin logo: caja centrada con aviso de subida
@@ -2164,21 +2358,8 @@ if page == 'Home':
             ).add_to(m)
 
     # --- 50/50 SPLIT: Map (left) + Preview Panel (right) ---
-    # Inicializar flag de expansión si no existe
-    if 'preview_expanded' not in st.session_state:
-        st.session_state['preview_expanded'] = False
-
-    # Resetear expansión al cambiar de finca seleccionada (para evitar estado inconsistente)
-    selected_plot_id = st.session_state.get('selected_plot')
-    if st.session_state.get('selected_plot_id') != selected_plot_id:
-        st.session_state['preview_expanded'] = False
-        st.session_state['selected_plot_id'] = selected_plot_id
-
-    # Layout condicional: normal [1,1], expandido [0,1] (mapa oculto)
-    if st.session_state['preview_expanded']:
-        map_col, panel_col = st.columns([0, 1])  # Mapa oculto, preview full-width
-    else:
-        map_col, panel_col = st.columns([1, 1])  # Normal: mapa y preview lado a lado
+    # Layout: mapa y preview lado a lado
+    map_col, panel_col = st.columns([1, 1])  # Normal: mapa y preview lado a lado
     with map_col:
         st.subheader("🗺️ Mapa Interactivo")
         map_data = st_folium(m, width="100%", height=650, key="folium_map")
@@ -2222,189 +2403,115 @@ if page == 'Home':
             except Exception:
                 pass
 
-        # Allow upload / replacement of 3D model (.glb) from the project detail view
-        try:
-            modelo_new = st.file_uploader("🎮 Subir / Reemplazar Modelo 3D (.glb)", type=['glb'], key=f"modelo3d_upload_{selected_plot['id']}")
-            if modelo_new:
-                with st.spinner("Guardando Modelo 3D..."):
-                    model_path = save_file(modelo_new, "project_model", max_size_mb=200)
-                    from src import db as src_db
-                    src_db.update_project_fields(selected_plot['id'], {'modelo_3d_glb': model_path})
-                    try:
-                        get_all_projects_cached.clear()
-                    except Exception:
-                        pass
-                    st.success("🎮 Modelo 3D guardado correctamente")
-                    st.experimental_rerun()
-        except Exception:
-            pass
-
     with panel_col:
         st.subheader("📋 Preview de Finca")
         if selected_plot is None:
             st.info("👈 Selecciona una finca en el mapa para ver detalles rápidos aquí.")
         else:
-            if st.session_state['preview_expanded']:
-                # Modo expandido: mostrar todo en full-width con secciones organizadas
-                # Botón para colapsar
-                if st.button("⬅️ Volver a Vista Normal", key="collapse_preview", type="secondary"):
-                    st.session_state['preview_expanded'] = False
-                    st.rerun()
-                
-                # Sección 1: Preview básico
-                with st.expander("📋 Preview de la Finca", expanded=True):
-                    st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
-                    img_path = selected_plot.get("image_path")
-                    if img_path and os.path.exists(img_path):
-                        st.image(img_path, width='stretch')
-                    else:
-                        plot_id = selected_plot.get('id', '')
-                        plot_idx = (hash(plot_id) % 3) + 1
-                        placeholder = f"assets/fincas/finca{plot_idx}_1.png"
-                        if os.path.exists(placeholder):
-                            st.image(placeholder, width='stretch', caption="Imagen de referencia")
-                        else:
-                            st.info("Imagen no disponible")
-                    st.markdown(f"**{selected_plot.get('description','-')}**")
-                    st.write(f"**Superficie:** {int(selected_plot.get('m2',0)):,} m²")
-                    st.write(f"**Precio:** €{int(selected_plot.get('price',0)):,}")
-                    st.write(f"**Tipo:** {selected_plot.get('type','-')}")
-                    st.write(f"**Ubicación:** {selected_plot.get('province','-')} / {selected_plot.get('locality','-')}")
-                
-                # Sección 2: Opciones de adquisición
-                with st.expander("💰 Opciones de Adquisición"):
-                    price = float(selected_plot.get("price", 0))
-                    col_res, col_buy = st.columns(2)
-                    with col_res:
-                        amount_reserve = price * 0.10
-                        st.metric("🔒 Reservar", f"{amount_reserve:,.2f} €", "10% del precio")
-                        if st.button("📝 Reservar Finca", key="btn_reserve_exp", width='stretch'):
-                            st.session_state['trigger_reserve_payment'] = True
-                            st.rerun()
-                    with col_buy:
-                        st.metric("✅ Comprar", f"{price:,.2f} €", "100% del precio")
-                        if st.button("🏡 Comprar Finca", key="btn_buy_exp", width='stretch', type="primary"):
-                            st.session_state['trigger_buy_payment'] = True
-                            st.rerun()
-                
-                # Sección 3: Proyectos compatibles
-                with st.expander("🏗️ Proyectos Compatibles"):
-                    projects = get_compatible_projects(selected_plot['m2'])
-                    if projects.shape[0] > 0:
-                        for _, proj in projects.iterrows():
-                            st.markdown(f"**{proj['title']}** - Score: {proj['match_score']}%")
-                            st.write(f"Arquitecto: {proj.get('architect_name', 'N/A')}")
-                            st.write(f"Precio: €{int(proj.get('price', 0)):,} | Área: {proj.get('m2_construidos', 0)} m²")
-                            if st.button(f"Ver Detalles {proj['id']}", key=f"view_proj_{proj['id']}"):
-                                st.session_state['view_project_id'] = proj['id']
-                                st.rerun()
-                            st.markdown("---")
-                    else:
-                        st.info("No hay proyectos compatibles encontrados.")
-                
-                # Sección 4: Evaluación avanzada
-                with st.expander("📊 Evaluación Avanzada de Compatibilidad"):
-                    current_pid = selected_plot.get('id')
-                    has_cache = bool(st.session_state.get('analysis_cache', {}).get(current_pid))
-                    if has_cache:
-                        show_analysis_modal_fullpage(current_pid)
-                    else:
-                        if st.button("🔍 Analizar Nota Catastral", key="analyze_exp", type="primary"):
-                            st.session_state['trigger_analysis'] = True
-                            st.rerun()
-                
-                # Sección 5: Propuestas de arquitectos
-                with st.expander("📨 Propuestas de Arquitectos"):
-                    proposals = get_proposals_for_plot(selected_plot['id'])
-                    if proposals.shape[0] > 0:
-                        for _, prop in proposals.iterrows():
-                            st.markdown(f"**{prop['architect_name']}** - {prop['created_at']}")
-                            st.write(f"Propuesta: {prop['proposal_text']}")
-                            st.write(f"Presupuesto: €{int(prop.get('estimated_budget', 0)):,}")
-                            st.markdown("---")
-                    else:
-                        st.info("No hay propuestas para esta finca aún.")
+            st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
+            # Fix: Mostrar placeholder si no hay imagen
+            img_path = selected_plot.get("image_path")
+            if img_path and os.path.exists(img_path):
+                st.image(img_path, width='stretch')
             else:
-                # Modo normal: preview compacto
-                # Botón para expandir a full-width
-                if st.button("🔍 Expandir Vista Completa", key="expand_preview", type="secondary"):
-                    st.session_state['preview_expanded'] = True
-                    st.rerun()
-                st.markdown(f"### {selected_plot.get('title','Detalle finca')}")
-                # Fix: Mostrar placeholder si no hay imagen
-                img_path = selected_plot.get("image_path")
-                if img_path and os.path.exists(img_path):
-                    st.image(img_path, width='stretch')
+                # Asignar placeholder basado en ID para consistencia visual
+                plot_id = selected_plot.get('id', '')
+                plot_idx = (hash(plot_id) % 3) + 1  # 1, 2 o 3
+                placeholder = f"assets/fincas/finca{plot_idx}_1.png"
+                if os.path.exists(placeholder):
+                    st.image(placeholder, width='stretch', caption="Imagen de referencia")
                 else:
-                    # Asignar placeholder basado en ID para consistencia visual
-                    plot_id = selected_plot.get('id', '')
-                    plot_idx = (hash(plot_id) % 3) + 1  # 1, 2 o 3
-                    placeholder = f"assets/fincas/finca{plot_idx}_1.png"
-                    if os.path.exists(placeholder):
-                        st.image(placeholder, width='stretch', caption="Imagen de referencia")
-                    else:
-                        st.info("Imagen no disponible")
+                    st.info("Imagen no disponible")
 
-                st.markdown(f"**{selected_plot.get('description','-')}**")
-                st.write(f"**Superficie:** {int(selected_plot.get('m2',0)):,} m²")
-                st.write(f"**Precio:** €{int(selected_plot.get('price',0)):,}")
-                st.write(f"**Tipo:** {selected_plot.get('type','-')}")
-                st.write(f"**Ubicación:** {selected_plot.get('province','-')} / {selected_plot.get('locality','-')}")
+            st.markdown(f"**{selected_plot.get('description','-')}**")
+            st.write(f"**Superficie:** {int(selected_plot.get('m2',0)):,} m²")
+            st.write(f"**Precio:** €{int(selected_plot.get('price',0)):,}")
+            st.write(f"**Tipo:** {selected_plot.get('type','-')}")
+            st.write(f"**Ubicación:** {selected_plot.get('province','-')} / {selected_plot.get('locality','-')}")
 
-                # =====================================================
-                # 📄 NOTA CATASTRAL Y ANÁLISIS (antes de opciones pago)
-                # =====================================================
-                if selected_plot.get("registry_note_path") and os.path.exists(selected_plot.get("registry_note_path")):
-                    st.markdown("---")
-                    st.subheader("📄 Documentación Catastral")
-                    
-                    with open(selected_plot["registry_note_path"], 'rb') as f:
-                        registry_data = f.read()
-                    st.download_button(
-                        "📥 Descargar Nota Simple",
-                        data=registry_data,
-                        file_name=os.path.basename(selected_plot["registry_note_path"]),
-                        mime="application/pdf",
-                        width='stretch',
-                        type="secondary"
-                    )
-
-                    # Análisis automático
-                    st.markdown("**🔍 Análisis Inteligente**")
-                    current_pid = selected_plot.get('id')
-                    has_cache = bool(st.session_state.get('analysis_cache', {}).get(current_pid))
-                    
-                    if has_cache:
-                        if st.button("📊 VER RESULTADOS ANÁLISIS", key="view_results", type="primary", width='stretch'):
-                            show_analysis_modal(current_pid)
-                    else:
-                        if st.button("🔍 ANALIZAR NOTA CATASTRAL", key="analyze_catastral", type="primary", width='stretch'):
-                            st.session_state['trigger_analysis'] = True
-                            st.rerun()
-
+            # =====================================================
+            # 📄 NOTA CATASTRAL Y ANÁLISIS (antes de opciones pago)
+            # =====================================================
+            if selected_plot.get("registry_note_path") and os.path.exists(selected_plot.get("registry_note_path")):
                 st.markdown("---")
-                st.subheader("💰 Opciones de Adquisición")
+                st.subheader("📄 Documentación Catastral")
                 
-                price = float(selected_plot.get("price", 0))
+                with open(selected_plot["registry_note_path"], 'rb') as f:
+                    registry_data = f.read()
+                st.download_button(
+                    "📥 Descargar Nota Simple",
+                    data=registry_data,
+                    file_name=os.path.basename(selected_plot["registry_note_path"]),
+                    mime="application/pdf",
+                    width='stretch',
+                    type="secondary"
+                )
+
+                # Análisis automático
+                st.markdown("**🔍 Análisis Inteligente**")
+                current_pid = selected_plot.get('id')
+                has_cache = bool(st.session_state.get('analysis_cache', {}).get(current_pid))
                 
-                col_res, col_buy = st.columns(2)
-                
-                # RESERVAR (10%)
-                with col_res:
-                    amount_reserve = price * 0.10
-                    st.metric("🔒 Reservar", f"{amount_reserve:,.2f} €", "10% del precio")
-                    
-                    if st.button("📝 Reservar Finca", key="btn_reserve", width='stretch'):
-                        st.session_state['trigger_reserve_payment'] = True
+                if has_cache:
+                    if st.button("📊 VER RESULTADOS ANÁLISIS", key="view_results", type="primary", width='stretch'):
+                        show_analysis_modal(current_pid)
+                else:
+                    if st.button("🔍 ANALIZAR NOTA CATASTRAL", key="analyze_catastral", type="primary", width='stretch'):
+                        st.session_state['trigger_analysis'] = True
                         st.rerun()
+
+            # Expander para detalles adicionales (proyectos, análisis completo, propuestas)
+            with st.expander("🔍 Ver Más Detalles"):
+                # Sección 1: Proyectos compatibles
+                st.markdown("### 🏗️ Proyectos Compatibles")
+                projects = get_compatible_projects(selected_plot['m2'])
+                if projects.shape[0] > 0:
+                    for _, proj in projects.iterrows():
+                        st.markdown(f"**{proj['title']}** - Score: {proj['match_score']}%")
+                        st.write(f"Arquitecto: {proj.get('architect_name', 'N/A')}")
+                        st.write(f"Precio: €{int(proj.get('price') or 0):,} | Área: {proj.get('m2_construidos', 0)} m²")
+                        if st.button(f"Ver Detalles {proj['id']}", key=f"view_proj_{proj['id']}_exp"):
+                            st.session_state['view_project_id'] = proj['id']
+                            st.rerun()
+                        if st.button(f"📞 Contactar Dep. Comercial {proj['id']}", key=f"contact_com_{proj['id']}_exp"):
+                            st.session_state['show_commercial_contact'] = {'project_id': proj['id'], 'plot_id': selected_plot['id']}
+                            st.rerun()
+                        st.markdown("---")
+                else:
+                    st.info("No hay proyectos compatibles encontrados.")
                 
-                # COMPRAR (100%)
-                with col_buy:
-                    st.metric("✅ Comprar", f"{price:,.2f} €", "100% del precio")
-                    
-                    if st.button("🏡 Comprar Finca", key="btn_buy", width='stretch', type="primary"):
-                        st.session_state['trigger_buy_payment'] = True
+                # Sección 2: Evaluación avanzada
+                st.markdown("### 📊 Evaluación Avanzada de Compatibilidad")
+                current_pid = selected_plot.get('id')
+                has_cache = bool(st.session_state.get('analysis_cache', {}).get(current_pid))
+                if has_cache:
+                    show_analysis_modal_fullpage(current_pid)
+                else:
+                    if st.button("🔍 Analizar Nota Catastral Completa", key="analyze_exp", type="primary"):
+                        st.session_state['trigger_analysis'] = True
                         st.rerun()
+
+            st.markdown("---")
+            st.subheader("💰 Opciones de Adquisición")
+            
+            price = float(selected_plot.get("price", 0))
+            
+            col_res, col_buy = st.columns(2)
+            
+            # RESERVAR (10%)
+            with col_res:
+                amount_reserve = price * 0.10
+                st.metric("🔒 Reservar", f"{amount_reserve:,.2f} €", "10% del precio")
+                
+                if st.button("📝 Reservar Finca", key="btn_reserve", width='stretch'):
+                    show_payment_modal('reserve', selected_plot['id'])
+            
+            # COMPRAR (100%)
+            with col_buy:
+                st.metric("✅ Comprar", f"{price:,.2f} €", "100% del precio")
+                
+                if st.button("🏡 Comprar Finca", key="btn_buy", width='stretch', type="primary"):
+                    show_payment_modal('buy', selected_plot['id'])
     
     # =====================================================
     # 🎯 POST-PAGO: CONFIRMACIÓN COMPLETA PARA TODOS
@@ -2719,229 +2826,16 @@ if page == 'Home':
                 except Exception as e:
                     st.caption(f"No se pudo generar el reporte: {e}")
 
-                # =============================
-                # Formulario: Enviar Propuesta Demo
-                # =============================
-                st.markdown("#### 📨 Enviar Propuesta (Demo)")
-                with st.form(key="form_propuesta_demo"):
-                    # Ensure default doesn't exceed max_value (Streamlit raises otherwise)
-                    try:
-                        default_price = int(best.get('price', 50000)) if best else 50000
-                    except Exception:
-                        default_price = 50000
-                    default_price = min(default_price, 1000000)
-                    prop_price = st.number_input("Presupuesto estimado (€)", min_value=1000, max_value=1000000, value=default_price, step=1000)
-                    prop_message = st.text_area("Mensaje al propietario", value="Hola, puedo adaptar este proyecto a tu parcela optimizando tiempos y coste.")
-                    submitted = st.form_submit_button("Enviar Propuesta")
-                if submitted:
-                    try:
-                        from datetime import datetime
-                        import uuid
-                        from src.db import insert_proposal
-                        architect_id = best.get('architect_id') or 'arch_test'
-                        proposal_id = f"prop_{uuid.uuid4().hex[:8]}"
-                        insert_proposal({
-                            'id': proposal_id,
-                            'plot_id': selected_plot.get('id'),
-                            'architect_id': architect_id,
-                            'project_id': best.get('id'),
-                            'message': prop_message,
-                            'price': float(prop_price),
-                            'status': 'pending',
-                            'created_at': datetime.utcnow().isoformat()
-                        })
-                        st.success("Propuesta enviada correctamente ✅")
-                        st.session_state['refresh_proposals'] = True
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error enviando propuesta: {e}")
-
             # =====================================================
-            # PROPUESTAS RECIBIDAS (Arquitectos → Propietario)
+            # PROPUESTAS RECIBIDAS (Arquitectos → Propietario) - ELIMINADA
             # =====================================================
-            st.markdown("---")
-            st.markdown("### 📨 Propuestas de Arquitectos")
+            # Sección eliminada: Las propuestas ahora van a través del Departamento Comercial
+            # No se muestran directamente en el preview del cliente
 
-            
-            # Asegurar variable current_pid definida (ya establecida en sección anterior)
-            current_pid_safe = selected_plot.get('id')
-            df_proposals = get_proposals_for_plot(current_pid_safe) if current_pid_safe else pd.DataFrame([])
-            # Filtros de visibilidad
-            col_filters = st.columns(3)
-            with col_filters[0]:
-                hide_accepted = st.checkbox("Ocultar aceptadas", value=False)
-            with col_filters[1]:
-                hide_rejected = st.checkbox("Ocultar rechazadas", value=False)
-            with col_filters[2]:
-                show_only_pending = st.checkbox("Solo pendientes", value=False)
-            if show_only_pending:
-                hide_accepted = True; hide_rejected = True
-            # Aplicar filtros
-            if hide_accepted:
-                df_proposals = df_proposals[df_proposals['status'] != 'accepted']
-            if hide_rejected:
-                df_proposals = df_proposals[df_proposals['status'] != 'rejected']
-
-            # Resumen
-            if df_proposals.shape[0] > 0:
-                # Usar columnas legacy/nuevas para presupuesto
-                presup_col = 'price' if 'price' in df_proposals.columns else ('estimated_budget' if 'estimated_budget' in df_proposals.columns else None)
-                accepted_mask = df_proposals['status'] == 'accepted'
-                pending_mask = df_proposals['status'] == 'pending'
-                rejected_mask = df_proposals['status'] == 'rejected'
-                total_accepted = float(df_proposals.loc[accepted_mask, presup_col].sum()) if presup_col else 0
-                total_pending = int(pending_mask.sum())
-                total_rejected = int(rejected_mask.sum())
-                st.caption(f"Resumen: Pendientes {total_pending} | Aceptadas {accepted_mask.sum()} (€{int(total_accepted):,}) | Rechazadas {total_rejected}")
-
-                # Export CSV
-                try:
-                    # Enriquecer CSV con columna de tiempo de respuesta
-                    df_export = df_proposals.copy()
-                    response_times = []
-                    for idx, row in df_export.iterrows():
-                        if row.get('responded_at') and row.get('created_at'):
-                            try:
-                                from datetime import datetime
-                                created = datetime.fromisoformat(str(row['created_at']))
-                                responded = datetime.fromisoformat(str(row['responded_at']))
-                                delta = responded - created
-                                hours = delta.total_seconds() / 3600
-                                response_times.append(f"{hours:.1f} horas" if hours < 24 else f"{delta.days} días")
-                            except Exception:
-                                response_times.append('')
-                        else:
-                            response_times.append('')
-                    df_export['tiempo_respuesta'] = response_times
-                    csv_data = df_export.to_csv(index=False).encode('utf-8')
-                    st.download_button("⬇️ Exportar CSV", data=csv_data, file_name="propuestas.csv", mime="text/csv")
-                except Exception as e:
-                    st.caption(f"No se pudo exportar CSV: {e}")
-            # Normalizar nombres esperados (compatibilidad legacy vs nuevo):
-            legacy = set(df_proposals.columns)
-            # Mapear para UI
-            def _get_val(row, candidates, default='-'):
-                for c in candidates:
-                    if c in row and pd.notna(row[c]):
-                        return row[c]
-                return default
-            
-            if df_proposals.shape[0] == 0:
-                st.info("📭 No has recibido propuestas todavía")
-            else:
-                st.success(f"✅ Has recibido {df_proposals.shape[0]} propuesta(s)")
-                
-                for idx, prop in df_proposals.iterrows():
-                    status_color = {
-                        'pending': '🟡',
-                        'accepted': '🟢',
-                        'rejected': '🔴'
-                    }
-                    architect_label = _get_val(prop, ['architect_name','architect_id'],'(sin arquitecto)')
-                    with st.expander(f"{status_color.get(prop.get('status','pending'), '📨')} {architect_label} - {prop.get('status','?').upper()}", expanded=(prop.get('status')=='pending')):
-                        col_arch, col_details = st.columns([1, 2])
-                        
-                        with col_arch:
-                            st.markdown(f"**👤 Arquitecto:** {architect_label}")
-                            email_val = _get_val(prop, ['architect_email'],'demo@archirapid.test')
-                            st.caption(f"📧 {email_val}")
-                        
-                        with col_details:
-                            presupuesto = _get_val(prop, ['price','estimated_budget'], 0)
-                            st.metric("💰 Presupuesto", f"€{int(float(presupuesto)):,}")
-                            plazo = _get_val(prop, ['deadline_days'], 30)
-                            st.metric("📅 Plazo", f"{int(plazo)} días")
-                        
-                        st.markdown("**📝 Propuesta:**")
-                        texto = _get_val(prop, ['message','proposal_text'], '(sin texto)')
-                        st.write(texto)
-                        
-                        if prop.get('sketch_image_path') and os.path.exists(prop['sketch_image_path']):
-                            st.image(prop['sketch_image_path'], caption="Boceto inicial", width='stretch')
-                        
-                        st.caption(f"📅 Recibida: {prop['created_at'][:10]}")
-                        
-                        from src.db import update_proposal_status
-                        if prop.get('status') == 'pending':
-                            col_accept, col_reject = st.columns(2)
-                            with col_accept:
-                                if st.button("✅ Aceptar Propuesta", key=f"accept_{prop['id']}"):
-                                    update_proposal_status(prop['id'], 'accepted')
-                                    st.success("✅ Propuesta aceptada. El arquitecto será notificado.")
-                                    st.rerun()
-                            with col_reject:
-                                if st.button("❌ Rechazar", key=f"reject_{prop['id']}"):
-                                    update_proposal_status(prop['id'], 'rejected')
-                                    st.info("Propuesta rechazada.")
-                                    st.rerun()
-                        elif prop.get('status') == 'accepted':
-                            st.success("✅ Propuesta aceptada")
-                            responded_at_str = str(prop.get('responded_at',''))[:10]
-                            st.caption(f"Respondida: {responded_at_str}")
-                            # Calcular tiempo de respuesta
-                            if prop.get('responded_at') and prop.get('created_at'):
-                                try:
-                                    from datetime import datetime
-                                    created = datetime.fromisoformat(str(prop['created_at']))
-                                    responded = datetime.fromisoformat(str(prop['responded_at']))
-                                    delta = responded - created
-                                    hours = delta.total_seconds() / 3600
-                                    if hours < 24:
-                                        st.caption(f"⏱️ Tiempo de respuesta: {hours:.1f} horas")
-                                    else:
-                                        days = delta.days
-                                        st.caption(f"⏱️ Tiempo de respuesta: {days} día{'s' if days > 1 else ''}")
-                                except Exception:
-                                    pass
-                        else:
-                            st.error("❌ Propuesta rechazada")
-                            responded_at_str = str(prop.get('responded_at',''))[:10]
-                            if responded_at_str:
-                                st.caption(f"Respondida: {responded_at_str}")
-                                # Calcular tiempo de respuesta
-                                if prop.get('responded_at') and prop.get('created_at'):
-                                    try:
-                                        from datetime import datetime
-                                        created = datetime.fromisoformat(str(prop['created_at']))
-                                        responded = datetime.fromisoformat(str(prop['responded_at']))
-                                        delta = responded - created
-                                        hours = delta.total_seconds() / 3600
-                                        if hours < 24:
-                                            st.caption(f"⏱️ Tiempo de respuesta: {hours:.1f} horas")
-                                        else:
-                                            days = delta.days
-                                            st.caption(f"⏱️ Tiempo de respuesta: {days} día{'s' if days > 1 else ''}")
-                                    except Exception:
-                                        pass
-                
             st.markdown("---")
             if st.button("Close preview"):
                 st.session_state.pop("selected_plot", None)
                 st.rerun()  # Fixed: removed deprecated experimental_rerun()
-    
-    # Disparar modales de pago fuera del panel lateral
-    if st.session_state.get('trigger_reserve_payment') and selected_plot:
-        from src.payment_simulator import payment_modal
-        
-        amount_reserve = float(selected_plot.get("price", 0)) * 0.10
-        concept = f"Reserva finca {selected_plot.get('title', 'Sin título')} - {selected_plot.get('id', '')[:8]}"
-        buyer_name = st.session_state.get('client_name', '')
-        buyer_email = st.session_state.get('client_email', '')
-        
-        payment_modal(amount_reserve, concept, buyer_name, buyer_email)
-        st.session_state['trigger_reserve_payment'] = False
-    
-    if st.session_state.get('trigger_buy_payment') and selected_plot:
-        from src.payment_simulator import payment_modal
-        
-        price = float(selected_plot.get("price", 0))
-        concept = f"Compra finca {selected_plot.get('title', 'Sin título')} - {selected_plot.get('id', '')[:8]}"
-        buyer_name = st.session_state.get('client_name', '')
-        buyer_email = st.session_state.get('client_email', '')
-        
-        payment_modal(price, concept, buyer_name, buyer_email)
-        st.session_state['trigger_buy_payment'] = False
-
     # ============================================================================
     # DISPATCHER: Análisis Catastral
     # ============================================================================
@@ -3038,16 +2932,31 @@ if page == 'Home':
             st.session_state['send_proposal_to'] = None
 
     # ============================================================================
-    # DISPATCHER GLOBAL: Modal de Detalle de Proyecto (desde Home y Arquitectos)
+    # DISPATCHER GLOBAL: Vista de Detalle de Proyecto (desde Home y Arquitectos)
     # ============================================================================
     if st.session_state.get('view_project_id'):
         project_id = st.session_state['view_project_id']
         project_data = get_project_by_id(project_id)
         if project_data:
             show_project_detail_modal(project_data)
+            # Botón para volver
+            if st.button("⬅️ Volver", key="back_from_detail"):
+                del st.session_state['view_project_id']
+                st.rerun()
         else:
             st.error(f"⚠️ Proyecto {project_id[:8]} no encontrado")
             del st.session_state['view_project_id']
+
+    # ============================================================================
+    # DISPATCHER GLOBAL: Formulario de Contacto Comercial
+    # ============================================================================
+    if st.session_state.get('show_commercial_contact'):
+        contact_data = st.session_state['show_commercial_contact']
+        show_commercial_contact_modal(contact_data['project_id'], contact_data['plot_id'])
+        # Botón para volver
+        if st.button("⬅️ Volver", key="back_from_contact"):
+            del st.session_state['show_commercial_contact']
+            st.rerun()
 
 elif page == 'plots':
     st.title('Registro y Gestión de Fincas')
@@ -4842,4 +4751,170 @@ with footer_col3:
             ARCHIRAPID
         </div>
         """, unsafe_allow_html=True)
-        st.caption("_Sube tu logo a `assets/branding/logo.png`_")
+def get_all_commercial_leads():
+    """Obtiene todos los leads comerciales"""
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql_query("SELECT * FROM commercial_leads ORDER BY created_at DESC", conn)
+    conn.close()
+    return df
+
+def get_all_reservations():
+    """Obtiene todas las reservas"""
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql_query("SELECT * FROM reservations ORDER BY created_at DESC", conn)
+    conn.close()
+    return df
+
+def get_all_payments():
+    """Obtiene todos los pagos (simulados)"""
+    # Para MVP, usar reservations como pagos
+    return get_all_reservations()
+
+def show_intranet_page():
+    """Portal INTRANET ARCHIRAPID para empleados"""
+    st.title("🏢 INTRANET ARCHIRAPID")
+    st.caption("Portal interno para gestión comercial y operativa")
+
+    # Login simple para MVP
+    if not st.session_state.get('intranet_logged_in'):
+        st.header("🔐 Acceso Empleados")
+        with st.form("intranet_login"):
+            username = st.text_input("Usuario")
+            password = st.text_input("Contraseña", type="password")
+            submitted = st.form_submit_button("Acceder")
+            if submitted:
+                if username == "admin" and password == "admin":
+                    st.session_state['intranet_logged_in'] = True
+                    st.success("✅ Acceso concedido")
+                    st.rerun()
+                else:
+                    st.error("❌ Credenciales incorrectas")
+        return
+
+    # Logout
+    if st.button("🚪 Cerrar Sesión"):
+        st.session_state['intranet_logged_in'] = False
+        st.rerun()
+
+    # Tabs del portal
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📞 Leads Comerciales",
+        "🏡 Gestión Fincas",
+        "📐 Proyectos Arquitectos",
+        "💳 Reservas/Pagos",
+        "📊 Dashboard"
+    ])
+
+    with tab1:
+        st.header("📞 Leads Comerciales")
+        leads_df = get_all_commercial_leads()
+        if leads_df.empty:
+            st.info("No hay leads comerciales registrados")
+        else:
+            st.metric("Total Leads", len(leads_df))
+            st.dataframe(leads_df, use_container_width=True)
+
+            # Filtros
+            status_filter = st.selectbox("Filtrar por estado", ["Todos", "Nuevo", "Contactado", "Cerrado"])
+            if status_filter != "Todos":
+                # Para MVP, no hay campo status, mostrar todos
+                pass
+
+    with tab2:
+        st.header("🏡 Gestión Fincas")
+        plots_df = get_all_plots()
+        if plots_df.empty:
+            st.info("No hay fincas registradas")
+        else:
+            st.metric("Total Fincas", len(plots_df))
+
+            # Sub-tabs para estados
+            sub_tab1, sub_tab2, sub_tab3, sub_tab4 = st.tabs([
+                "📍 Todas",
+                "👁️ Visitas",
+                "🔒 Reservadas",
+                "✅ Compradas"
+            ])
+
+            with sub_tab1:
+                st.dataframe(plots_df, use_container_width=True)
+
+            with sub_tab2:
+                # Para MVP, simular visitas (todas las fincas)
+                st.dataframe(plots_df, use_container_width=True)
+
+            with sub_tab3:
+                # Reservadas: fincas con reservas
+                reservations_df = get_all_reservations()
+                reserved_plot_ids = reservations_df['plot_id'].unique()
+                reserved_plots = plots_df[plots_df['id'].isin(reserved_plot_ids)]
+                st.dataframe(reserved_plots, use_container_width=True)
+
+            with sub_tab4:
+                # Compradas: fincas con pagos completos
+                payments_df = get_all_payments()
+                paid_plot_ids = payments_df['plot_id'].unique()
+                paid_plots = plots_df[plots_df['id'].isin(paid_plot_ids)]
+                st.dataframe(paid_plots, use_container_width=True)
+
+    with tab3:
+        st.header("📐 Proyectos Arquitectos")
+        projects_df = get_all_projects_cached()
+        if projects_df.empty:
+            st.info("No hay proyectos registrados")
+        else:
+            st.metric("Total Proyectos", len(projects_df))
+            st.dataframe(projects_df, use_container_width=True)
+
+    with tab4:
+        st.header("💳 Reservas y Pagos")
+        reservations_df = get_all_reservations()
+        if reservations_df.empty:
+            st.info("No hay reservas registradas")
+        else:
+            st.metric("Total Reservas", len(reservations_df))
+            st.dataframe(reservations_df, use_container_width=True)
+
+    with tab5:
+        st.header("📊 Dashboard Ejecutivo")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("🏡 Fincas Totales", len(get_all_plots()))
+        with col2:
+            st.metric("📐 Proyectos", len(get_all_projects_cached()))
+        with col3:
+            st.metric("📞 Leads", len(get_all_commercial_leads()))
+        with col4:
+            st.metric("💳 Reservas", len(get_all_reservations()))
+
+        # Gráficos simples
+        st.subheader("Distribución por Provincia")
+        plots_df = get_all_plots()
+        if not plots_df.empty:
+            province_counts = plots_df['province'].value_counts()
+            st.bar_chart(province_counts)
+
+def show_home_page():
+    pass
+
+# =====================================================
+# MAIN APP DISPATCHER
+# =====================================================
+if __name__ == "__main__":
+    # Dispatcher para vistas especiales
+    if st.session_state.get('show_intranet'):
+        show_intranet_page()
+    elif st.session_state.get('view_project_id'):
+        project = get_project_by_id(st.session_state['view_project_id'])
+        if project:
+            show_project_detail_modal(project)
+        else:
+            st.error("Proyecto no encontrado")
+            if st.button("Volver"):
+                st.session_state.pop('view_project_id', None)
+                st.rerun()
+    elif st.session_state.get('show_commercial_contact'):
+        show_commercial_contact_modal()
+    else:
+        # Home page
+        pass

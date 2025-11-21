@@ -134,7 +134,8 @@ def show_projects():
                     "Descargar PDF",
                     open(row['file_path'], 'rb'),
                     file_name=f"proyecto_{row['id']}.pdf",
-                    mime="application/pdf"
+                    mime="application/pdf",
+                    key=f"download_project_pdf_{row['id']}"
                 )
 
 class AssetManager:

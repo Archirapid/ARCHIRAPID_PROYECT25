@@ -1,3 +1,307 @@
+# =============================
+# GEMELO DIGITAL Y VISUALIZACIÓN AVANZADA (MVP)
+# =============================
+def generar_proyecto_final(config_data, geometria_muros, design_id, area_dibujada_m2):
+    # Metadatos estructurados para el gemelo digital
+    digital_twin_data = {
+        "project_id": design_id,
+        "area_construida": area_dibujada_m2,
+        "performance_data": {
+            "eficiencia_energetica": "A",
+            "consumo_kwh_anual": 1500,
+            "emisiones_co2_kg": 50
+        },
+        "componentes": {
+            "material_muros": config_data.get("material_muros"),
+            "cimentacion": config_data.get("cimentacion"),
+            "habitaciones": config_data.get("habitaciones"),
+            "banos": config_data.get("baños")
+        }
+    }
+    # Guardar en la base de datos (tabla digital_twins)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS digital_twins (
+        project_id TEXT PRIMARY KEY,
+        twin_json TEXT
+    )''')
+    c.execute('''INSERT OR REPLACE INTO digital_twins (project_id, twin_json) VALUES (?, ?)''',
+        (design_id, json.dumps(digital_twin_data)))
+    conn.commit()
+    conn.close()
+    return digital_twin_data
+
+def generar_enlace_visualizacion(design_id):
+    return f"https://app.archirapid.com/viewer/rv/{design_id}"
+# =============================
+# SERVICIOS ADICIONALES POST-VENTA (MVP)
+# =============================
+ADDITIONAL_SERVICES = {
+    'Visado del Proyecto': {'cost': 3500, 'type': 'fixed'},
+    'Dirección de Obra (Supervisión)': {'cost': 0.07, 'type': 'percent'},
+    'Estudio Geotécnico': {'cost': 1800, 'type': 'fixed'},
+    'Construcción Llave en Mano': {'cost': 1.0, 'type': 'percent'}
+}
+
+def calcular_costo_adicional(servicios_seleccionados, presupuesto_base_construccion):
+    total = 0
+    desglose = {}
+    for serv in servicios_seleccionados:
+        info = ADDITIONAL_SERVICES.get(serv)
+        if info:
+            if info['type'] == 'fixed':
+                desglose[serv] = info['cost']
+                total += info['cost']
+            elif info['type'] == 'percent':
+                cost = round(info['cost'] * presupuesto_base_construccion, 2)
+                desglose[serv] = cost
+                total += cost
+    return total, desglose
+import uuid
+import json
+import datetime
+import sys
+# =============================
+# GUARDAR CONFIGURACIÓN FINAL DEL DISEÑO (MVP)
+# =============================
+def guardar_configuracion_final(finca_id, opciones_seleccionadas, presupuesto_final, area_dibujada):
+    design_id = str(uuid.uuid4())
+    fecha_creacion = datetime.datetime.now().isoformat()
+    config_json = json.dumps(opciones_seleccionadas)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS client_designs (
+        design_id TEXT PRIMARY KEY,
+        finca_id TEXT,
+        fecha_creacion TEXT,
+        presupuesto_final REAL,
+        area_dibujada REAL,
+        config_json TEXT
+    )''')
+    c.execute('''INSERT INTO client_designs (design_id, finca_id, fecha_creacion, presupuesto_final, area_dibujada, config_json)
+        VALUES (?, ?, ?, ?, ?, ?)''',
+        (design_id, finca_id, fecha_creacion, presupuesto_final, area_dibujada, config_json))
+    conn.commit()
+    conn.close()
+    return design_id
+
+# Placeholder para generar el archivo final (PDF/CAD)
+def generar_proyecto_final(design_id, formato="pdf"):
+    contenido = f"Proyecto Gemelo Digital — ID: {design_id}\nFormato: {formato.upper()}\nDescarga simulada."
+    if formato == "pdf":
+        return contenido.encode(), "application/pdf"
+    else:
+        return contenido.encode(), "application/dxf"
+def obtener_area_finca(finca_id):
+    # Placeholder: en producción, extraer de la nota catastral
+    return 450  # m² por defecto
+# =============================
+# INTERFAZ VISUAL: CONFIGURADOR DE DISEÑO (MVP)
+# =============================
+def show_design_configurator(finca_id=None):
+    # Inicializar resultado_ia para evitar UnboundLocalError
+    resultado_ia = {
+        "edificabilidad_ok": False,
+        "normativa_ok": False
+    }
+    # ...existing code...
+    st.markdown("---")
+    st.markdown("### Finalizar y Comprar Proyecto")
+    pago_realizado = st.session_state.get('pago_realizado', False)
+    design_id = st.session_state.get('design_id', None)
+    error_critico = not (resultado_ia["edificabilidad_ok"] and resultado_ia["normativa_ok"])
+    if not pago_realizado:
+        if error_critico:
+            st.error("No puedes finalizar el proyecto hasta corregir los errores críticos de normativa o edificabilidad.")
+        else:
+            if st.button("FINALIZAR Y COMPRAR PROYECTO (€1.200)", type="primary"):
+                # Guardar configuración en la base de datos
+                design_id = guardar_configuracion_final(finca_id, opciones_seleccionadas, costo_estimado, area_dibujada)
+                st.session_state['design_id'] = design_id
+                st.session_state['pago_realizado'] = True
+                st.success(f"¡Pago de €1.200 exitoso! Tu proyecto único (ID: {design_id}) está listo para descargar.")
+                # Simular generación de gemelo digital y descargas
+                twin_data = generar_proyecto_final(opciones_seleccionadas, {}, design_id, area_dibujada)
+                pdf_bytes = f"Gemelo Digital PDF — Proyecto {design_id}\n{json.dumps(twin_data, indent=2)}".encode()
+                st.download_button("Descargar Proyecto PDF", data=pdf_bytes, file_name=f"Proyecto_{design_id}.pdf", mime="application/pdf", key=f"download_design_pdf_{design_id}")
+                cad_bytes = f"Gemelo Digital CAD — Proyecto {design_id}\n{json.dumps(twin_data, indent=2)}".encode()
+                st.download_button("Descargar Proyecto CAD", data=cad_bytes, file_name=f"Proyecto_{design_id}.dxf", mime="application/dxf", key=f"download_design_cad_{design_id}")
+                # Botón de visualización avanzada
+                if st.button("VER EN 3D Y REALIDAD VIRTUAL (RV)", type="secondary"):
+                    enlace_rv = generar_enlace_visualizacion(design_id)
+                    st.markdown(f"### [Ver Modelo 3D y RV]({enlace_rv})")
+    else:
+        # Ocultar configurador y mostrar servicios adicionales
+        st.markdown("---")
+        st.header("SERVICIOS ADICIONALES Y CONSTRUCCIÓN")
+        st.markdown("Selecciona los servicios post-venta que deseas contratar:")
+        servicios_elegidos = []
+        for serv in ADDITIONAL_SERVICES.keys():
+            if st.checkbox(serv, key=f"serv_{serv}"):
+                servicios_elegidos.append(serv)
+        costo_adicional, desglose_serv = calcular_costo_adicional(servicios_elegidos, costo_estimado)
+        presupuesto_total = costo_estimado + costo_adicional
+        st.subheader(f"Presupuesto Total Final (Proyecto + Servicios): {presupuesto_total:,.0f} €")
+        with st.expander("Desglose de Servicios Adicionales"):
+            for k, v in desglose_serv.items():
+                st.write(f"{k}: {v:,.0f} €")
+        if st.button("CONTRATAR SERVICIOS SELECCIONADOS", type="primary"):
+            st.success("¡Solicitud enviada a un asesor de ventas! Nos pondremos en contacto contigo para gestionar los servicios contratados.")
+
+    # Leer finca_id de la URL si no se pasa como argumento
+    if finca_id is None:
+        finca_id = st.query_params.get('finca_id', None)
+    st.title(f"Configurador de Vivienda — Finca {finca_id}")
+    st.markdown("Configura tu casa y visualiza el presupuesto en tiempo real.")
+
+    # Obtener superficie de la finca
+    superficie_finca = obtener_area_finca(finca_id)
+    area_edificable = round(superficie_finca * 0.33, 2)
+    st.info(f"Finca ID: {finca_id} | Superficie total: {superficie_finca} m² | Área de Edificación Permitida: {area_edificable} m² (33% de la finca)")
+
+
+    # Panel de filtros (sidebar)
+    st.sidebar.header("Configura tu vivienda")
+    estilo = st.sidebar.selectbox("Estilo", list(CONFIG_OPTIONS["estilo"].keys()))
+    habitaciones = st.sidebar.slider("Habitaciones", 1, 5, 3)
+    baños = st.sidebar.slider("Baños", 1, 3, 2)
+    plantas = st.sidebar.selectbox("Plantas", list(CONFIG_OPTIONS["plantas"].keys()))
+    cimentacion = st.sidebar.selectbox("Cimentación", list(CONFIG_OPTIONS["cimentacion"].keys()))
+    material_muros = st.sidebar.selectbox("Material de Muros", list(CONFIG_OPTIONS["material_muros"].keys()))
+    piscina = st.sidebar.selectbox("Piscina", list(CONFIG_OPTIONS["piscina"].keys()))
+
+    # Área construida (simulada por el usuario)
+    area_construccion = st.number_input("Área construida (m²)", min_value=30, max_value=int(area_edificable), value=min(120, int(area_edificable)))
+
+    # Opciones seleccionadas
+    opciones_seleccionadas = {
+        "estilo": estilo,
+        "habitaciones": habitaciones,
+        "baños": baños,
+        "plantas": plantas,
+        "cimentacion": cimentacion,
+        "material_muros": material_muros,
+        "piscina": piscina
+    }
+
+    # Cálculo en tiempo real del presupuesto
+    costo_estimado, desglose_costos = calcular_presupuesto_base(opciones_seleccionadas, area_construccion)
+    st.subheader("PRESUPUESTO ESTIMADO DE CONSTRUCCIÓN")
+    st.markdown(f"<div style='font-size:28px;color:#1769aa;font-weight:bold;margin-bottom:8px'>{costo_estimado:,.0f} €</div>", unsafe_allow_html=True)
+    with st.expander("Desglose de Costos"):
+        for k, v in desglose_costos.items():
+            st.write(f"{k.capitalize()}: {v:,.0f} €")
+
+    # Área de diseño (simulada)
+    st.markdown("---")
+    st.markdown("### Área de Diseño (Simulación)")
+    st.markdown(f"<div style='background:#eaf6ff;border:2px dashed #3399ff;padding:32px;text-align:center;font-size:20px;'>Área de Edificación Permitida: <b>{area_edificable} m²</b><br>Área construida propuesta: <b>{area_construccion} m²</b></div>", unsafe_allow_html=True)
+
+    # Entrada para simular el área dibujada
+    area_dibujada = st.number_input("Área Dibujada (m²)", min_value=30, max_value=int(area_edificable), value=area_construccion)
+
+    # Corrección y sugerencias IA
+    resultado_ia = evaluar_y_corregir_diseno(area_edificable, habitaciones, baños, area_dibujada)
+    st.markdown("---")
+    st.markdown("### Sugerencias del Asistente IA")
+    if resultado_ia["edificabilidad_ok"] and resultado_ia["coherencia_ok"] and resultado_ia["normativa_ok"]:
+        st.success("✅ Diseño correcto según normativa y edificabilidad.")
+    else:
+        for sug in resultado_ia["sugerencias"]:
+            st.warning(f"SUGERENCIA: {sug}")
+# =============================
+# ASISTENTE INTELIGENTE DE COHERENCIA Y EDIFICABILIDAD (MVP)
+# =============================
+def evaluar_y_corregir_diseno(area_construir_m2, num_habitaciones, num_banos, area_dibujada_m2):
+    resultado = {
+        "edificabilidad_ok": True,
+        "coherencia_ok": True,
+        "normativa_ok": True,
+        "sugerencias": []
+    }
+
+    # Verificar edificabilidad
+    if area_dibujada_m2 > area_construir_m2:
+        resultado["edificabilidad_ok"] = False
+        resultado["sugerencias"].append(
+            f"Has excedido el máximo edificable ({area_construir_m2:.1f} m²). Reduce el área construida."
+        )
+
+    # Verificar coherencia (usar al menos el 80% del área)
+    if area_dibujada_m2 < 0.8 * area_construir_m2:
+        resultado["coherencia_ok"] = False
+        resultado["sugerencias"].append(
+            f"Estás usando menos del 80% del área permitida. Puedes añadir más estancias o ampliar las existentes."
+        )
+
+    # Normativa: mínimo un baño por cada tres dormitorios
+    min_banos = max(1, (num_habitaciones + 2) // 3)
+    if num_banos < min_banos:
+        resultado["normativa_ok"] = False
+        resultado["sugerencias"].append(
+            f"Normativa: Debes tener al menos {min_banos} baño(s) para {num_habitaciones} dormitorio(s)."
+        )
+
+    return resultado
+# =============================
+# CONFIGURADOR Y PRESUPUESTO DINÁMICO (MVP)
+# =============================
+CONFIG_OPTIONS = {
+    "estilo": {
+        "moderno": 1200,
+        "mediterraneo": 1100,
+        "clasico": 1000,
+        "minimalista": 1300
+    },
+    "habitaciones": {
+        1: 8000,
+        2: 15000,
+        3: 22000,
+        4: 28000,
+        5: 34000
+    },
+    "baños": {
+        1: 4000,
+        2: 7500,
+        3: 11000
+    },
+    "plantas": {
+        1: 0,
+        2: 9000
+    },
+    "cimentacion": {
+        "normal": 6000,
+        "reforzada": 12000
+    },
+    "material_muros": {
+        "ladrillo": 0,
+        "hormigon": 3500,
+        "madera": 5000
+    },
+    "piscina": {
+        "no": 0,
+        "si": 18000
+    }
+}
+
+def calcular_presupuesto_base(opciones_seleccionadas, area_construccion_m2):
+    desglose_costos = {}
+    costo_estimado = 0
+
+    # Sumar costos de cada opción seleccionada
+    for categoria, valor in opciones_seleccionadas.items():
+        base = CONFIG_OPTIONS.get(categoria, {})
+        costo = base.get(valor, 0)
+        desglose_costos[categoria] = costo
+        costo_estimado += costo
+
+    # Costo por m2 construido (ejemplo: 950 €/m2)
+    costo_m2 = 950
+    costo_area = area_construccion_m2 * costo_m2
+    desglose_costos["area_construccion"] = costo_area
+    costo_estimado += costo_area
+
+    return costo_estimado, desglose_costos
 """
 ARCHIRAPID MVP - Main Application
 """
@@ -11,16 +315,18 @@ from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import base64
 import uuid
 import datetime
+import time
+from pathlib import Path
 
 # --- Query Param Helpers (must be before any usage) ---
 def update_query_params(**kwargs):
     try:
-        st.experimental_set_query_params(**kwargs)
+        st.query_params.update(kwargs)
     except Exception:
         pass
 def get_query_params():
     try:
-        return st.query_params
+        return dict(st.query_params)
     except Exception:
         return {}
 
@@ -60,7 +366,7 @@ st.set_page_config(layout='wide')
 
 def clear_query_params():
     try:
-        st.experimental_set_query_params()
+        st.query_params.clear()
     except Exception:
         pass
 
@@ -70,6 +376,7 @@ BASE = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE, "data.db")
 UPLOADS = os.path.join(BASE, "uploads")
 os.makedirs(UPLOADS, exist_ok=True)
+from src.contractor_manager import ContractorManager
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -143,6 +450,33 @@ def init_db():
             created_at TEXT
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS services_providers (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            email TEXT UNIQUE,
+            phone TEXT,
+            company TEXT,
+            description TEXT,
+            services_offered TEXT,
+            photos TEXT,
+            catalog_pdf TEXT,
+            created_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS advertising_plans (
+            id TEXT PRIMARY KEY,
+            provider_id TEXT,
+            plan_type TEXT,
+            duration_weeks INTEGER,
+            price REAL,
+            logo_path TEXT,
+            status TEXT,
+            approved_by TEXT,
+            created_at TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -207,7 +541,7 @@ def show_analysis_modal_fullpage(plot_id):
             dxf_bytes = create_dxf_from_cadastral_output(output_dir=str(output_dir), scale_factor=0.1)
             if dxf_bytes:
                 ref = edata.get("cadastral_ref") or "parcela"
-                st.download_button("⬇️ Descargar DXF", dxf_bytes, f"ARCHIRAPID_{ref}.dxf", "application/dxf", width='stretch')
+                st.download_button("⬇️ Descargar DXF", dxf_bytes, f"ARCHIRAPID_{ref}.dxf", "application/dxf", width='stretch', key="download_dxf_compute")
         except Exception as e:
             st.error(f"Error: {e}")
     if user_has_paid and is_buildable and len(tabs) > 3:
@@ -399,7 +733,7 @@ def insert_subscription(data):
 def get_proposals_sent_this_month(architect_id):
     """Cuenta propuestas enviadas este mes"""
     from datetime import datetime
-    current_month = datetime.now().strftime('%Y-%m')
+    current_month = datetime.datetime.now().strftime('%Y-%m')
     conn = sqlite3.connect(DB_PATH)
     df = pd.read_sql_query("SELECT COUNT(*) as count FROM proposals WHERE architect_id = ? AND created_at LIKE ?", 
                            conn, params=(architect_id, f"{current_month}%"))
@@ -473,7 +807,7 @@ def update_proposal_status(proposal_id, new_status):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("UPDATE proposals SET status = ?, responded_at = ? WHERE id = ?", 
-              (new_status, datetime.now().isoformat(), proposal_id))
+              (new_status, datetime.datetime.now().isoformat(), proposal_id))
     conn.commit()
     conn.close()
 
@@ -607,7 +941,7 @@ def render_create_project_page(architect_id: str, architect_name: str):
                 'style': style,
                 'price': price,
                 'description': description,
-                'created_at': datetime.now().isoformat(),
+                'created_at': datetime.datetime.now().isoformat(),
                 'm2_construidos': m2_construidos,
                 'm2_parcela_minima': m2_parcela_min,
                 'm2_parcela_maxima': m2_parcela_max,
@@ -979,7 +1313,7 @@ def show_analysis_modal(plot_id):
             dxf_bytes = create_dxf_from_cadastral_output(output_dir=str(output_dir), scale_factor=0.1)
             if dxf_bytes:
                 ref = edata.get("cadastral_ref") or "parcela"
-                st.download_button("⬇️ Descargar DXF", dxf_bytes, f"ARCHIRAPID_{ref}.dxf", "application/dxf", width='stretch')
+                st.download_button("⬇️ Descargar DXF", dxf_bytes, f"ARCHIRAPID_{ref}.dxf", "application/dxf", width='stretch', key="download_dxf_analysis")
         except Exception as e:
             st.error(f"Error: {e}")
     
@@ -1251,7 +1585,7 @@ def show_proposal_modal(plot_id, architect_id):
                 'deadline_days': deadline_days,
                 'sketch_image_path': sketch_path,
                 'status': 'pending',
-                'created_at': datetime.now().isoformat(),
+                'created_at': datetime.datetime.now().isoformat(),
                 'responded_at': None,
                 'delivery_format': delivery_format,
                 'delivery_price': delivery_price,
@@ -1388,7 +1722,7 @@ def show_create_project_modal(architect_id, architect_name):
                             'style': style,
                             'price': price,
                             'description': description,
-                            'created_at': datetime.now().isoformat(),
+                            'created_at': datetime.datetime.now().isoformat(),
                             'm2_construidos': m2_construidos,
                             'm2_parcela_minima': m2_parcela_min,
                             'm2_parcela_maxima': m2_parcela_max,
@@ -1530,7 +1864,8 @@ def show_project_detail_modal(project):
                         f.read(),
                         file_name=f"{project['title']}_planos.pdf",
                         mime="application/pdf",
-                        width='stretch'
+                        width='stretch',
+                        key=f"download_planos_pdf_{project['id']}"
                     )
             else:
                 st.info("📄 No hay planos PDF disponibles")
@@ -1559,7 +1894,8 @@ def show_project_detail_modal(project):
                         "📐 Descargar Planos DWG",
                         f.read(),
                         file_name=fname,
-                        width='stretch'
+                        width='stretch',
+                        key=f"download_planos_dwg_{project['id']}"
                     )
             else:
                 st.info("📐 No hay planos DWG disponibles")
@@ -1571,7 +1907,8 @@ def show_project_detail_modal(project):
                     f.read(),
                     file_name=f"{project['title']}_memoria.pdf",
                     mime="application/pdf",
-                    width='stretch'
+                    width='stretch',
+                    key=f"download_memoria_{project['id']}"
                 )
                 # Allow upload/replacement of Memoria from the project detail
                 try:
@@ -1692,7 +2029,8 @@ def show_project_detail_modal(project):
                         "🕶️ Descargar Recurso RV",
                         f.read(),
                         file_name=os.path.basename(path),
-                        width='stretch'
+                        width='stretch',
+                        key=f"download_rv_{project['id']}"
                     )
                     # If the resource is a zip, allow extracting a .glb as the 3D model safely
                     if ext == '.zip':
@@ -1794,6 +2132,21 @@ def show_payment_modal(kind, plot_id):
     st.header(title)
     st.metric("💰 Monto a pagar", f"€{amount:,.2f}")
     
+    # Check if payment was already completed
+    if st.session_state.get('payment_completed'):
+        st.success("🎉 ¡Pago procesado exitosamente!")
+        st.info("📧 Recibirás confirmación detallada por email con todos los documentos.")
+        st.balloons()
+        
+        st.markdown("---")
+        st.markdown("⏳ **Redirigiendo al panel de clientes...**")
+        
+        # Auto-redirect after 2 seconds
+        import time
+        time.sleep(2)
+        st.rerun()
+        return
+    
     with st.form("payment_form"):
         buyer_name = st.text_input("👤 Nombre completo *", value=st.session_state.get('client_name', ''))
         buyer_email = st.text_input("📧 Email *", value=st.session_state.get('client_email', ''))
@@ -1813,15 +2166,30 @@ def show_payment_modal(kind, plot_id):
                 import time
                 time.sleep(1)  # Simular delay
             
-            st.success("🎉 ¡Pago procesado exitosamente!")
-            
             # Guardar datos del cliente
             st.session_state['client_name'] = buyer_name.strip()
             st.session_state['client_email'] = buyer_email.strip()
             st.session_state['payment_completed'] = True
             
-            # Registrar la transacción
+            # Crear ID de transacción
             transaction_id = str(uuid.uuid4())
+            
+            # Crear datos del pago para mostrar después
+            payment_data = {
+                'payment_id': transaction_id,
+                'amount': amount,
+                'buyer_name': buyer_name.strip(),
+                'buyer_email': buyer_email.strip(),
+                'plot_id': plot_id,
+                'payment_type': 'purchase' if kind == 'buy' else 'reserve',
+                'status': 'COMPLETADO',
+                'concept': 'Compra Completa de Finca' if kind == 'buy' else 'Reserva de Finca (10%)',
+                'method': 'Tarjeta de Crédito',
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+            st.session_state['last_payment'] = payment_data
+            
+            # Registrar la transacción
             if kind == 'reserve':
                 insert_reservation({
                     'id': transaction_id,
@@ -1830,11 +2198,9 @@ def show_payment_modal(kind, plot_id):
                     'buyer_email': buyer_email.strip(),
                     'amount': amount,
                     'kind': 'reserve',
-                    'created_at': datetime.now().isoformat()
+                    'created_at': datetime.datetime.now().isoformat()
                 })
             else:
-                # Para compra completa, podríamos marcar la finca como vendida
-                # Por ahora, solo registrar como reserva de 100%
                 insert_reservation({
                     'id': transaction_id,
                     'plot_id': plot_id,
@@ -1842,59 +2208,10 @@ def show_payment_modal(kind, plot_id):
                     'buyer_email': buyer_email.strip(),
                     'amount': amount,
                     'kind': 'purchase',
-                    'created_at': datetime.now().isoformat()
+                    'created_at': datetime.datetime.now().isoformat()
                 })
             
-            # Mostrar recibo detallado
-            st.markdown("---")
-            st.markdown("### 📄 Recibo de Transacción")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown(f"**ID Transacción:** {transaction_id[:8]}...")
-                st.markdown(f"**Fecha:** {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-                st.markdown(f"**Tipo:** {'Reserva (10%)' if kind == 'reserve' else 'Compra Completa'}")
-            with col2:
-                st.markdown(f"**Cliente:** {buyer_name.strip()}")
-                st.markdown(f"**Email:** {buyer_email.strip()}")
-                st.markdown(f"**Monto Pagado:** €{amount:,.2f}")
-            
-            st.markdown("---")
-            st.markdown("### 🏡 Detalles de la Finca")
-            
-            finca_cols = st.columns(3)
-            with finca_cols[0]:
-                st.markdown(f"**Título:** {plot.get('title', 'N/A')}")
-                st.markdown(f"**Superficie:** {plot.get('m2', 0):,.0f} m²")
-            with finca_cols[1]:
-                st.markdown(f"**Tipo:** {plot.get('type', 'N/A').upper()}")
-                st.markdown(f"**Precio Total:** €{plot.get('price', 0):,.2f}")
-            with finca_cols[2]:
-                st.markdown(f"**Provincia:** {plot.get('province', 'N/A')}")
-                st.markdown(f"**Localidad:** {plot.get('locality', 'N/A')}")
-            
-            # Mostrar datos catastrales si disponibles
-            cache_all = st.session_state.get('analysis_cache', {})
-            cache = cache_all.get(plot_id)
-            if cache:
-                edata = cache.get('edata') or {}
-                st.markdown("---")
-                st.markdown("### 📊 Datos Catastrales")
-                cat_cols = st.columns(2)
-                with cat_cols[0]:
-                    st.markdown(f"**Ref. Catastral:** {edata.get('cadastral_ref', 'N/A')}")
-                    st.markdown(f"**Superficie Registrada:** {edata.get('surface_m2', 0):,.0f} m²")
-                with cat_cols[1]:
-                    edificable = edata.get('max_buildable_m2', 0)
-                    st.markdown(f"**Máx. Edificable:** {edificable:,.1f} m²")
-                    perc = edata.get('edificability_percent', 0)
-                    st.markdown(f"**% Edificabilidad:** {perc*100:.1f}%")
-            
-            st.markdown("---")
-            st.info("📧 Recibirás confirmación detallada por email con todos los documentos.")
-            
-            # Cerrar modal automáticamente después de éxito
-            st.balloons()
+            st.rerun()  # Trigger rerun to show success state
 
 
 def show_commercial_contact_modal(project_id, plot_id):
@@ -1934,7 +2251,7 @@ def show_commercial_contact_modal(project_id, plot_id):
                 'email': email.strip(),
                 'budget': budget,
                 'message': message.strip() if message else '',
-                'created_at': datetime.now().isoformat()
+                'created_at': datetime.datetime.now().isoformat()
             })
             
             st.success("🎉 ¡Consulta enviada exitosamente!")
@@ -2164,10 +2481,10 @@ if theme_choice == 'Oscuro':
 
 def clear_query_params():
     try:
-        st.experimental_set_query_params()
+        st.query_params.clear()
     except Exception:
         pass
-qp_nav = get_query_params()
+qp_nav = dict(st.query_params)
 nav_raw = (qp_nav or {}).get('page', ['Home'])
 nav_raw = nav_raw[0] if isinstance(nav_raw, list) else nav_raw
 nav_norm = str(nav_raw).strip().lower() if nav_raw else 'home'
@@ -2226,6 +2543,124 @@ def render_perf_panel():
 
 render_perf_panel()
 
+def show_services_page():
+
+    st.title('Registro de Proveedores de Servicios')
+    st.markdown("Regístrate para ofrecer tus servicios y accede a tu portal profesional.")
+
+    if 'provider_id' not in st.session_state and 'provider_access' not in st.session_state:
+        col_reg, col_acc = st.columns(2)
+        with col_reg:
+            st.subheader('Registro de Proveedor')
+            with st.form('registro_proveedor'):
+                name = st.text_input('Nombre completo*')
+                email = st.text_input('Email*')
+                phone = st.text_input('Teléfono*')
+                company = st.text_input('Empresa*')
+                description = st.text_area('Descripción de servicios*', placeholder='Describe brevemente tu experiencia y servicios...')
+                services_offered = st.text_input('Servicios ofrecidos', placeholder='Ej: Reformas, instalaciones, etc.')
+                photos = st.file_uploader('Fotos (máx 3)', type=['jpg','jpeg','png'], accept_multiple_files=True)
+                logo = st.file_uploader('Logo de empresa', type=['jpg','jpeg','png'])
+                catalog_pdf = st.file_uploader('Catálogo PDF', type=['pdf'])
+                submitted = st.form_submit_button('Registrar proveedor')
+                if submitted:
+                    if not name or not email or not phone or not company or not description:
+                        st.error('Completa todos los campos obligatorios marcados con *')
+                    else:
+                        # Guardar archivos
+                        photo_paths = []
+                        if photos:
+                            for i, p in enumerate(photos[:3]):
+                                try:
+                                    photo_paths.append(save_file(p, f'provider_photo_{i}'))
+                                except Exception:
+                                    st.warning(f'Foto {i+1} omitida por error o tamaño')
+                        logo_path = save_file(logo, 'provider_logo') if logo else None
+                        catalog_path = save_file(catalog_pdf, 'provider_catalog') if catalog_pdf else None
+                        provider_id = str(uuid.uuid4())
+                        conn = sqlite3.connect(DB_PATH)
+                        c = conn.cursor()
+                        c.execute('''INSERT INTO services_providers (id, name, email, phone, company, description, services_offered, photos, catalog_pdf, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)''',
+                            (provider_id, name, email, phone, company, description, services_offered, json.dumps(photo_paths), catalog_path, datetime.datetime.now().isoformat()))
+                        conn.commit()
+                        conn.close()
+                        st.session_state['provider_id'] = provider_id
+                        st.success('✅ Proveedor registrado correctamente. Ahora puedes acceder a tu portal profesional.')
+                        st.rerun()
+        with col_acc:
+            st.subheader('Acceso Proveedor')
+            with st.form('acceso_proveedor'):
+                email_acc = st.text_input('Email registrado')
+                acc_submit = st.form_submit_button('Acceder al portal')
+                if acc_submit:
+                    conn = sqlite3.connect(DB_PATH)
+                    df = pd.read_sql_query("SELECT id FROM services_providers WHERE email = ?", conn, params=(email_acc,))
+                    conn.close()
+                    if df.empty:
+                        st.error('Email no encontrado. Regístrate primero.')
+                    else:
+                        st.session_state['provider_id'] = df.iloc[0]['id']
+                        st.success('Acceso correcto. Redirigiendo al portal...')
+                        st.rerun()
+    else:
+        # Portal profesional del proveedor
+        conn = sqlite3.connect(DB_PATH)
+        df = pd.read_sql_query("SELECT * FROM services_providers WHERE id = ?", conn, params=(st.session_state['provider_id'],))
+        conn.close()
+        if df.empty:
+            st.error('No se encontró el proveedor. Vuelve a registrarte.')
+            del st.session_state['provider_id']
+            st.rerun()
+        else:
+            prov = df.iloc[0]
+            st.header(f"Bienvenido/a, {prov['name']} ({prov['company']})")
+            st.markdown(f"**Email:** {prov['email']} | **Teléfono:** {prov['phone']}")
+            st.markdown(f"**Descripción:** {prov['description']}")
+            st.markdown(f"**Servicios ofrecidos:** {prov['services_offered']}")
+            if prov['photos']:
+                st.markdown('**Fotos subidas:**')
+                for p in json.loads(prov['photos']):
+                    if p and os.path.exists(p):
+                        st.image(p, width=200)
+            if prov['logo_path'] and os.path.exists(prov['logo_path']):
+                st.markdown('**Logo:**')
+                st.image(prov['logo_path'], width=120)
+            if prov['catalog_pdf'] and os.path.exists(prov['catalog_pdf']):
+                st.markdown('**Catálogo PDF:**')
+                with open(prov['catalog_pdf'], 'rb') as f:
+                    st.download_button('Descargar catálogo', data=f.read(), file_name='catalogo.pdf', mime='application/pdf', key=f"download_catalogo_{prov['id']}")
+            st.markdown('---')
+            st.subheader('Opciones de Publicidad')
+            plans = [
+                {'type': 'cabecera', 'week': 50, 'month': 180, 'year': 1800},
+                {'type': 'columna', 'week': 30, 'month': 100, 'year': 1000},
+                {'type': 'footer', 'week': 20, 'month': 70, 'year': 700}
+            ]
+            for p in plans:
+                st.write(f"**{p['type'].capitalize()}**: {p['week']}€/semana, {p['month']}€/mes, {p['year']}€/año")
+            with st.form("advertise_form"):
+                plan_type = st.selectbox("Tipo de anuncio", ['cabecera', 'columna', 'footer'])
+                duration = st.selectbox("Duración", ['1 semana', '1 mes', '1 año'])
+                logo = st.file_uploader("Logo para anuncio", type=['jpg','png'])
+                submitted = st.form_submit_button("Contratar Publicidad")
+                if submitted:
+                    if not logo:
+                        st.error("Sube tu logo para el anuncio")
+                    else:
+                        weeks = 1 if 'semana' in duration else 52 if 'año' in duration else 4
+                        price_key = 'week' if weeks == 1 else 'month' if weeks == 4 else 'year'
+                        price = plans[{'cabecera':0, 'columna':1, 'footer':2}[plan_type]][price_key]
+                        logo_path = save_file(logo, 'ad_logo')
+                        conn = sqlite3.connect(DB_PATH)
+                        c = conn.cursor()
+                        c.execute('''INSERT INTO advertising_plans (id, provider_id, plan_type, duration_weeks, price, logo_path, status, approved_by, created_at) VALUES (?,?,?,?,?,?,?,?,?)''',
+                            (str(uuid.uuid4()), prov['id'], plan_type, weeks, price, logo_path, 'pending', None, datetime.datetime.now().isoformat()))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"Plan solicitado. Precio: {price}€. Espera aprobación del comercial.")
+            st.markdown('---')
+            st.info('Tus datos están sincronizados con la INTRANET del departamento comercial.')
+
 # Get current page from query params (robust resolver)
 raw_page = get_query_params().get('page', 'Home')
 if isinstance(raw_page, list):
@@ -2247,7 +2682,7 @@ elif norm in ['servicios', 'servicio', 's']:
     page = 'servicios'
 else:
     # leave page as-is if it matches expected values; otherwise default to Home
-    if page not in ['Home', 'plots', 'architects', 'constructores', 'clientes', 'servicios']:
+    if page not in ['Home', 'plots', 'architects', 'constructores', 'clientes', 'servicios', 'configurator']:
         page = 'Home'
 
 if page == 'Home':
@@ -2444,7 +2879,8 @@ if page == 'Home':
                     file_name=os.path.basename(selected_plot["registry_note_path"]),
                     mime="application/pdf",
                     width='stretch',
-                    type="secondary"
+                    type="secondary",
+                    key=f"download_registry_home_{selected_plot['id']}"
                 )
 
                 # Análisis automático
@@ -2575,7 +3011,7 @@ if page == 'Home':
                 # BOTONES DE ACCIÓN
                 btn_col1, btn_col2 = st.columns(2)
                 with btn_col1:
-                    if st.button("🚀 IR AL PANEL DE CLIENTES", use_container_width=True, type="primary", key="goto_clients"):
+                    if st.button("Continuar", use_container_width=True, type="primary", key="goto_clients"):
                         st.session_state["page"] = "clientes"
                         try:
                             update_query_params(page='clientes')
@@ -2803,7 +3239,7 @@ if page == 'Home':
                                 lines.append(f"    * {exl.strip()}")
                         lines.append("")
                     txt = "\n".join(lines)
-                    st.download_button("⬇️ Descargar (TXT)", data=txt, file_name="reporte_compatibilidad.txt", mime="text/plain")
+                    st.download_button("⬇️ Descargar (TXT)", data=txt, file_name="reporte_compatibilidad.txt", mime="text/plain", key="download_compat_txt")
                     # HTML simple
                     html_lines = [
                         "<html><head><meta charset='utf-8'><style>body{font-family:Arial;} .score{font-weight:bold;} ul{margin-top:4px;} li{margin-bottom:2px;} .card{border:1px solid #ddd;padding:8px;border-radius:6px;margin-bottom:10px;} .title{font-size:14px;margin:0;}</style></head><body>",
@@ -2822,7 +3258,7 @@ if page == 'Home':
                         html_lines.append("</div>")
                     html_lines.append("</body></html>")
                     html_content = "".join(html_lines)
-                    st.download_button("⬇️ Descargar (HTML)", data=html_content, file_name="reporte_compatibilidad.html", mime="text/html")
+                    st.download_button("⬇️ Descargar (HTML)", data=html_content, file_name="reporte_compatibilidad.html", mime="text/html", key="download_compat_html")
                 except Exception as e:
                     st.caption(f"No se pudo generar el reporte: {e}")
 
@@ -2957,6 +3393,7 @@ if page == 'Home':
         if st.button("⬅️ Volver", key="back_from_contact"):
             del st.session_state['show_commercial_contact']
             st.rerun()
+
 
 elif page == 'plots':
     st.title('Registro y Gestión de Fincas')
@@ -3189,7 +3626,18 @@ elif page == 'plots':
                         st.download_button('Descargar Nota Simple', 
                                         data=registry_data,
                                         file_name=os.path.basename(r['registry_note_path']),
-                                        mime='application/pdf')
+                                        mime='application/pdf',
+                                        key=f"download_registry_plots_{r['id']}")
+
+elif page == 'servicios':
+    show_services_page()
+
+elif page == 'configurator':
+    qp = get_query_params()
+    finca_id = qp.get('finca_id', [None])
+    if isinstance(finca_id, list):
+        finca_id = finca_id[0]
+    show_design_configurator(finca_id)
 
 elif page == 'architects':
     st.title('🏛️ Portal de Arquitectos')
@@ -3197,7 +3645,7 @@ elif page == 'architects':
     # Sistema de tabs para navegación
     if 'arch_id' not in st.session_state:
         # No hay sesión → Mostrar registro/login
-        tab = st.radio(' ', ['🔐 Iniciar Sesión', '📝 Registrarse'], horizontal=True, label_visibility='collapsed')
+        tab = st.radio(' ', ['🔐 Iniciar Sesión', '📝 Registrarse', '👤 Portal Comprador'], horizontal=True, label_visibility='collapsed')
         
         if tab == '📝 Registrarse':
             st.subheader("Únete a ARCHIRAPID")
@@ -3230,7 +3678,7 @@ elif page == 'architects':
                         try:
                             c.execute('''INSERT INTO architects (id, name, email, phone, company, nif, created_at)
                                          VALUES (?,?,?,?,?,?,?)''', 
-                                      (arch_id, nombre, email, telefono, empresa, nif, datetime.now().isoformat()))
+                                      (arch_id, nombre, email, telefono, empresa, nif, datetime.datetime.now().isoformat()))
                             conn.commit()
                             st.success(f'✅ Registro completado. Bienvenido/a, {nombre}!')
                             st.session_state['arch_id'] = arch_id
@@ -3241,7 +3689,7 @@ elif page == 'architects':
                         finally:
                             conn.close()
         
-        else:  # Iniciar Sesión
+        elif tab == '🔐 Iniciar Sesión':
             st.subheader("Accede a tu cuenta")
             email_login = st.text_input('📧 Email registrado')
             if st.button('🔓 Iniciar Sesión', width='stretch'):
@@ -3258,6 +3706,76 @@ elif page == 'architects':
                         st.rerun()
                     else:
                         st.error('❌ Email no encontrado. ¿Necesitas registrarte?')
+                else:
+                    st.warning('⚠️ Introduce tu email')
+        
+        elif tab == '👤 Portal Comprador':
+            st.subheader("Accede a tu parcela comprada")
+            buyer_email = st.text_input('📧 Email de compra')
+            if st.button('🔍 Buscar mi parcela', width='stretch'):
+                if buyer_email:
+                    # Buscar cliente por email
+                    conn = sqlite3.connect(DB_PATH)
+                    df_client = pd.read_sql_query("SELECT * FROM clients WHERE email = ?", conn, params=(buyer_email,))
+                    if df_client.shape[0] > 0:
+                        client = df_client.iloc[0].to_dict()
+                        st.success(f"✅ Bienvenido/a, {client['name']}")
+                        
+                        # Mostrar parcela comprada
+                        df_plot = pd.read_sql_query("SELECT * FROM plots WHERE id = ?", conn, params=(client['plot_id'],))
+                        if df_plot.shape[0] > 0:
+                            plot = df_plot.iloc[0].to_dict()
+                            st.subheader(f"🏡 Tu parcela: {plot['name']}")
+                            st.write(f"📍 Ubicación: {plot['location']}")
+                            st.write(f"📐 Superficie: {plot['area']} m²")
+                            st.write(f"💰 Precio: {plot['price']} €")
+                            
+                            # Botones de acción
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                if st.button('🎨 Diseñar', key='buyer_design', width='stretch'):
+                                    st.session_state["page"] = "configurator"
+                                    try:
+                                        update_query_params(page='configurator', finca_id=plot['id'])
+                                    except Exception:
+                                        pass
+                                    # Mantener contexto de comprador
+                                    st.session_state["client_email_prefill"] = buyer_email
+                                    st.session_state["auto_login_email"] = buyer_email
+                                    st.session_state['last_payment_receipt'] = st.session_state.get('last_payment_receipt')
+                                    st.session_state['purchased_plot'] = plot
+                                    st.rerun()
+                            with col2:
+                                if st.button('📋 Proyectos', key='buyer_projects', width='stretch'):
+                                    st.session_state["page"] = "projects"
+                                    try:
+                                        update_query_params(page='projects', finca_id=plot['id'])
+                                    except Exception:
+                                        pass
+                                    # Mantener contexto de comprador
+                                    st.session_state["client_email_prefill"] = buyer_email
+                                    st.session_state["auto_login_email"] = buyer_email
+                                    st.session_state['last_payment_receipt'] = st.session_state.get('last_payment_receipt')
+                                    st.session_state['purchased_plot'] = plot
+                                    st.rerun()
+                            with col3:
+                                if st.button('📞 Contactar', key='buyer_contact', width='stretch'):
+                                    st.session_state["page"] = "contact"
+                                    try:
+                                        update_query_params(page='contact', finca_id=plot['id'])
+                                    except Exception:
+                                        pass
+                                    # Mantener contexto de comprador
+                                    st.session_state["client_email_prefill"] = buyer_email
+                                    st.session_state["auto_login_email"] = buyer_email
+                                    st.session_state['last_payment_receipt'] = st.session_state.get('last_payment_receipt')
+                                    st.session_state['purchased_plot'] = plot
+                                    st.rerun()
+                        else:
+                            st.error('❌ Parcela no encontrada')
+                    else:
+                        st.error('❌ Email no encontrado en nuestros registros')
+                    conn.close()
                 else:
                     st.warning('⚠️ Introduce tu email')
     
@@ -3308,7 +3826,7 @@ elif page == 'architects':
                 # Crear suscripción en BD
                 sub_id = str(uuid.uuid4())
                 from datetime import datetime, timedelta
-                start = datetime.now()
+                start = datetime.datetime.now()
                 end = start + timedelta(days=30)
                 
                 # Cancelar suscripción previa si existe
@@ -3360,7 +3878,8 @@ elif page == 'architects':
                     label="⬇️ Descargar Recibo PDF",
                     data=pdf_bytes,
                     file_name=f"recibo_sub_{pay['payment_id'][:8]}.pdf",
-                    mime="application/pdf"
+                    mime="application/pdf",
+                    key=f"download_receipt_arch_{pay['payment_id']}"
                 )
                 st.info("Ahora puedes usar '📂 Mis Proyectos' para subir tu portfolio.")
             # Limpiar datos de pago mostrados
@@ -3787,9 +4306,14 @@ elif page == 'architects':
                                 if serv['accepted_at']:
                                     st.caption(f"✅ Aceptado el: {serv['accepted_at'][:10]}")
 
+
 elif page == 'clientes':
     from src.client_manager import ClientManager
     client_manager = ClientManager(DB_PATH)
+    
+    sys.path.append(BASE)
+    from src.contractor_manager import ContractorManager
+    contractor_manager = ContractorManager(DB_PATH)
     
     st.title('🎯 Portal de Clientes')
     st.markdown("Accede a tu cuenta o regístrate para buscar tu finca ideal y diseñar tu casa.")
@@ -3809,7 +4333,7 @@ elif page == 'clientes':
             st.session_state['client_email'] = client_data['email']
             # Limpiar flag para evitar auto-login repetido
             st.session_state.pop('auto_login_email', None)
-            st.success(f"✅ ¡Bienvenido/a {client_data['name']}!")
+            st.success("✅ ¡Bienvenido/a " + client_data['name'] + "!")
             st.rerun()
     
     # Mostrar resumen de compra/reserva si existe
@@ -3822,13 +4346,13 @@ elif page == 'clientes':
         
         col_s1, col_s2 = st.columns([2, 1])
         with col_s1:
-            st.markdown(f"### 🏡 {plot_data.get('title', 'Tu Finca')}")
-            st.write(f"**📍 Ubicación:** {plot_data.get('locality', 'N/A')}, {plot_data.get('province', 'N/A')}")
-            st.write(f"**📏 Superficie:** {plot_data.get('m2', 0):,.0f} m²")
-            st.write(f"**💰 Precio:** {plot_data.get('price', 0):,.2f} €")
+            st.markdown("### 🏡 " + plot_data.get('title', 'Tu Finca'))
+            st.write("**📍 Ubicación:** " + plot_data.get('locality', 'N/A') + ", " + plot_data.get('province', 'N/A'))
+            st.write("**📏 Superficie:** " + str(plot_data.get('m2', 0)) + " m²")
+            st.write("**💰 Precio:** " + str(plot_data.get('price', 0)) + " €")
         with col_s2:
-            st.metric("💳 Pagado", f"{payment_receipt['amount']:,.2f} €")
-            st.caption(f"Transacción: {payment_receipt['payment_id'][:12].upper()}")
+            st.metric("💳 Pagado", str(payment_receipt['amount']) + " €")
+            st.caption("Transacción: " + payment_receipt['payment_id'][:12].upper())
         
         st.markdown("---")
         st.markdown("### 🎯 ¿Qué quieres hacer ahora?")
@@ -3836,12 +4360,17 @@ elif page == 'clientes':
         action_col1, action_col2 = st.columns(2)
         with action_col1:
             if st.button("🏗️ DISEÑAR MI CASA CON IA", use_container_width=True, type="primary", key="design_house"):
-                st.session_state['action_design_house'] = True
-                st.info("🚧 Funcionalidad de diseño con IA próximamente disponible")
+                update_query_params(page="configurator", finca_id=plot_data['id'])
+                st.rerun()
         with action_col2:
             if st.button("📦 VER PROYECTOS COMPATIBLES", use_container_width=True, key="view_projects"):
-                st.session_state['action_view_projects'] = True
-                st.info("🚧 Búsqueda de proyectos arquitectónicos próximamente disponible")
+                st.session_state['show_compatible_projects'] = plot_data['id']
+                st.rerun()
+        
+        # Botón adicional para contactar
+        if st.button("📞 CONTACTAR DEPARTAMENTO COMERCIAL", use_container_width=True, key="contact_commercial"):
+            st.session_state['show_commercial_contact'] = {'project_id': None, 'plot_id': plot_data['id']}
+            st.rerun()
         
         # Botón para ocultar resumen
         if st.button("❌ Ocultar resumen", key="hide_summary"):
@@ -3852,12 +4381,40 @@ elif page == 'clientes':
         
         st.markdown('---')
     
+    # Mostrar proyectos compatibles si solicitado
+    if st.session_state.get('show_compatible_projects'):
+        plot_id = st.session_state['show_compatible_projects']
+        plot = get_plot_by_id(plot_id)
+        if plot:
+            projects = get_compatible_projects(plot['m2'])
+            st.markdown("### 📦 Proyectos Compatibles para tu Finca")
+            if projects.shape[0] > 0:
+                for _, proj in projects.iterrows():
+                    with st.expander(f"{proj['title']} - Score: {proj['match_score']}%"):
+                        st.write(f"Arquitecto: {proj.get('architect_name', 'N/A')}")
+                        st.write(f"Precio: €{int(proj.get('price') or 0):,} | Área: {proj.get('m2_construidos', 0)} m²")
+                        col_p1, col_p2 = st.columns(2)
+                        with col_p1:
+                            if st.button(f"Ver Detalles {proj['id']}", key=f"view_proj_{proj['id']}"):
+                                st.session_state['view_project_id'] = proj['id']
+                                st.rerun()
+                        with col_p2:
+                            if st.button(f"📞 Contactar {proj['id']}", key=f"contact_proj_{proj['id']}"):
+                                st.session_state['show_commercial_contact'] = {'project_id': proj['id'], 'plot_id': plot_id}
+                                st.rerun()
+            else:
+                st.info("No hay proyectos compatibles encontrados.")
+            if st.button("⬅️ Volver", key="back_from_projects"):
+                st.session_state.pop('show_compatible_projects', None)
+                st.rerun()
+        st.markdown('---')
+    
     # Contador de clientes para info
     conn_check = sqlite3.connect(DB_PATH)
     total_clients = pd.read_sql_query("SELECT COUNT(*) as total FROM clients", conn_check).iloc[0]['total']
     conn_check.close()
     
-    st.caption(f"👥 {total_clients} clientes registrados en ARCHIRAPID")
+    st.caption("👥 " + str(total_clients) + " clientes registrados en ARCHIRAPID")
     
     # ⚡ UX FIX: Ocultar "Mi Panel" si no hay sesión activa
     is_logged_in = 'client_id' in st.session_state
@@ -3954,27 +4511,29 @@ elif page == 'clientes':
                             st.error(f'❌ Error: {res}')
             
             if submitted:
-                if not nombre or not email:
-                    st.error('Nombre y email son obligatorios')
+                if not company or not contact or not email:
+                    st.error('Empresa, Contacto y Email son obligatorios')
                 else:
-                    success, result = client_manager.register_client({
-                        'name': nombre,
+                    success, res = contractor_manager.register_contractor({
+                        'company_name': company,
+                        'contact_name': contact,
                         'email': email,
-                        'phone': telefono,
-                        'address': direccion
+                        'phone': phone,
+                        'category': category,
+                        'specialty': None,
+                        'zone': None,
+                        'description': description
                     })
                     if success:
                         st.success('✅ ¡Registro completado con éxito!')
-                        st.session_state['client_id'] = result
-                        st.session_state['client_name'] = nombre
-                        st.session_state['client_email'] = email
-                        st.info(f'Tu ID de cliente: {result[:8]}...')
+                        st.session_state['contractor_id'] = res
+                        st.session_state['contractor_email'] = email
                         st.balloons()
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error(f'❌ Error: {result}')
-    
+                        st.error(f'❌ Error: {res}')
+ 
     elif tab == '🔑 Acceso':
         st.subheader('Iniciar sesión')
         st.info("💡 Si es tu primera vez, ve a la pestaña '📝 Registro' primero")
@@ -4098,7 +4657,9 @@ elif page == 'clientes':
                     
                     with acol3:
                         if st.button('🤖 Diseñar con IA', width='stretch'):
-                            st.info('Selecciona primero una finca en el mapa')
+                            st.session_state["page"] = "configurator"
+                            update_query_params(page='configurator')
+                            st.rerun()
 
                     # Mostrar fincas del propietario si los hay
                     st.markdown('---')
@@ -4279,7 +4840,7 @@ elif page == 'clientes':
                                         st.session_state['last_payment'].get('card_last4', '1111'),
                                         'completed',
                                         st.session_state['last_payment']['payment_id'],
-                                        datetime.now().isoformat()
+                                        datetime.datetime.now().isoformat()
                                     ))
                                     conn.commit()
                                     
@@ -4294,7 +4855,7 @@ elif page == 'clientes':
                                         client['id'],
                                         pending_prop['commission'],
                                         False,  # No pagado aún
-                                        datetime.now().isoformat()
+                                        datetime.datetime.now().isoformat()
                                     ))
                                     conn.commit()
                                     conn.close()
@@ -4380,7 +4941,7 @@ elif page == 'clientes':
                                             'service_type': service_type,
                                             'description': description,
                                             'status': 'solicitado',
-                                            'created_at': datetime.now().isoformat(),
+                                            'created_at': datetime.datetime.now().isoformat(),
                                             'price': 0,
                                             'commission': 0,
                                             'total_cliente': 0,
@@ -4611,71 +5172,6 @@ elif page == 'constructores':
                 st.markdown('---')
                 st.info('🚀 **Próximamente:** Sistema de solicitudes de presupuesto, valoraciones de clientes y gestión de proyectos.')
 
-elif page == 'servicios':
-    from src.contractor_manager import ContractorManager
-    contractor_manager = ContractorManager(DB_PATH)
-    
-    st.title('⚙️ Catálogo de Servicios')
-    st.markdown("Encuentra profesionales para tu proyecto de construcción.")
-    
-    # Filtros
-    st.sidebar.header('🔍 Filtros')
-    
-    categories = contractor_manager.get_categories()
-    if not categories:
-        categories = ['Todos']
-    else:
-        categories = ['Todos'] + sorted(categories)
-    
-    selected_category = st.sidebar.selectbox('Categoría', categories)
-    
-    # Obtener contractors
-    if selected_category == 'Todos':
-        df = contractor_manager.get_all_contractors()
-    else:
-        df = contractor_manager.get_all_contractors(category=selected_category)
-    
-    if df.empty:
-        st.info('📭 No hay servicios registrados aún.')
-        st.markdown('---')
-        st.markdown('**¿Eres profesional del sector?**')
-        if st.button('🏗️ Registra tu empresa'):
-            update_query_params(page='constructores')
-            st.rerun()
-    else:
-        st.success(f'📊 **{len(df)} servicios encontrados**')
-        st.markdown('---')
-        
-        # Mostrar en cards
-        for idx, row in df.iterrows():
-            with st.container():
-                col1, col2, col3 = st.columns([3, 2, 1])
-                
-                with col1:
-                    st.markdown(f"### 🏢 {row['company_name']}")
-                    st.markdown(f"**👤 Contacto:** {row['contact_name']}")
-                    if row.get('specialty'):
-                        st.caption(f"⭐ {row['specialty']}")
-                
-                with col2:
-                    st.markdown(f"**📧** {row['email']}")
-                    st.markdown(f"**📱** {row['phone']}")
-                    if row.get('zone'):
-                        st.markdown(f"**📍** {row['zone']}")
-                
-                with col3:
-                    st.markdown(f"**🏷️**")
-                    st.info(row['category'])
-                    if st.button('📞 Contactar', key=f"contact_{row['id']}"):
-                        st.info(f"📧 Email: {row['email']}\n📱 Teléfono: {row['phone']}")
-                        st.success('✉️ Próximamente: Envío automático de solicitud de presupuesto')
-                
-                if row.get('description'):
-                    with st.expander('Ver descripción'):
-                        st.write(row['description'])
-                
-                st.markdown('---')
-
 else:
     st.error('Página no encontrada')
     st.write(f'page={page}')
@@ -4797,11 +5293,12 @@ def show_intranet_page():
         st.rerun()
 
     # Tabs del portal
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📞 Leads Comerciales",
         "🏡 Gestión Fincas",
         "📐 Proyectos Arquitectos",
         "💳 Reservas/Pagos",
+        "📢 Publicidad",
         "📊 Dashboard"
     ])
 
@@ -4876,6 +5373,26 @@ def show_intranet_page():
             st.dataframe(reservations_df, use_container_width=True)
 
     with tab5:
+        st.header("📢 Gestión Publicidad")
+        conn = sqlite3.connect(DB_PATH)
+        df = pd.read_sql_query("SELECT * FROM advertising_plans WHERE status = 'pending'", conn)
+        conn.close()
+        if df.empty:
+            st.info("No hay solicitudes de publicidad pendientes")
+        else:
+            for _, plan in df.iterrows():
+                st.subheader(f"Plan {plan['plan_type']} - {plan['duration_weeks']} semanas")
+                st.write(f"Precio: {plan['price']}€")
+                if st.button(f"Aprobar {plan['id'][:8]}", key=f"approve_{plan['id']}"):
+                    conn = sqlite3.connect(DB_PATH)
+                    c = conn.cursor()
+                    c.execute("UPDATE advertising_plans SET status = 'approved', approved_by = ? WHERE id = ?", ('admin', plan['id']))
+                    conn.commit()
+                    conn.close()
+                    st.success("Aprobado!")
+                    st.rerun()
+
+    with tab6:
         st.header("📊 Dashboard Ejecutivo")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -4896,6 +5413,24 @@ def show_intranet_page():
 
 def show_home_page():
     pass
+
+def insert_services_provider(data):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('INSERT INTO services_providers VALUES (?,?,?,?,?,?,?,?,?,?)', (
+        data['id'], data['name'], data['email'], data['phone'], data['company'], data['description'], data['services_offered'], data['photos'], data['catalog_pdf'], data['created_at']
+    ))
+    conn.commit()
+    conn.close()
+
+def insert_advertising_plan(data):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('INSERT INTO advertising_plans VALUES (?,?,?,?,?,?,?,?,?)', (
+        data['id'], data['provider_id'], data['plan_type'], data['duration_weeks'], data['price'], data['logo_path'], data['status'], data['approved_by'], data['created_at']
+    ))
+    conn.commit()
+    conn.close()
 
 # =====================================================
 # MAIN APP DISPATCHER

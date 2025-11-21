@@ -15,7 +15,6 @@ Write-Host ""
 $backupDir = "D:\ARCHIRAPID_BACKUPS"
 $backupName = "FUNCIONA_PERFECTO_V1.0"
 $backupZip = "$backupDir\$backupName.zip"
-$backupExtracted = "$backupDir\$backupName"
 $targetDir = "D:\ARCHIRAPID_PROYECT25"
 
 if (-not (Test-Path $backupZip)) {

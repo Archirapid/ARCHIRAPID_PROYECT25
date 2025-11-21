@@ -186,7 +186,8 @@ def show_payment_success(payment_data, download_receipt=True):
                 data=pdf_bytes,
                 file_name=f"recibo_{payment_data['payment_id'][:8]}.pdf",
                 mime="application/pdf",
-                width='stretch'
+                width='stretch',
+                key=f"download_receipt_{payment_data['payment_id']}"
             )
 
 

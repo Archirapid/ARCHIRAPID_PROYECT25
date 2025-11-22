@@ -380,7 +380,7 @@ DB_PATH = os.path.join(BASE, "data.db")
 UPLOADS = os.path.join(BASE, "uploads")
 os.makedirs(UPLOADS, exist_ok=True)
 from src.contractor_manager import ContractorManager
-from src.catastro_manager import analyze_catastro_image
+from src.catastro_manager import analyze_catastro_image, obtener_datos_finca
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -2886,6 +2886,51 @@ if page == 'Home':
                     type="secondary",
                     key=f"download_registry_home_{selected_plot['id']}"
                 )
+
+                # Datos oficiales del Catastro
+                st.markdown("**🏛️ Datos Oficiales del Catastro**")
+                col_prov, col_mun, col_ref = st.columns(3)
+                with col_prov:
+                    provincia_input = st.text_input("Provincia", value=selected_plot.get('province', ''), key=f"prov_{selected_plot['id']}")
+                with col_mun:
+                    municipio_input = st.text_input("Municipio", value=selected_plot.get('locality', ''), key=f"mun_{selected_plot['id']}")
+                with col_ref:
+                    ref_cat_input = st.text_input("Referencia Catastral", key=f"ref_{selected_plot['id']}", help="Ej: 1234567AB1234N0001AA")
+                
+                if st.button("🔍 Consultar Datos Oficiales", key=f"consult_catastro_{selected_plot['id']}", type="secondary", width='stretch'):
+                    if ref_cat_input.strip():
+                        with st.spinner("Consultando Catastro..."):
+                            datos_oficiales = obtener_datos_finca(provincia_input, municipio_input, ref_cat_input)
+                            if 'error' in datos_oficiales:
+                                st.error(datos_oficiales['error'])
+                            else:
+                                st.success("✅ Datos obtenidos del Catastro oficial")
+                                # Mostrar datos
+                                st.json(datos_oficiales)
+                                # Opción para actualizar finca en BD
+                                if st.button("💾 Actualizar Finca con Datos Oficiales", key=f"update_plot_{selected_plot['id']}"):
+                                    # Actualizar BD con datos oficiales
+                                    import sqlite3
+                                    conn = sqlite3.connect('archirapid.db')
+                                    cur = conn.cursor()
+                                    cur.execute("""
+                                        UPDATE plots SET 
+                                        m2 = ?, province = ?, locality = ?, owner_name = ?, catastro_data = ?
+                                        WHERE id = ?
+                                    """, (
+                                        datos_oficiales.get('superficie', selected_plot.get('m2')),
+                                        provincia_input,
+                                        municipio_input,
+                                        datos_oficiales.get('propietario', selected_plot.get('owner_name')),
+                                        str(datos_oficiales),  # JSON como string
+                                        selected_plot['id']
+                                    ))
+                                    conn.commit()
+                                    conn.close()
+                                    st.success("Finca actualizada con datos oficiales")
+                                    st.rerun()
+                    else:
+                        st.warning("Ingresa la referencia catastral")
 
                 # Análisis automático
                 st.markdown("**🔍 Análisis Inteligente**")

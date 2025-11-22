@@ -393,6 +393,7 @@ from src.catastro_manager import analyze_catastro_image, obtener_datos_finca
 from src.ui_manager import show_analysis_modal, show_analysis_modal_fullpage, show_3d_rv_viewer
 from src.ia_manager import feedback_ia_con_fallback
 from src.subscription_manager import show_subscription_management
+from src.notification_manager import show_notifications_ui, get_unread_count
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -1500,6 +1501,14 @@ def show_proposal_modal(plot_id, architect_id):
             }
             
             insert_proposal(proposal_data)
+            
+            # Notificar al propietario de la finca
+            from src.notification_manager import notify_new_proposal
+            notify_new_proposal({
+                'id': proposal_id,
+                'plot_owner_id': plot.get('owner_email'),  # Usar email como ID temporal
+                'architect_name': architect_name
+            })
             
             st.success(f"✅ Propuesta enviada correctamente a {plot.get('owner_name', 'el propietario')}")
             st.balloons()
@@ -3841,7 +3850,7 @@ elif page == 'architects':
         # NAVEGACIÓN TABS
         # ============================================================================
         # Navegación interna del arquitecto
-        tabs_options = ['📊 Mi Suscripción', '📂 Mis Proyectos', '🏡 Fincas Disponibles', '📨 Mis Propuestas', '🛠️ Servicios Solicitados']
+        tabs_options = ['📊 Mi Suscripción', '🔔 Notificaciones', '📂 Mis Proyectos', '🏡 Fincas Disponibles', '📨 Mis Propuestas', '🛠️ Servicios Solicitados']
         default_tab = st.session_state.get('default_arch_tab', '📊 Mi Suscripción')
         try:
             default_index = tabs_options.index(default_tab)
@@ -3856,6 +3865,9 @@ elif page == 'architects':
         
         if arch_tab == '📊 Mi Suscripción':
             show_subscription_management(arch_id)
+        
+        elif arch_tab == '🔔 Notificaciones':
+            show_notifications_ui(arch_id, 'architect')
         
         elif arch_tab == '📂 Mis Proyectos':
             # Refuerzo quirúrgico: si no hay arch_id en session_state, redirigir a login/registro

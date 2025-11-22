@@ -79,3 +79,4 @@ geopy>=2.4.0  # Geocodificación de direcciones
 pycatastro==0.1.3  # APIs oficiales del Catastro español
 ollama==0.3.3  # IA local con Llama via Ollama
 stripe>=8.0.0  # Integración de pagos con Stripe
+yagmail>=0.15.0  # Envío de emails de notificaciones

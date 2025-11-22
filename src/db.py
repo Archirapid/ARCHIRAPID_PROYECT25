@@ -234,6 +234,24 @@ def ensure_tables():
         c.execute("CREATE INDEX IF NOT EXISTS idx_additional_services_architect ON additional_services(architect_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_additional_services_proposal ON additional_services(proposal_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_additional_services_status ON additional_services(status)")
+        
+        # Tabla notifications (sistema de notificaciones)
+        c.execute("""CREATE TABLE IF NOT EXISTS notifications (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            user_type TEXT,
+            type TEXT,
+            title TEXT,
+            message TEXT,
+            data TEXT,
+            read BOOLEAN DEFAULT 0,
+            created_at TEXT
+        )""")
+        
+        # Índices para notificaciones
+        c.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, user_type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)")
 
 def insert_plot(data: Dict):
     ensure_tables()

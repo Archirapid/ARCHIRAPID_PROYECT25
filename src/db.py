@@ -194,6 +194,8 @@ def ensure_tables():
         
         # Índices para mejorar filtrado futuro
         c.execute("CREATE INDEX IF NOT EXISTS idx_plots_province ON plots(province)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_plots_m2 ON plots(m2)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_plots_type ON plots(type)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_projects_style ON projects(style)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_projects_architect ON projects(architect_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
@@ -501,3 +503,17 @@ def mark_additional_service_paid(service_id: str):
     ensure_tables()
     with transaction() as c:
         c.execute("UPDATE additional_services SET paid=1 WHERE id=?", (service_id,))
+
+# SUBSCRIPTION MANAGEMENT FUNCTIONS
+
+def update_subscription_end_date(subscription_id: str, end_date: str):
+    """Actualiza la fecha de fin de una suscripción."""
+    ensure_tables()
+    with transaction() as c:
+        c.execute("UPDATE subscriptions SET end_date=? WHERE id=?", (end_date, subscription_id))
+
+def update_subscription_status(subscription_id: str, status: str):
+    """Actualiza el estado de una suscripción."""
+    ensure_tables()
+    with transaction() as c:
+        c.execute("UPDATE subscriptions SET status=? WHERE id=?", (status, subscription_id))

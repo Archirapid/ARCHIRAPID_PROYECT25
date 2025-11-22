@@ -392,6 +392,7 @@ from src.contractor_manager import ContractorManager
 from src.catastro_manager import analyze_catastro_image, obtener_datos_finca
 from src.ui_manager import show_analysis_modal, show_analysis_modal_fullpage, show_3d_rv_viewer
 from src.ia_manager import feedback_ia_con_fallback
+from src.subscription_manager import show_subscription_management
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -3854,78 +3855,7 @@ elif page == 'architects':
         # ============================================================================
         
         if arch_tab == '📊 Mi Suscripción':
-            st.subheader("💎 Planes de Suscripción")
-            
-            if subscription:
-                # Ya tiene suscripción activa
-                st.success(f"✅ Plan activo: **{subscription['plan_type']}**")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("💰 Precio Mensual", f"{subscription['price']}€")
-                with col2:
-                    st.metric("📤 Propuestas/Mes", subscription['monthly_proposals_limit'])
-                with col3:
-                    proposals_sent = get_proposals_sent_this_month(arch_id)
-                    remaining = max(0, subscription['monthly_proposals_limit'] - proposals_sent)
-                    st.metric("📊 Disponibles", f"{remaining}/{subscription['monthly_proposals_limit']}")
-                with col4:
-                    st.metric("💸 Comisión", f"{subscription['commission_rate']*100:.0f}%")
-                
-                st.caption(f"📅 Fecha inicio: {subscription['start_date'][:10]}")
-                
-                st.markdown("---")
-                st.markdown("### 🔄 Cambiar Plan")
-            
-            # Mostrar todos los planes
-            plans = get_subscription_plans()
-            cols = st.columns(3)
-            
-            for i, (plan_name, plan_data) in enumerate(plans.items()):
-                with cols[i]:
-                    is_current = subscription and subscription['plan_type'] == plan_name
-                    
-                    if is_current:
-                        st.success(f"### ✅ {plan_name}")
-                    else:
-                        st.info(f"### {plan_name}")
-                    
-                    st.metric("Precio", f"{plan_data['price']}€/mes")
-                    st.write("**Incluye:**")
-                    for feature in plan_data['features']:
-                        st.write(f"• {feature}")
-                    
-                    if not is_current:
-                        if st.button(f"💳 Contratar {plan_name}", key=f"sub_{plan_name}", width='stretch'):
-                            # Trigger payment modal
-                            st.session_state['pending_subscription'] = {
-                                'plan_name': plan_name,
-                                'plan_data': plan_data,
-                                'architect_id': arch_id
-                            }
-                            st.session_state['trigger_plan_payment'] = True
-                            st.rerun()
-                    else:
-                        st.caption("✓ Plan actual")
-            
-            # Payment modal dispatcher (outside cards loop)
-            # CRITICAL: Solo mostrar modal si NO se ha completado el pago
-            should_show_modal = (
-                st.session_state.get('trigger_plan_payment', False) and 
-                not st.session_state.get('payment_completed', False)
-            )
-            
-            if should_show_modal:
-                pending = st.session_state.get('pending_subscription')
-                if pending:
-                    from src.payment_simulator import payment_modal
-                    payment_modal(
-                        amount=pending['plan_data']['price'],
-                        concept=f"Suscripción Plan {pending['plan_name']} - 1 mes",
-                        buyer_name=arch['name'],
-                        buyer_email=arch['email']
-                    )
-                # IMPORTANTE: No poner stop() aquí, dejar que fluya
+            show_subscription_management(arch_id)
         
         elif arch_tab == '📂 Mis Proyectos':
             # Refuerzo quirúrgico: si no hay arch_id en session_state, redirigir a login/registro

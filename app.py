@@ -168,6 +168,11 @@ def show_design_configurator(finca_id=None):
         for sug in resultado_ia["sugerencias"]:
             st.warning(f"SUGERENCIA: {sug}")
 
+    # Mostrar feedback IA real
+    if "feedback_ia" in resultado_ia:
+        st.markdown("---")
+        st.markdown(resultado_ia["feedback_ia"])
+
     # Finalizar y Comprar Proyecto
     st.markdown("---")
     st.markdown("### Finalizar y Comprar Proyecto")
@@ -216,34 +221,39 @@ def show_design_configurator(finca_id=None):
 # ASISTENTE INTELIGENTE DE COHERENCIA Y EDIFICABILIDAD (MVP)
 # =============================
 def evaluar_y_corregir_diseno(area_construir_m2, num_habitaciones, num_banos, area_dibujada_m2):
+    """
+    Evalúa el diseño usando IA real (Llama via Ollama) con fallback a simulado.
+    """
+    # Preparar configuración para IA
+    configuracion = {
+        "superficie_construida": area_dibujada_m2,
+        "habitaciones": num_habitaciones,
+        "banos": num_banos,
+        "superficie_maxima": area_construir_m2,
+        "tipo_finca": "urbana",  # Asumir urbana por defecto
+        "superficie_parcela": area_construir_m2 * 2  # Estimación
+    }
+
+    # Obtener feedback de IA
+    feedback = feedback_ia_con_fallback(configuracion)
+
+    # Para compatibilidad, devolver dict con checks básicos + feedback
     resultado = {
-        "edificabilidad_ok": True,
-        "coherencia_ok": True,
-        "normativa_ok": True,
+        "edificabilidad_ok": area_dibujada_m2 <= area_construir_m2,
+        "coherencia_ok": area_dibujada_m2 >= 0.8 * area_construir_m2,
+        "normativa_ok": num_banos >= max(1, (num_habitaciones + 2) // 3),
+        "feedback_ia": feedback,
         "sugerencias": []
     }
 
-    # Verificar edificabilidad
-    if area_dibujada_m2 > area_construir_m2:
-        resultado["edificabilidad_ok"] = False
-        resultado["sugerencias"].append(
-            f"Has excedido el máximo edificable ({area_construir_m2:.1f} m²). Reduce el área construida."
-        )
-
-    # Verificar coherencia (usar al menos el 80% del área)
-    if area_dibujada_m2 < 0.8 * area_construir_m2:
-        resultado["coherencia_ok"] = False
-        resultado["sugerencias"].append(
-            f"Estás usando menos del 80% del área permitida. Puedes añadir más estancias o ampliar las existentes."
-        )
-
-    # Normativa: mínimo un baño por cada tres dormitorios
-    min_banos = max(1, (num_habitaciones + 2) // 3)
-    if num_banos < min_banos:
-        resultado["normativa_ok"] = False
-        resultado["sugerencias"].append(
-            f"Normativa: Debes tener al menos {min_banos} baño(s) para {num_habitaciones} dormitorio(s)."
-        )
+    # Añadir sugerencias básicas si checks fallan
+    if not resultado["edificabilidad_ok"]:
+        resultado["sugerencias"].append(f"Excedes el máximo edificable ({area_construir_m2:.1f} m²).")
+    if not resultado["coherencia_ok"]:
+        resultado["sugerencias"].append("Usa al menos el 80% del área permitida.")
+    if not resultado["normativa_ok"]:
+        min_b = max(1, (num_habitaciones + 2) // 3)
+        resultado["sugerencias"].append(f"Necesitas al menos {min_b} baño(s).")
 
     return resultado
 # =============================
@@ -382,6 +392,7 @@ os.makedirs(UPLOADS, exist_ok=True)
 from src.contractor_manager import ContractorManager
 from src.catastro_manager import analyze_catastro_image, obtener_datos_finca
 from src.ui_manager import show_analysis_modal, show_analysis_modal_fullpage
+from src.ia_manager import feedback_ia_con_fallback
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)

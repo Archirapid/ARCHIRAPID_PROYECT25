@@ -1,6 +1,7 @@
 import pytesseract
 from PIL import Image
 import os
+from pycatastro import PyCatastro
 
 # Configurar ruta de Tesseract (absoluta, funciona desde D: o cualquier disco)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -50,3 +51,29 @@ def analyze_catastro_image(image_path):
         "texto_extraido": text,
         "datos_procesados": datos_procesados
     }
+
+def obtener_datos_finca(provincia, municipio, ref_catastral):
+    """
+    Obtiene datos oficiales de una finca del Catastro usando APIs de pycatastro.
+    Retorna un diccionario con datos catastrales o mensaje de error.
+    """
+    try:
+        # Consulta por referencia catastral (RCCOOR)
+        datos = PyCatastro.Consulta_RCCOOR(provincia, municipio, ref_catastral)
+        
+        # Procesar respuesta (asumiendo estructura de pycatastro)
+        if datos and 'error' not in datos:
+            return {
+                "referencia_catastral": ref_catastral,
+                "provincia": provincia,
+                "municipio": municipio,
+                "superficie": datos.get('superficie', 0),
+                "lindes": datos.get('lindes', []),
+                "coordenadas": datos.get('coordenadas', {}),
+                "propietario": datos.get('propietario', 'No disponible'),
+                "fuente": "API Catastro Oficial"
+            }
+        else:
+            return {"error": "No se encontraron datos para la referencia catastral proporcionada."}
+    except Exception as e:
+        return {"error": f"Error al consultar Catastro: {str(e)}. Verifica conexión a internet y datos."}

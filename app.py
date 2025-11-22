@@ -105,48 +105,6 @@ def show_design_configurator(finca_id=None):
         "normativa_ok": False
     }
     # ...existing code...
-    st.markdown("---")
-    st.markdown("### Finalizar y Comprar Proyecto")
-    pago_realizado = st.session_state.get('pago_realizado', False)
-    design_id = st.session_state.get('design_id', None)
-    error_critico = not (resultado_ia["edificabilidad_ok"] and resultado_ia["normativa_ok"])
-    if not pago_realizado:
-        if error_critico:
-            st.error("No puedes finalizar el proyecto hasta corregir los errores críticos de normativa o edificabilidad.")
-        else:
-            if st.button("FINALIZAR Y COMPRAR PROYECTO (€1.200)", type="primary"):
-                # Guardar configuración en la base de datos
-                design_id = guardar_configuracion_final(finca_id, opciones_seleccionadas, costo_estimado, area_dibujada)
-                st.session_state['design_id'] = design_id
-                st.session_state['pago_realizado'] = True
-                st.success(f"¡Pago de €1.200 exitoso! Tu proyecto único (ID: {design_id}) está listo para descargar.")
-                # Simular generación de gemelo digital y descargas
-                twin_data = generar_proyecto_final(opciones_seleccionadas, {}, design_id, area_dibujada)
-                pdf_bytes = f"Gemelo Digital PDF — Proyecto {design_id}\n{json.dumps(twin_data, indent=2)}".encode()
-                st.download_button("Descargar Proyecto PDF", data=pdf_bytes, file_name=f"Proyecto_{design_id}.pdf", mime="application/pdf", key=f"download_design_pdf_{design_id}")
-                cad_bytes = f"Gemelo Digital CAD — Proyecto {design_id}\n{json.dumps(twin_data, indent=2)}".encode()
-                st.download_button("Descargar Proyecto CAD", data=cad_bytes, file_name=f"Proyecto_{design_id}.dxf", mime="application/dxf", key=f"download_design_cad_{design_id}")
-                # Botón de visualización avanzada
-                if st.button("VER EN 3D Y REALIDAD VIRTUAL (RV)", type="secondary"):
-                    enlace_rv = generar_enlace_visualizacion(design_id)
-                    st.markdown(f"### [Ver Modelo 3D y RV]({enlace_rv})")
-    else:
-        # Ocultar configurador y mostrar servicios adicionales
-        st.markdown("---")
-        st.header("SERVICIOS ADICIONALES Y CONSTRUCCIÓN")
-        st.markdown("Selecciona los servicios post-venta que deseas contratar:")
-        servicios_elegidos = []
-        for serv in ADDITIONAL_SERVICES.keys():
-            if st.checkbox(serv, key=f"serv_{serv}"):
-                servicios_elegidos.append(serv)
-        costo_adicional, desglose_serv = calcular_costo_adicional(servicios_elegidos, costo_estimado)
-        presupuesto_total = costo_estimado + costo_adicional
-        st.subheader(f"Presupuesto Total Final (Proyecto + Servicios): {presupuesto_total:,.0f} €")
-        with st.expander("Desglose de Servicios Adicionales"):
-            for k, v in desglose_serv.items():
-                st.write(f"{k}: {v:,.0f} €")
-        if st.button("CONTRATAR SERVICIOS SELECCIONADOS", type="primary"):
-            st.success("¡Solicitud enviada a un asesor de ventas! Nos pondremos en contacto contigo para gestionar los servicios contratados.")
 
     # Leer finca_id de la URL si no se pasa como argumento
     if finca_id is None:
@@ -209,6 +167,51 @@ def show_design_configurator(finca_id=None):
     else:
         for sug in resultado_ia["sugerencias"]:
             st.warning(f"SUGERENCIA: {sug}")
+
+    # Finalizar y Comprar Proyecto
+    st.markdown("---")
+    st.markdown("### Finalizar y Comprar Proyecto")
+    pago_realizado = st.session_state.get('pago_realizado', False)
+    design_id = st.session_state.get('design_id', None)
+    error_critico = not (resultado_ia["edificabilidad_ok"] and resultado_ia["normativa_ok"])
+    if not pago_realizado:
+        if error_critico:
+            st.error("No puedes finalizar el proyecto hasta corregir los errores críticos de normativa o edificabilidad.")
+        else:
+            if st.button("FINALIZAR Y COMPRAR PROYECTO (€1.200)", type="primary"):
+                # Guardar configuración en la base de datos
+                design_id = guardar_configuracion_final(finca_id, opciones_seleccionadas, costo_estimado, area_dibujada)
+                st.session_state['design_id'] = design_id
+                st.session_state['pago_realizado'] = True
+                st.success(f"¡Pago de €1.200 exitoso! Tu proyecto único (ID: {design_id}) está listo para descargar.")
+                # Simular generación de gemelo digital y descargas
+                twin_data = generar_proyecto_final(opciones_seleccionadas, {}, design_id, area_dibujada)
+                pdf_bytes = f"Gemelo Digital PDF — Proyecto {design_id}\n{json.dumps(twin_data, indent=2)}".encode()
+                st.download_button("Descargar Proyecto PDF", data=pdf_bytes, file_name=f"Proyecto_{design_id}.pdf", mime="application/pdf", key=f"download_design_pdf_{design_id}")
+                cad_bytes = f"Gemelo Digital CAD — Proyecto {design_id}\n{json.dumps(twin_data, indent=2)}".encode()
+                st.download_button("Descargar Proyecto CAD", data=cad_bytes, file_name=f"Proyecto_{design_id}.dxf", mime="application/dxf", key=f"download_design_cad_{design_id}")
+                # Botón de visualización avanzada
+                if st.button("VER EN 3D Y REALIDAD VIRTUAL (RV)", type="secondary"):
+                    enlace_rv = generar_enlace_visualizacion(design_id)
+                    st.markdown(f"### [Ver Modelo 3D y RV]({enlace_rv})")
+    else:
+        # Ocultar configurador y mostrar servicios adicionales
+        st.markdown("---")
+        st.header("SERVICIOS ADICIONALES Y CONSTRUCCIÓN")
+        st.markdown("Selecciona los servicios post-venta que deseas contratar:")
+        servicios_elegidos = []
+        for serv in ADDITIONAL_SERVICES.keys():
+            if st.checkbox(serv, key=f"serv_{serv}"):
+                servicios_elegidos.append(serv)
+        costo_adicional, desglose_serv = calcular_costo_adicional(servicios_elegidos, costo_estimado)
+        presupuesto_total = costo_estimado + costo_adicional
+        st.subheader(f"Presupuesto Total Final (Proyecto + Servicios): {presupuesto_total:,.0f} €")
+        with st.expander("Desglose de Servicios Adicionales"):
+            for k, v in desglose_serv.items():
+                st.write(f"{k}: {v:,.0f} €")
+        if st.button("CONTRATAR SERVICIOS SELECCIONADOS", type="primary"):
+            st.success("¡Solicitud enviada a un asesor de ventas! Nos pondremos en contacto contigo para gestionar los servicios contratados.")
+
 # =============================
 # ASISTENTE INTELIGENTE DE COHERENCIA Y EDIFICABILIDAD (MVP)
 # =============================

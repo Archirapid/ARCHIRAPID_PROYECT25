@@ -16,6 +16,7 @@ $backupDir = "D:\ARCHIRAPID_BACKUPS"
 $backupName = "FUNCIONA_PERFECTO_V1.0"
 $backupZip = "$backupDir\$backupName.zip"
 $targetDir = "D:\ARCHIRAPID_PROYECT25"
+# Script de restauración
 
 if (-not (Test-Path $backupZip)) {
     Write-Host "❌ ERROR: Backup no encontrado: $backupZip" -ForegroundColor Red

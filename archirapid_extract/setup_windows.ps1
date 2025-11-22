@@ -63,8 +63,7 @@ try {
 Write-Host ""
 Write-Host "7️⃣  Verificando Poppler (opcional)..." -ForegroundColor Yellow
 try {
-    $popplerVersion = pdftoppm -v 2>&1 | Select-Object -First 1
-    Write-Host "   ✅ Poppler instalado: $popplerVersion" -ForegroundColor Green
+    pdftoppm -v 2>&1 | Select-Object -First 1 | Write-Host "   ✅ Poppler instalado: $_" -ForegroundColor Green
 } catch {
     Write-Host "   ⚠️  Poppler no encontrado (opcional, PyMuPDF es suficiente)" -ForegroundColor Yellow
 }

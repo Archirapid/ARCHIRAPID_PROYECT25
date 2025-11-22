@@ -380,6 +380,7 @@ DB_PATH = os.path.join(BASE, "data.db")
 UPLOADS = os.path.join(BASE, "uploads")
 os.makedirs(UPLOADS, exist_ok=True)
 from src.contractor_manager import ContractorManager
+from src.catastro_manager import analyze_catastro_image
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)

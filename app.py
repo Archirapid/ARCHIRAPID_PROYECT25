@@ -197,8 +197,7 @@ def show_design_configurator(finca_id=None):
                 st.download_button("Descargar Proyecto CAD", data=cad_bytes, file_name=f"Proyecto_{design_id}.dxf", mime="application/dxf", key=f"download_design_cad_{design_id}")
                 # Botón de visualización avanzada
                 if st.button("VER EN 3D Y REALIDAD VIRTUAL (RV)", type="secondary"):
-                    enlace_rv = generar_enlace_visualizacion(design_id)
-                    st.markdown(f"### [Ver Modelo 3D y RV]({enlace_rv})")
+                    show_3d_rv_viewer(design_id)
     else:
         # Ocultar configurador y mostrar servicios adicionales
         st.markdown("---")
@@ -391,7 +390,7 @@ UPLOADS = os.path.join(BASE, "uploads")
 os.makedirs(UPLOADS, exist_ok=True)
 from src.contractor_manager import ContractorManager
 from src.catastro_manager import analyze_catastro_image, obtener_datos_finca
-from src.ui_manager import show_analysis_modal, show_analysis_modal_fullpage
+from src.ui_manager import show_analysis_modal, show_analysis_modal_fullpage, show_3d_rv_viewer
 from src.ia_manager import feedback_ia_con_fallback
 
 def init_db():

@@ -124,3 +124,78 @@ def show_analysis_modal(plot_id: str):
                         st.components.v1.html(f'<script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script><model-viewer src="data:model/gltf-binary;base64,{b64.b64encode(glb).decode()}" camera-controls auto-rotate style="width:100%;height:400px;"></model-viewer>', 420)
     elif is_buildable and not user_has_paid:
         st.info("💡 Reserva o compra para acceder al Diseñador IA")
+
+
+def show_3d_rv_viewer(design_id: str):
+    """Vista 3D interactiva con Three.js y placeholder para tours VR"""
+    st.header("🏠 Vista 3D Interactiva y Realidad Virtual")
+    
+    # Placeholder para tours VR
+    st.subheader("🌐 Tour Virtual (RV)")
+    st.info("🚧 **Placeholder:** Integración con plataforma de tours VR en desarrollo. Próximamente disponible.")
+    st.markdown("""
+    <iframe width="100%" height="400" src="https://www.youtube.com/embed/dQw4w9WgXcQ" frameborder="0" allowfullscreen></iframe>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Vista 3D con Three.js
+    st.subheader("🔍 Modelo 3D Interactivo")
+    st.caption("Vista preliminar del terreno y diseño básico con Three.js")
+    
+    # HTML con Three.js básico
+    three_js_html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        <style>
+            body { margin: 0; }
+            canvas { display: block; }
+        </style>
+    </head>
+    <body>
+        <script>
+            // Escena básica Three.js
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, 400);
+            document.body.appendChild(renderer.domElement);
+            
+            // Terreno (plano verde)
+            const geometry = new THREE.PlaneGeometry(10, 10);
+            const material = new THREE.MeshBasicMaterial({color: 0x00ff00, side: THREE.DoubleSide});
+            const plane = new THREE.Mesh(geometry, material);
+            plane.rotation.x = Math.PI / 2;
+            scene.add(plane);
+            
+            // Casa básica (cubo)
+            const cubeGeometry = new THREE.BoxGeometry(2, 2, 2);
+            const cubeMaterial = new THREE.MeshBasicMaterial({color: 0xff0000});
+            const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+            cube.position.y = 1;
+            scene.add(cube);
+            
+            camera.position.z = 5;
+            
+            function animate() {
+                requestAnimationFrame(animate);
+                cube.rotation.x += 0.01;
+                cube.rotation.y += 0.01;
+                renderer.render(scene, camera);
+            }
+            animate();
+            
+            // Ajustar tamaño al contenedor
+            window.addEventListener('resize', function() {
+                camera.aspect = window.innerWidth / 400;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, 400);
+            });
+        </script>
+    </body>
+    </html>
+    """
+    
+    st.components.v1.html(three_js_html, height=420)

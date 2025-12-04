@@ -2,10 +2,10 @@
 Streamlit design utilities for ARCHIRAPID
 """
 
-def setup_page():
-    """Setup basic page configuration"""
-    pass
+import streamlit as st
 
-def create_sidebar():
-    """Create sidebar navigation"""
-    pass
+def main():
+    st.header("Design Assistant")
+    st.write("Herramienta de diseño asistido por IA para generar planos arquitectónicos.")
+    # Aquí se puede integrar el pipeline de diseño
+    st.info("Funcionalidad en desarrollo.")

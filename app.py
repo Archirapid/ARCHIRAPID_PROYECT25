@@ -16,4 +16,5 @@ elif page=="Owners":
 elif page=="Architects":
     architects.main() if hasattr(architects, "main") else architects
 elif page=="Design Assistant":
-    import archirapid_extract.streamlit_design as sd
+    from archirapid_extract.streamlit_design import main as design_main
+    design_main()

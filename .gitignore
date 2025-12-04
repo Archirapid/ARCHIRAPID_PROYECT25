@@ -32,6 +32,8 @@ data.db.backup_*
 
 # Database (opcional - incluir si quieres versionar data.db)
 # data.db
+archirapid.db
+archirapid.db
 
 # Uploads y outputs temporales
 uploads/*

@@ -7,8 +7,28 @@ st.sidebar.title("ARCHIRAPID")
 page = st.sidebar.radio("Navegación", ["Home","Marketplace","Owners","Architects","Design Assistant"])
 
 if page=="Home":
-    st.title("ARCHIRAPID — Home")
-    st.write("Demo MVP: marketplace de fincas + proyectos.")
+    st.title("🏗️ ARCHIRAPID")
+    st.image("assets/branding/logo.png", width=300)
+    st.markdown("""
+    ### Bienvenido al Marketplace de Arquitectura y Construcción
+    
+    **ARCHIRAPID** es la plataforma que conecta propietarios de terrenos urbanos con arquitectos y constructores para proyectos de edificación rápida y eficiente.
+    
+    #### 🚀 Características Principales:
+    - **Marketplace de Fincas:** Encuentra terrenos urbanos listos para construir
+    - **Arquitectos Certificados:** Diseña proyectos optimizados para tu parcela
+    - **Asistente de Diseño:** Genera planos automáticamente con IA
+    - **Pagos Seguros:** Reserva y compra con garantías
+    
+    #### 📍 Navega por las secciones:
+    - **Marketplace:** Explora fincas disponibles en el mapa
+    - **Owners:** Registra tu terreno para vender
+    - **Architects:** Ofrece tus servicios de diseño
+    - **Design Assistant:** Crea planos con IA
+    
+    ---
+    *Demo MVP funcional - Listo para inversión*
+    """)
 elif page=="Marketplace":
     marketplace.main() if hasattr(marketplace, "main") else marketplace
 elif page=="Owners":

@@ -1,0 +1,45 @@
+{
+  "version": "1.0.0-FASE1",
+  "generated_at": "2025-11-13",
+  "inputs": {
+    "surface_m2": 800.0,
+    "buildable_m2": 264.0,
+    "num_bedrooms": 3,
+    "num_floors": 2,
+    "setback_m": 3.0
+  },
+  "scale": {
+    "factor_m_per_px": 1.0,
+    "confidence": "high",
+    "error_percent": 0.0
+  },
+  "geometry": {
+    "footprint_area_m2": 213.83999999999995,
+    "building_dimensions_m": {
+      "width": 40.0,
+      "height": 20.0
+    }
+  },
+  "layout": {
+    "Salón-Comedor": 64.152,
+    "Cocina": 25.6608,
+    "Dormitorio 1": 25.6608,
+    "Dormitorio 2": 25.6608,
+    "Dormitorio 3": 25.6608,
+    "Baño 1": 8.5536,
+    "Baño 2": 8.5536,
+    "Baño 3": 8.5536,
+    "Distribución": 21.384
+  },
+  "budget": {
+    "superficie_construida_m2": 528.0,
+    "coste_por_m2_eur": 900.0,
+    "construccion_eur": 475200.0,
+    "proyecto_licencias_eur": 71280.0,
+    "total_estimado_eur": 546480.0
+  },
+  "files": [
+    "test_final_output\\design_plan.png",
+    "test_final_output\\design_model.glb"
+  ]
+}

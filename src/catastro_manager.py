@@ -1,19 +1,62 @@
-import pytesseract
+try:
+    import pytesseract
+    PYTESSERACT_AVAILABLE = True
+except ImportError:
+    PYTESSERACT_AVAILABLE = False
+    print("WARNING: pytesseract not available. OCR functionality will be limited.")
+
 from PIL import Image
 import os
-from pycatastro import PyCatastro
 
-# Configurar ruta de Tesseract (absoluta, funciona desde D: o cualquier disco)
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+try:
+    from pycatastro import PyCatastro
+    PYCATASRO_AVAILABLE = True
+except ImportError:
+    PYCATASRO_AVAILABLE = False
+    print("WARNING: pycatastro not available. Catastro API functionality will be limited.")
+
+# Configurar ruta de Tesseract con múltiples opciones
+def configure_tesseract():
+    """Configura Tesseract OCR con rutas alternativas"""
+    if not PYTESSERACT_AVAILABLE:
+        print("ADVERTENCIA: Tesseract no encontrado. OCR no funcionará.")
+        return False
+
+    possible_paths = [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        r'C:\Tesseract-OCR\tesseract.exe',
+        'tesseract'  # Buscar en PATH
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path) or path == 'tesseract':
+            try:
+                pytesseract.pytesseract.tesseract_cmd = path
+                # Probar que funciona
+                version = pytesseract.get_tesseract_version()
+                print(f"Tesseract configurado correctamente: {path}")
+                return True
+            except Exception:
+                continue
+
+    print("ADVERTENCIA: Tesseract no encontrado. OCR no funcionará.")
+    return False
+
+# Configurar Tesseract al importar
+configure_tesseract()
 
 def extract_text_from_image(image_path):
     """
     Extrae texto de una imagen usando Tesseract OCR.
     Retorna el texto extraído o un mensaje de error.
     """
+    if not PYTESSERACT_AVAILABLE:
+        return "Error: Tesseract OCR no está disponible. Instala Tesseract para usar esta funcionalidad."
+
     if not os.path.exists(image_path):
         return "Error: Archivo de imagen no encontrado."
-    
+
     try:
         # Abrir imagen con PIL
         img = Image.open(image_path)
@@ -57,10 +100,13 @@ def obtener_datos_finca(provincia, municipio, ref_catastral):
     Obtiene datos oficiales de una finca del Catastro usando APIs de pycatastro.
     Retorna un diccionario con datos catastrales o mensaje de error.
     """
+    if not PYCATASRO_AVAILABLE:
+        return {"error": "API de Catastro no disponible. Instala pycatastro para usar esta funcionalidad."}
+
     try:
         # Consulta por referencia catastral (RCCOOR)
         datos = PyCatastro.Consulta_RCCOOR(provincia, municipio, ref_catastral)
-        
+
         # Procesar respuesta (asumiendo estructura de pycatastro)
         if datos and 'error' not in datos:
             return {

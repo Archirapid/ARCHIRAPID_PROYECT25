@@ -1,14 +1,14 @@
 # modules/marketplace/ai_engine.py
 import requests
 import os
-from ollama_client import ask_ollama
 
 def ai_process(prompt, model="llama3.1"):
     """
     Motor IA centralizado para ARCHIRAPID.
-    Aquí puedes cambiar el modelo para toda la plataforma.
+    Cambiado a OpenRouter para rendimiento en MVP.
+    Ollama desactivado: para activar, cambia a ask_ollama(prompt, model).
     """
-    return ask_ollama(prompt, model=model)
+    return get_ai_response(prompt)
 
 def get_ai_response(prompt: str) -> str:
     """
@@ -27,7 +27,7 @@ def get_ai_response(prompt: str) -> str:
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}"}
     data = {
-        "model": "mistral",
+        "model": "mistralai/mistral-7b-instruct:free",
         "messages": [{"role": "user", "content": prompt}]
     }
     try:

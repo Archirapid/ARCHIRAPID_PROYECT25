@@ -41,9 +41,9 @@ def get_user_by_email(email):
 
 def create_plot_record(plot):
     conn = db_conn(); c=conn.cursor()
-    c.execute("""INSERT INTO plots (id,owner_id,title,cadastral_ref,surface_m2,buildable_m2,is_urban,vector_geojson,registry_note_path,price,lat,lon,status,created_at)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-              (plot["id"],plot["owner_id"],plot["title"],plot.get("cadastral_ref"),plot.get("surface_m2"),plot.get("buildable_m2"),1 if plot.get("is_urban") else 0,plot.get("vector_geojson"),plot.get("registry_note_path"),plot.get("price"),plot.get("lat"),plot.get("lon"),plot.get("status","published"),datetime.utcnow().isoformat()))
+    c.execute("""INSERT INTO plots (id,owner_id,title,cadastral_ref,surface_m2,buildable_m2,is_urban,vector_geojson,registry_note_path,photo_paths,price,lat,lon,status,owner_name,owner_phone,owner_address,sanitation,finca_type,created_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+              (plot["id"],plot["owner_id"],plot["title"],plot.get("cadastral_ref"),plot.get("surface_m2"),plot.get("buildable_m2"),1 if plot.get("is_urban") else 0,plot.get("vector_geojson"),plot.get("registry_note_path"),plot.get("photo_paths"),plot.get("price"),plot.get("lat"),plot.get("lon"),plot.get("status","published"),plot.get("owner_name"),plot.get("owner_phone"),plot.get("owner_address"),plot.get("sanitation"),plot.get("finca_type"),datetime.utcnow().isoformat()))
     conn.commit(); conn.close()
 
 def list_published_plots():

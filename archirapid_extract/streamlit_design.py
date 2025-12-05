@@ -8,6 +8,7 @@ from pathlib import Path
 from modules.marketplace.utils import list_published_plots
 
 def main():
+    st.write("Design Assistant loaded")  # debug
     st.title("🏗️ Design Assistant")
     st.markdown("**Herramienta de diseño asistido por IA para generar planos arquitectónicos basados en parcelas urbanas.**")
     st.markdown("---")
@@ -49,15 +50,15 @@ def main():
                     st.success("✅ Análisis completado!")
                     st.json(edificability)
 
+            # Store in session_state
+            st.session_state['design_selected_plot'] = selected_plot
+
     with tab2:
         st.header("2. Configurar Diseño")
-        if 'selected_plot' not in st.session_state or not st.session_state.get('selected_plot'):
+        selected_plot = st.session_state.get('design_selected_plot')
+        if not selected_plot:
             st.warning("Primero selecciona una parcela en la pestaña anterior.")
         else:
-            selected_plot = st.session_state['selected_plot']  # Wait, need to store it properly
-            # Actually, since it's in tab, need to use session_state
-            # For simplicity, assume it's set
-
             col1, col2 = st.columns(2)
             with col1:
                 tipo_vivienda = st.selectbox("Tipo de Vivienda", ["Unifamiliar", "Adosada", "Piso", "Chalet"], key="tipo")
@@ -89,7 +90,7 @@ def main():
                         "plantas": plantas,
                         "garaje": garaje,
                         "jardin": jardin,
-                        "superficie_construida": min(selected_plot['surface_m2'] * 0.8, habitaciones * 20 + banos * 10 + (50 if garaje else 0))
+                        "superficie_construida": min((selected_plot.get('surface_m2', 0) if isinstance(selected_plot, dict) else 0) * 0.8, habitaciones * 20 + banos * 10 + (50 if garaje else 0))
                     }
                     st.session_state['plano'] = plano_data
                     st.success("🎉 Plano generado exitosamente!")

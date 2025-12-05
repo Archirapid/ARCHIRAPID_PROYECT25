@@ -1,10 +1,10 @@
-# modules/marketplace/marketplace.py
 import streamlit as st
 from modules.marketplace.utils import list_published_plots, save_upload, reserve_plot
 from streamlit_folium import st_folium
 import folium
 import uuid
 import base64
+import os
 
 # Map plot ids to images
 PLOT_IMAGES = {
@@ -15,10 +15,11 @@ PLOT_IMAGES = {
 
 def get_image_base64(image_path):
     """Convert image to base64 for embedding in HTML."""
+    full_path = os.path.join(os.getcwd(), image_path)
     try:
-        with open(image_path, "rb") as img_file:
+        with open(full_path, "rb") as img_file:
             return f"data:image/jpeg;base64,{base64.b64encode(img_file.read()).decode()}"
-    except:
+    except Exception as e:
         return ""
 
 def main():
@@ -57,7 +58,7 @@ def main():
             lon = p['lon'] or -4.0
             img_path = PLOT_IMAGES.get(p['id'], 'assets/fincas/image1.jpg')
             img_base64 = get_image_base64(img_path)
-            icon = folium.CustomIcon(f'data:image/jpeg;base64,{img_base64}', icon_size=(60, 45))
+            icon = folium.Icon(color='red', icon='map-marker', prefix='fa')
             popup_html = f"""
             <div style='width:220px'>
                 <h4>{p['title']}</h4>
@@ -65,8 +66,15 @@ def main():
                 <a href='?selected_plot={p["id"]}' target='_self'>Ver detalles aquí</a>
             </div>
             """
-            folium.Marker([lat,lon], icon=icon, popup=popup_html).add_to(m)
-        st_folium(m, width=700, height=600)
+            folium.Marker([lat,lon], icon=icon, popup=popup_html, id=p['id']).add_to(m)
+        map_data = st_folium(m, width=700, height=600)
+        if 'last_object_clicked' in map_data and map_data['last_object_clicked']:
+            clicked = map_data['last_object_clicked']
+            for p in plots:
+                if abs(p.get('lat', 0) - clicked['lat']) < 0.01 and abs(p.get('lon', 0) - clicked['lng']) < 0.01:
+                    st.session_state["selected_plot"] = p['id']
+                    st.rerun()
+                    break
 
     # details & reserve
     if "selected_plot" in st.session_state:

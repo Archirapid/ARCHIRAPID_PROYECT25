@@ -44,6 +44,7 @@ archirapid_extract/catastro_output/
 # CAD exports and test artifacts
 *.dxf
 archirapid_extract/test_catastral.pdf
+ARCHIRAPID_PIPELINE_DUAL_VIZ_*.pdf
 
 # OS
 .DS_Store

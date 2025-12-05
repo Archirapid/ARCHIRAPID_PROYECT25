@@ -21,8 +21,10 @@ def get_ai_response(prompt: str) -> str:
     Hugging Face API: Opcional, agregar como alternativa.
     Para cambiar proveedor: Modifica esta función.
     """
-    # API Key de OpenRouter (setea OPENROUTER_API_KEY en entorno, o usa default)
-    api_key = os.getenv("OPENROUTER_API_KEY", "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")
+    # API Key de OpenRouter (setea OPENROUTER_API_KEY en entorno)
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        return "Error: OPENROUTER_API_KEY no configurada. Setea la variable de entorno."
     
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}"}

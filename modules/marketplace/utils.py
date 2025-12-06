@@ -115,3 +115,11 @@ def get_client_proposals(client_email):
 def calculate_edificability(plot_surface_m2, percentage=0.33):
     """Calcular área edificable máxima basada en superficie de la finca y porcentaje (default 33%)"""
     return plot_surface_m2 * percentage
+
+def update_proposal_status(proposal_id, status):
+    """Actualizar status y responded_at de una propuesta"""
+    from datetime import datetime
+    conn = db_conn(); c = conn.cursor()
+    c.execute("UPDATE proposals SET status = ?, responded_at = ? WHERE id = ?", 
+              (status, datetime.utcnow().isoformat(), proposal_id))
+    conn.commit(); conn.close()

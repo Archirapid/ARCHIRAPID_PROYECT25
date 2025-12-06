@@ -37,12 +37,11 @@ def get_image_base64(image_path):
 
 def main():
     # Handle URL params for plot selection
-    if "selected_plot" not in st.session_state:
-        selected_from_url = st.query_params.get("selected_plot")
-        if selected_from_url:
-            if isinstance(selected_from_url, list):
-                selected_from_url = selected_from_url[0]
-            st.session_state["selected_plot"] = selected_from_url
+    selected_from_url = st.query_params.get("selected_plot")
+    if selected_from_url:
+        if isinstance(selected_from_url, list):
+            selected_from_url = selected_from_url[0]
+        st.session_state["selected_plot"] = selected_from_url
     selected_plot_local = st.session_state.get("selected_plot")
     st.title("ARCHIRAPID — Marketplace de Fincas y Proyectos")
 

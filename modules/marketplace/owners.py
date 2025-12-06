@@ -1,6 +1,6 @@
 # modules/marketplace/owners.py
 import streamlit as st
-from modules.marketplace.utils import save_upload, create_plot_record, get_user_by_email, db_conn, get_client_proposals
+from modules.marketplace.utils import save_upload, create_plot_record, get_user_by_email, db_conn, get_client_proposals, update_proposal_status
 from pathlib import Path
 import uuid, json
 from datetime import datetime
@@ -154,15 +154,19 @@ def main():
                             st.write(f"**Finca:** {prop['plot_title']} ({prop['plot_surface']:.0f} m²)")
                             if prop['sketch_image_path']:
                                 st.image(f"uploads/{prop['sketch_image_path']}", width=300, caption="Boceto")
-                            # Botones Aceptar/Rechazar (para paso 5, pero agregar placeholders)
+                            # Botones Aceptar/Rechazar
                             if prop['status'] == 'pending':
                                 col_a, col_r = st.columns(2)
                                 with col_a:
                                     if st.button(f"✅ Aceptar (€{prop['total_cliente']:.0f})", key=f"accept_{prop['id']}"):
-                                        st.info("Funcionalidad de aceptar - Próximamente")
+                                        update_proposal_status(prop['id'], 'accepted')
+                                        st.success("¡Propuesta aceptada! Se iniciará el proceso de pago.")
+                                        st.rerun()  # Recargar para actualizar status
                                 with col_r:
                                     if st.button("❌ Rechazar", key=f"reject_{prop['id']}"):
-                                        st.info("Funcionalidad de rechazar - Próximamente")
+                                        update_proposal_status(prop['id'], 'rejected')
+                                        st.warning("Propuesta rechazada.")
+                                        st.rerun()  # Recargar para actualizar status
             else:
                 st.info("No has recibido propuestas aún. ¡Publica una finca para empezar!")
         else:

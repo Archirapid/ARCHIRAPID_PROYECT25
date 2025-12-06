@@ -7,6 +7,7 @@ from src.query_params import get_query_params, set_query_params, update_query_pa
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
+from modules.marketplace.utils import list_projects, calculate_edificability
 
 # Define the base path for the application
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -162,17 +163,6 @@ def show_home():
 
     # Show detail panel if plot is selected
     with panel_col:
-        # --- DEBUG INFO (temporary) ---
-        st.markdown("**DEBUG**")
-        st.write("query_params:", get_query_params())
-        st.write("session selected_plot:", st.session_state.get("selected_plot"))
-        # show whether df_plots contains the selected id
-        selid = st.session_state.get("selected_plot")
-        if selid:
-            found = next((p for p in df_plots if str(p.get('id')) == str(selid)), None)
-            st.write("found in fincas.json:", bool(found))
-            if found:
-                st.write(found)
         st.markdown("---")
         if "selected_plot" in st.session_state:
             plot_id = st.session_state["selected_plot"]
@@ -194,6 +184,25 @@ def show_home():
                 st.write(f"**Precio:** €{int(selected_plot['price']):,}")
                 st.write(f"**Tipo:** {selected_plot['type']}")
                 st.write(f"**Provincia:** {selected_plot['province']}")
+
+                st.subheader("🔍 Proyectos Arquitectónicos Compatibles")
+                edificabilidad = calculate_edificability(selected_plot['m2'])
+                projects = list_projects()
+                compatible_projects = [p for p in projects if p['area_m2'] <= edificabilidad]
+                
+                if compatible_projects:
+                    st.write(f"Edificabilidad máxima calculada: {edificabilidad:.0f} m² (33% de {selected_plot['m2']:.0f} m²)")
+                    for proj in compatible_projects[:5]:  # Mostrar máximo 5 para no sobrecargar
+                        with st.expander(f"🏗️ {proj['title']} - {proj['area_m2']} m² - €{proj['price']}"):
+                            st.write(f"**Descripción:** {proj['description']}")
+                            st.write(f"**Arquitecto:** {proj['architect_name']}")
+                            if proj['company']:
+                                st.write(f"**Empresa:** {proj['company']}")
+                            if st.button(f"Ver Detalles en Marketplace", key=f"view_proj_{proj['id']}"):
+                                st.session_state['selected_proj'] = proj['id']
+                                st.info("Ve al Marketplace para ver detalles completos y enviar propuesta.")
+                else:
+                    st.info("No hay proyectos compatibles disponibles para esta finca aún.")
 
                 st.markdown("---")
                 if st.button("Cerrar vista detalle"):

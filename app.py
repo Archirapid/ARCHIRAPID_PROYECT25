@@ -1,10 +1,10 @@
 # app.py (entry)
 import streamlit as st
-from modules.marketplace import architects, owners, marketplace
+from modules.marketplace import architects, owners, marketplace, intranet
 
 st.set_page_config(page_title="ARCHIRAPID", layout="wide")
 st.sidebar.title("ARCHIRAPID")
-page = st.sidebar.radio("Navegación", ["Home","Marketplace","Owners","Architects","Design Assistant"])
+page = st.sidebar.radio("Navegación", ["Home","Marketplace","Owners","Architects","Design Assistant","Intranet"])
 
 if page=="Home":
     st.title("🏗️ ARCHIRAPID")
@@ -38,3 +38,5 @@ elif page=="Architects":
 elif page=="Design Assistant":
     from archirapid_extract.streamlit_design import main as design_main
     design_main()
+elif page=="Intranet":
+    intranet.main()

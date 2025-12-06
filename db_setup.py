@@ -84,6 +84,51 @@ def init_db():
         created_at TEXT
     )
     """)
+    # proposals from architects to owners
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS proposals (
+        id TEXT PRIMARY KEY,
+        architect_id TEXT,
+        plot_id TEXT,
+        project_id TEXT,  -- added in sprint2
+        proposal_text TEXT,
+        estimated_budget REAL,
+        deadline_days INTEGER,
+        sketch_image_path TEXT,
+        status TEXT,  -- 'pending','accepted','rejected'
+        created_at TEXT,
+        responded_at TEXT,
+        delivery_format TEXT,  -- added in sprint2
+        delivery_price REAL,   -- added in sprint2
+        supervision_fee REAL,  -- added in sprint2
+        visa_fee REAL,         -- added in sprint2
+        total_cliente REAL,     -- added in sprint2
+        commission REAL         -- added in sprint2
+    )
+    """)
+    # commissions for architects
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS commissions (
+        id TEXT PRIMARY KEY,
+        proposal_id TEXT,
+        architect_id TEXT,
+        client_id TEXT,
+        amount REAL,
+        paid INTEGER,  -- 0 or 1
+        created_at TEXT
+    )
+    """)
+    # payments from clients
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS payments (
+        id TEXT PRIMARY KEY,
+        proposal_id TEXT,
+        client_id TEXT,
+        amount REAL,
+        status TEXT,  -- 'pending','completed','failed'
+        created_at TEXT
+    )
+    """)
     conn.commit()
     conn.close()
     print(f"DB initialized at {DB_PATH}")

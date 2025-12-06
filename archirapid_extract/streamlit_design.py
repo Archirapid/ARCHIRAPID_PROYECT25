@@ -7,6 +7,10 @@ import json
 from pathlib import Path
 from modules.marketplace.utils import list_published_plots
 from archirapid_extract.extract_pdf import extract_pdf_data
+import matplotlib.pyplot as plt
+import numpy as np
+from streamlit_drawable_canvas import st_canvas
+import plotly.graph_objects as go
 
 def main():
     st.write("Design Assistant loaded")  # debug
@@ -111,6 +115,10 @@ def main():
             """
             st.info(preview_text)
 
+            # Interactive 2D Canvas
+            st.markdown("---")
+            canvas_result = interactive_2d_canvas()
+
             if st.button("🚀 Generar Plano con IA", type="primary", key="generate"):
                 with st.spinner("Generando plano con IA..."):
                     plano_data = {
@@ -184,5 +192,169 @@ def main():
                 st.pyplot(fig2)
                 st.caption("IA: Puedes mover habitaciones arrastrando (próximamente). Sugerencias: Optimiza para luz natural.")
 
+                # 3D Visualization
+                st.markdown("---")
+                generate_3d_visualization(plano, selected_plot)
+
     st.markdown("---")
     st.caption("Design Assistant v1.0 - Potenciado por IA. Funcionalidad completa próximamente.")
+
+
+def interactive_2d_canvas():
+    """Interactive 2D canvas for drawing floor plans"""
+    st.subheader("🎨 Lienzo Interactivo 2D")
+    st.markdown("Dibuja tu plano de planta directamente en el lienzo. Usa las herramientas para crear habitaciones, paredes y elementos.")
+
+    # Canvas configuration
+    stroke_width = st.slider("Grosor del trazo", 1, 25, 3)
+    stroke_color = st.color_picker("Color del trazo", "#000000")
+    bg_color = st.color_picker("Color de fondo", "#FFFFFF")
+    drawing_mode = st.selectbox(
+        "Modo de dibujo:",
+        ("freedraw", "line", "rect", "circle", "transform"),
+        key="drawing_mode"
+    )
+
+    # Create canvas
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 165, 0, 0.3)",  # Fixed fill color with some opacity
+        stroke_width=stroke_width,
+        stroke_color=stroke_color,
+        background_color=bg_color,
+        height=400,
+        width=600,
+        drawing_mode=drawing_mode,
+        key="canvas",
+    )
+
+    if canvas_result.image_data is not None:
+        st.session_state['canvas_image'] = canvas_result.image_data
+
+    # Tools and templates
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Limpiar Lienzo"):
+            st.rerun()
+        if st.button("📐 Plantilla Básica"):
+            st.info("Próximamente: Carga plantillas predefinidas")
+
+    with col2:
+        if st.button("💾 Guardar Dibujo"):
+            if 'canvas_image' in st.session_state:
+                st.success("Dibujo guardado en sesión!")
+            else:
+                st.warning("No hay dibujo para guardar")
+
+    return canvas_result
+
+
+def generate_3d_visualization(plano_data, selected_plot):
+    """Generate 3D visualization using Plotly"""
+    st.subheader("🏗️ Visualización 3D Interactiva")
+
+    if not plano_data:
+        st.info("Genera un plano primero para ver la visualización 3D.")
+        return
+
+    # Create 3D building model based on plano data
+    floors = plano_data.get('plantas', 1)
+    rooms = plano_data.get('habitaciones', 3)
+    bathrooms = plano_data.get('banos', 2)
+    has_garage = plano_data.get('garaje', False)
+    has_garden = plano_data.get('jardin', False)
+
+    # Base dimensions
+    base_width = 10
+    base_length = 12
+    floor_height = 3
+
+    # Create figure
+    fig = go.Figure()
+
+    # Ground floor
+    fig.add_trace(go.Mesh3d(
+        x=[0, base_width, base_width, 0, 0, base_width, base_width, 0],
+        y=[0, 0, base_length, base_length, 0, 0, base_length, base_length],
+        z=[0, 0, 0, 0, floor_height, floor_height, floor_height, floor_height],
+        i=[0, 0, 0, 1],
+        j=[1, 2, 3, 2],
+        k=[2, 3, 0, 3],
+        color='lightblue',
+        name='Planta Baja'
+    ))
+
+    # Upper floors
+    for floor in range(1, floors):
+        z_base = floor * floor_height
+        fig.add_trace(go.Mesh3d(
+            x=[0, base_width, base_width, 0, 0, base_width, base_width, 0],
+            y=[0, 0, base_length, base_length, 0, 0, base_length, base_length],
+            z=[z_base, z_base, z_base, z_base, z_base + floor_height, z_base + floor_height, z_base + floor_height, z_base + floor_height],
+            i=[0, 0, 0, 1],
+            j=[1, 2, 3, 2],
+            k=[2, 3, 0, 3],
+            color='lightgray',
+            name=f'Planta {floor + 1}'
+        ))
+
+    # Roof
+    if floors > 1:
+        z_roof = floors * floor_height
+        fig.add_trace(go.Mesh3d(
+            x=[-1, base_width + 1, base_width + 1, -1],
+            y=[-1, -1, base_length + 1, base_length + 1],
+            z=[z_roof, z_roof, z_roof, z_roof],
+            i=[0, 0],
+            j=[1, 2],
+            k=[2, 3],
+            color='brown',
+            name='Tejado'
+        ))
+
+    # Add garage if selected
+    if has_garage:
+        fig.add_trace(go.Mesh3d(
+            x=[base_width, base_width + 4, base_width + 4, base_width, base_width, base_width + 4, base_width + 4, base_width],
+            y=[0, 0, 3, 3, 0, 0, 3, 3],
+            z=[0, 0, 0, 0, 2.5, 2.5, 2.5, 2.5],
+            i=[0, 0, 0, 1],
+            j=[1, 2, 3, 2],
+            k=[2, 3, 0, 3],
+            color='gray',
+            name='Garaje'
+        ))
+
+    # Add garden area
+    if has_garden:
+        fig.add_trace(go.Mesh3d(
+            x=[-5, base_width + 5, base_width + 5, -5],
+            y=[-5, -5, base_length + 5, base_length + 5],
+            z=[-0.1, -0.1, -0.1, -0.1],
+            i=[0, 0],
+            j=[1, 2],
+            k=[2, 3],
+            color='green',
+            name='Jardín'
+        ))
+
+    # Update layout for better visualization
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(title='Ancho (m)'),
+            yaxis=dict(title='Largo (m)'),
+            zaxis=dict(title='Altura (m)'),
+            aspectmode='data'
+        ),
+        title="Modelo 3D del Proyecto",
+        height=600
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Controls info
+    st.markdown("""
+    **Controles 3D:**
+    - **Rotar:** Click y arrastra
+    - **Zoom:** Scroll del mouse
+    - **Pan:** Click derecho y arrastra
+    """)

@@ -125,11 +125,11 @@ def main():
             
             # Additional actions
             st.subheader("💰 Opciones de Compra")
-            if st.button("Reservar 10%"):
+            if st.button("Reservar 10%", key=f"reserve_10_list_{pid}"):
                 amount = (p.get("price") or 0) * 0.10
                 rid = reserve_plot(pid, "Demo buyer", "demo@example.com", amount, kind="reservation")
                 st.success(f"Reserva simulada: {rid} — {amount}€")
-            if st.button("Comprar (100%)"):
+            if st.button("Comprar (100%)", key=f"purchase_100_list_{pid}"):
                 amount = (p.get("price") or 0)
                 rid = reserve_plot(pid, "Demo buyer", "demo@example.com", amount, kind="purchase")
                 st.success(f"Compra simulada: {rid} — {amount}€")
@@ -374,21 +374,21 @@ def main():
             st.subheader("🔧 Acciones Disponibles")
             col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("📊 Extraer Datos Catastrales"):
+                if st.button("📊 Extraer Datos Catastrales", key=f"extract_{pid}"):
                     st.info("Funcionalidad de extracción catastral - Implementada en módulo separado")
             with col2:
-                if st.button("🔍 Examinar Edificabilidad"):
+                if st.button("🔍 Examinar Edificabilidad", key=f"edificability_{pid}"):
                     st.info("Análisis de edificabilidad disponible en Design Assistant")
             with col3:
-                if st.button("📋 Generar Informe"):
+                if st.button("📋 Generar Informe", key=f"report_{pid}"):
                     st.info("Generando informe detallado...")
             
             st.subheader("💰 Opciones de Compra")
-            if st.button("Reservar 10%"):
+            if st.button("Reservar 10%", key=f"reserve_10_detail_{pid}"):
                 amount = (p.get("price") or 0) * 0.10
                 rid = reserve_plot(pid, "Demo buyer", "demo@example.com", amount, kind="reservation")
                 st.success(f"Reserva simulada: {rid} — {amount}€")
-            if st.button("Comprar (100%)"):
+            if st.button("Comprar (100%)", key=f"purchase_100_detail_{pid}"):
                 amount = (p.get("price") or 0)
                 rid = reserve_plot(pid, "Demo buyer", "demo@example.com", amount, kind="purchase")
                 st.success(f"Compra simulada: {rid} — {amount}€")

@@ -1,6 +1,7 @@
 # modules/marketplace/ai_engine.py
 import requests
 import os
+import json
 
 def ai_process(prompt, model="llama3.1"):
     """
@@ -41,3 +42,58 @@ def get_ai_response(prompt: str) -> str:
         return response.json()["choices"][0]["message"]["content"]
     except Exception as e:
         return f"Error en IA: {str(e)}. Verifica API key o conexión."
+
+
+def plan_vivienda(superficie_finca: int, habitaciones: int, garage: bool) -> dict:
+    """
+    Genera un plan de vivienda en JSON usando IA.
+    - Calcula automáticamente m2 construibles (33% de la finca).
+    - Solicita a la IA un JSON estructurado con habitaciones y m².
+    - Devuelve un dict parseado listo para usar en visualización 3D.
+
+    Args:
+        superficie_finca: Superficie total de la finca en m²
+        habitaciones: Número de habitaciones deseadas
+        garage: Si incluye garage
+
+    Returns:
+        dict: Plan estructurado con habitaciones, garage y total_m2, o dict con error
+    """
+    m2_construccion = int(superficie_finca * 0.33)
+
+    prompt = f"""
+    Cliente con finca de {superficie_finca} m².
+    Construcción permitida: {m2_construccion} m².
+    Desea {habitaciones} habitaciones y garage: {"sí" if garage else "no"}.
+
+    Genera un JSON estructurado con:
+    - Lista de habitaciones (nombre y m²).
+    - Garage si aplica (m²).
+    - Total_m2 construido.
+
+    IMPORTANTE: Responde ÚNICAMENTE con JSON válido, sin texto adicional.
+
+    Ejemplo de salida:
+    {{
+      "habitaciones": [
+        {{"nombre": "Dormitorio principal", "m2": 15}},
+        {{"nombre": "Dormitorio secundario", "m2": 12}},
+        {{"nombre": "Salón", "m2": 25}},
+        {{"nombre": "Cocina", "m2": 10}}
+      ],
+      "garage": {{"m2": 20}},
+      "total_m2": 82
+    }}
+    """
+
+    respuesta = get_ai_response(prompt)
+
+    try:
+        plan_json = json.loads(respuesta)
+        # Validación básica del JSON
+        if "habitaciones" not in plan_json or "total_m2" not in plan_json:
+            return {"error": "JSON incompleto - faltan campos requeridos", "raw": respuesta}
+        return plan_json
+    except json.JSONDecodeError:
+        # Si la IA devuelve texto no válido, devolvemos un dict con error
+        return {"error": "Respuesta IA no es JSON válido", "raw": respuesta}

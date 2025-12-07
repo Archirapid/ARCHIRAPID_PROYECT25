@@ -1,0 +1,12 @@
+[
+  {
+    "direccion": "Calle Mayor 123, Madrid",
+    "ref_catastral": "1234567AB1234N0001AA",
+    "superficie": 800,
+    "coordenadas": "40.4168,-3.7038",
+    "descripcion": "Finca urbana en centro de Madrid",
+    "propietario_id": "user_test",
+    "id": 1,
+    "fecha_creacion": "2025-12-07T18:49:13.462452"
+  }
+]

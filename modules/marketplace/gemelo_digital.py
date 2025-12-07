@@ -8,8 +8,14 @@ Integración quirúrgica: no rompe código existente, reutiliza componentes.
 import streamlit as st
 import plotly.graph_objects as go
 import json
+import random
 from modules.marketplace.utils import list_published_plots
 from modules.marketplace.ai_engine import get_ai_response, plan_vivienda
+from .validacion import validar_plan_local
+from .pago_simulado import init_pago_state, render_paso_pago, verificar_pago, reset_pago
+from .documentacion import generar_memoria_constructiva, generar_presupuesto_estimado, generar_plano_cad
+from .data_access import list_fincas, get_finca, save_proyecto
+from .catastro_api import fetch_by_ref_catastral
 
 def generar_plan_vivienda(plot_data, num_habitaciones, num_banos, con_garage, presupuesto_max):
     """
@@ -158,6 +164,111 @@ def crear_plan_fallback(num_habitaciones, num_banos, con_garage, m2_max):
         }
     }
 
+
+def editor_tabiques(plan_json, superficie_finca):
+    """
+    Componente de edición de tabiques que permite ajustar m² por estancia.
+    Usa st.data_editor para edición interactiva manteniendo nombres fijos.
+
+    Args:
+        plan_json: Plan actual con habitaciones
+        superficie_finca: Superficie total de la finca
+
+    Returns:
+        tuple: (plan_json_actualizado, resultado_validacion)
+    """
+    st.subheader("✏️ Editar tabiques (m² por estancia)")
+
+    # Construir dataframe simple para edición
+    filas = []
+    for h in plan_json.get("habitaciones", []):
+        filas.append({
+            "nombre": h.get("nombre", "Estancia"),
+            "m2": float(h.get("m2", 0))
+        })
+
+    # Editor de datos con nombres deshabilitados
+    edited = st.data_editor(
+        filas,
+        num_rows="dynamic",
+        column_config={
+            "nombre": st.column_config.TextColumn("Estancia", disabled=True),
+            "m2": st.column_config.NumberColumn("m²", min_value=1.0, step=0.5)
+        },
+        use_container_width=True
+    )
+
+    # Aplicar cambios al JSON (solo m2)
+    for i, h in enumerate(plan_json.get("habitaciones", [])):
+        if i < len(edited):
+            h["m2"] = float(edited[i]["m2"])
+
+    # Recalcular total_m2
+    total = 0
+    for h in plan_json.get("habitaciones", []):
+        total += float(h.get("m2", 0))
+    if "garage" in plan_json:
+        total += float(plan_json["garage"].get("m2", 0))
+    plan_json["total_m2"] = total
+
+    # Validación local
+    resultado = validar_plan_local(plan_json, superficie_finca)
+
+    # Mostrar validaciones
+    st.markdown("### 📏 Validación con reglas genéricas")
+    if resultado["ok"]:
+        st.success(".1f"".1f")
+    else:
+        for e in resultado["errores"]:
+            st.error(e)
+
+    for r in resultado["recomendaciones"]:
+        st.info(r)
+
+    return plan_json, resultado
+
+
+def evaluar_con_ia(plan_json, superficie_finca):
+    """
+    Evalúa el plan con IA y propone ajustes según normas genéricas.
+
+    Args:
+        plan_json: Plan actual
+        superficie_finca: Superficie de la finca
+
+    Returns:
+        str: Análisis y propuestas de la IA
+    """
+    total = plan_json.get("total_m2", 0)
+    if total == 0:
+        total = sum(float(h.get("m2", 0)) for h in plan_json.get("habitaciones", [])) + \
+                (float(plan_json["garage"].get("m2", 0)) if "garage" in plan_json else 0)
+
+    prompt = f"""
+Eres un asistente de arquitectura para un MVP. Normas genéricas:
+- Dormitorios ≥ 8 m² (recomendado ≥ 10 m²).
+- Salón/Comedor ≥ 12 m² (recomendado ≥ 18 m²).
+- Cocina ≥ 6 m².
+- Baño ≥ 3 m².
+- Superficie construida ≤ 33% de la finca.
+
+Finca: {superficie_finca:.1f} m². Máximo construible: {superficie_finca*0.33:.1f} m².
+Plan actual (JSON): {json.dumps(plan_json, ensure_ascii=False)}
+
+Tarea:
+1) Indica qué estancias NO cumplen y por qué.
+2) Propón ajustes concretos de m² por estancia para cumplir (sin superar el 33%).
+3) Si algún dormitorio queda en 6 m², explica que solo sería válido como despensa/trastero en este MVP.
+4) Devuelve un JSON de propuesta ajustada con habitaciones (nombre, m2), garage y total_m2.
+"""
+
+    try:
+        analisis = get_ai_response(prompt)
+        return analisis
+    except Exception as e:
+        return f"Error al consultar IA: {str(e)}. Verifica configuración de API."
+
+
 def main():
     """Interfaz principal del Gemelo Digital"""
     st.title("🏠 Gemelo Digital Inteligente")
@@ -169,8 +280,317 @@ def main():
     """)
     st.markdown("---")
 
-    # Puente inteligente con marketplace existente
-    st.subheader("📍 Seleccionar Parcela Base")
+    # === CONEXIÓN CON FINCAS: Seleccionar finca del cliente ===
+    st.subheader("📍 Selecciona tu Finca")
+    fincas = list_fincas()
+
+    if not fincas:
+        st.warning("No hay fincas disponibles. Ve a la sección de Propietario para subir una finca.")
+        return
+
+    finca_options = {f"{f['direccion']} (Ref: {f['ref_catastral']}) - {f.get('superficie', 'N/A')} m²": f
+                    for f in fincas}
+    selected_finca_name = st.selectbox("Selecciona una finca:",
+                                      list(finca_options.keys()),
+                                      key="gemelo_finca_select_mvp")
+    selected_finca = finca_options[selected_finca_name] if selected_finca_name else None
+
+    if not selected_finca:
+        st.info("👆 Selecciona una finca para continuar con el análisis.")
+        return
+
+    # Actualizar datos catastrales si es necesario
+    if st.button("🔄 Actualizar datos catastrales", key="update_catastro_gemelo"):
+        with st.spinner("Consultando Catastro..."):
+            catastro_data = fetch_by_ref_catastral(selected_finca['ref_catastral'])
+            if catastro_data:
+                st.success("✅ Datos catastrales actualizados")
+            else:
+                st.warning("No se pudieron actualizar los datos catastrales")
+
+    # Mostrar información de la finca seleccionada
+    st.success(f"✅ Finca seleccionada: **{selected_finca['direccion']}**")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        superficie = selected_finca.get('superficie', 0)
+        st.metric("Superficie", f"{superficie} m²")
+    with col2:
+        st.write(f"**Ref. Catastral:** {selected_finca['ref_catastral']}")
+        st.write(f"**Dirección:** {selected_finca['direccion']}")
+    with col3:
+        coordenadas = selected_finca.get('coordenadas', 'No disponibles')
+        st.write(f"**Coordenadas:** {coordenadas}")
+
+    st.markdown("---")
+
+    # === NUEVA SECCIÓN MVP: Generación Rápida de Plan con IA ===
+    st.subheader("🚀 MVP - Generación Rápida de Plan con IA")
+    st.markdown("**Genera un plan de vivienda completo con IA en segundos**")
+
+    # Información sobre configuración necesaria
+    with st.expander("ℹ️ Configuración requerida", expanded=False):
+        st.markdown("""
+        **Para usar esta funcionalidad necesitas:**
+        - ✅ API Key de OpenRouter configurada
+        - ✅ Conexión a internet
+        - ✅ Modelo Mistral-7B disponible
+
+        **Variables de entorno requeridas:**
+        ```
+        OPENROUTER_API_KEY=tu_api_key_aqui
+        ```
+
+        La IA generará automáticamente la distribución óptima basada en la normativa española.
+        """)
+
+    # --- Inputs del cliente (usando datos de la finca seleccionada) ---
+    superficie_finca = selected_finca.get('superficie', 500)  # Usar superficie de la finca seleccionada
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Superficie de finca", f"{superficie_finca} m²")
+        st.info("📏 Superficie tomada de la finca seleccionada")
+    with col2:
+        habitaciones = st.slider("Número de habitaciones", min_value=1, max_value=10, value=3,
+                               help="Número total de habitaciones (salón, dormitorios, cocina, baños)")
+    with col3:
+        garage = st.checkbox("Incluir garage", value=True,
+                           help="¿Quieres incluir un garage en el diseño?")
+
+    # Mostrar información adicional de la finca
+    with st.expander("📋 Detalles de la finca seleccionada", expanded=False):
+        st.json({
+            "direccion": selected_finca.get('direccion'),
+            "superficie": selected_finca.get('superficie'),
+            "ref_catastral": selected_finca.get('ref_catastral'),
+            "coordenadas": selected_finca.get('coordenadas'),
+            "descripcion": selected_finca.get('descripcion')
+        })
+
+    # --- Generar plan con IA ---
+    if st.button("🚀 Generar Plan con IA", type="primary", use_container_width=True):
+        with st.spinner("🤖 IA analizando finca y generando distribución óptima..."):
+            try:
+                # Importar la función plan_vivienda
+                from .ai_engine import plan_vivienda
+
+                # Llamar a la IA para generar el plan usando datos de la finca
+                plan_json = plan_vivienda(superficie_finca, habitaciones, garage)
+
+                # Verificar si hay error en la respuesta
+                if 'error' in plan_json:
+                    st.error(f"❌ Error en la generación IA: {plan_json['error']}")
+                    with st.expander("Detalles del error", expanded=False):
+                        if 'raw' in plan_json:
+                            st.code(plan_json['raw'], language='text')
+                        st.markdown("""
+                        **Posibles soluciones:**
+                        1. Verifica que la API key de OpenRouter esté configurada:
+                           ```powershell
+                           $env:OPENROUTER_API_KEY = "tu_api_key_aqui"
+                           ```
+                        2. Reinicia la terminal/IDE después de configurar
+                        3. Verifica tu conexión a internet
+                        """)
+                    return
+
+                # Guardar en session_state para persistencia
+                st.session_state['plan_ia_mvp'] = plan_json
+                st.session_state['parametros_mvp'] = {
+                    'superficie_finca': superficie_finca,
+                    'habitaciones': habitaciones,
+                    'garage': garage,
+                    'finca_id': selected_finca.get('id'),
+                    'finca_direccion': selected_finca.get('direccion'),
+                    'referencia_catastral': selected_finca.get('ref_catastral'),
+                    'coordenadas': selected_finca.get('coordenadas')
+                }
+
+                st.success("✅ Plan generado exitosamente con IA!")
+                st.info(f"📊 Plan optimizado para parcela de {superficie_finca} m² con {habitaciones} habitaciones{' + garage' if garage else ''}")
+
+            except Exception as e:
+                st.error(f"❌ Error inesperado: {str(e)}")
+                st.info("Verifica la configuración de la aplicación y la conexión a internet.")
+
+    # --- Mostrar resultados si existen ---
+    if 'plan_ia_mvp' in st.session_state:
+        plan_json = st.session_state['plan_ia_mvp']
+
+        # Mostrar el JSON generado por IA
+        st.subheader("📊 Plan Generado por IA")
+        with st.expander("Ver JSON completo del plan", expanded=False):
+            st.json(plan_json)
+
+        # Resumen del plan
+        if 'habitaciones' in plan_json:
+            habitaciones_lista = plan_json['habitaciones']
+
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                habitaciones_count = len(habitaciones_lista)
+                st.metric("Habitaciones", habitaciones_count)
+            with col_b:
+                garage_incluido = 'garage' in plan_json and plan_json['garage']
+                st.metric("Garage", "Sí" if garage_incluido else "No")
+            with col_c:
+                total_m2 = plan_json.get('total_m2', sum(h.get('m2', 0) for h in habitaciones_lista) + (plan_json['garage'].get('m2', 0) if garage_incluido else 0))
+                st.metric("Superficie Total", f"{total_m2} m²")
+
+            # Lista de habitaciones
+            st.markdown("**🏠 Distribución Generada:**")
+            for hab in habitaciones_lista:
+                st.markdown(f"🏠 **{hab.get('nombre', 'Habitación')}** - {hab.get('m2', 0)} m²")
+
+            if garage_incluido:
+                garage_m2 = plan_json['garage'].get('m2', 0)
+                st.markdown(f"🚗 **Garage** - {garage_m2} m²")
+
+        # --- Visualización 3D ---
+        st.subheader("🏗️ Visualización 3D del Plan Generado")
+        try:
+            fig = create_gemelo_3d(plan_json)
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.info("💡 **Visualización IA**: Los cubos representan habitaciones proporcionales centradas en la parcela. "
+                   "Puedes rotar, hacer zoom y explorar el diseño generado.")
+
+        except Exception as e:
+            st.error(f"❌ Error en la visualización 3D: {str(e)}")
+
+        # --- Edición de tabiques ---
+        st.markdown("---")
+        plan_json_editado, resultado_validacion = editor_tabiques(plan_json, superficie_finca)
+
+        # Actualizar session_state si cambió
+        if plan_json_editado != plan_json:
+            st.session_state['plan_ia_mvp'] = plan_json_editado
+            plan_json = plan_json_editado
+            st.success("✅ Cambios aplicados al plan")
+
+        # --- Evaluación con IA ---
+        if st.button("🧠 Validar con IA y proponer ajustes", type="secondary", use_container_width=True):
+            with st.spinner("🤖 IA analizando y proponiendo ajustes..."):
+                try:
+                    informe_ia = evaluar_con_ia(plan_json, superficie_finca)
+                    st.markdown("### 📊 Informe y Propuestas de IA")
+                    st.write(informe_ia)
+
+                    # Intentar parsear JSON de propuesta si existe
+                    try:
+                        # Buscar JSON en la respuesta (entre ```json y ```)
+                        import re
+                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', informe_ia, re.DOTALL)
+                        if json_match:
+                            propuesta_json = json.loads(json_match.group(1))
+                            st.markdown("### ✅ Propuesta ajustada por IA")
+                            with st.expander("Ver propuesta JSON", expanded=False):
+                                st.json(propuesta_json)
+
+                            # Opción para aplicar la propuesta
+                            if st.button("📝 Aplicar propuesta de IA", type="primary"):
+                                st.session_state['plan_ia_mvp'] = propuesta_json
+                                st.success("✅ Propuesta aplicada. Recarga la página para ver los cambios.")
+                                st.rerun()
+                        else:
+                            st.info("La IA proporcionó análisis textual. Si incluye una propuesta JSON, se mostrará arriba.")
+
+                    except json.JSONDecodeError:
+                        st.info("La IA devolvió análisis textual sin propuesta JSON estructurada.")
+
+                except Exception as e:
+                    st.error(f"❌ Error al consultar IA: {str(e)}")
+
+        # --- Memoria constructiva y presupuesto ---
+        st.markdown("---")
+        st.subheader("🧾 Memoria Constructiva y Presupuesto")
+
+        # Importar funciones de documentación
+        from .documentacion import generar_memoria_constructiva, generar_presupuesto_estimado
+
+        # Generar y mostrar memoria
+        memoria = generar_memoria_constructiva(plan_json, superficie_finca)
+        with st.expander("📄 Ver Memoria Constructiva Completa", expanded=False):
+            st.code(memoria, language="text")
+
+        # Generar y mostrar presupuesto
+        presupuesto = generar_presupuesto_estimado(plan_json)
+        col_pres1, col_pres2 = st.columns(2)
+
+        with col_pres1:
+            st.metric("Superficie Total", f"{presupuesto['superficie_total']:.1f} m²")
+            st.metric("Coste por m²", f"€{presupuesto['coste_m2']:.0f}")
+            st.metric("Subtotal Obra", f"€{presupuesto['subtotal_obra']:,.0f}")
+
+        with col_pres2:
+            st.metric("Honorarios", f"€{presupuesto['honorarios_profesionales']:,.0f}")
+            st.metric("Impuestos", f"€{presupuesto['impuestos']:,.0f}")
+            st.metric("Total Estimado", f"€{presupuesto['total_estimado']:,.0f}")
+
+        st.info(f"💡 {presupuesto['nota']}")
+
+        # --- Pago y exportación ---
+        st.markdown("---")
+        st.subheader("💳 Pago y Exportación")
+
+        # Inicializar estado de pago
+        init_pago_state()
+
+        # Renderizar interfaz de pago
+        render_paso_pago()
+
+        # Verificar si el pago está completado
+        if verificar_pago():
+            st.success("✅ Pago verificado. Puedes descargar la documentación.")
+
+            col_exp1, col_exp2 = st.columns(2)
+
+            with col_exp1:
+                # Descargar memoria como PDF (placeholder)
+                st.download_button(
+                    label="📄 Descargar Memoria Constructiva (PDF)",
+                    data=memoria.encode("utf-8"),
+                    file_name="memoria_constructiva.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+
+            with col_exp2:
+                # Descargar plan como DXF generado por IA
+                if st.button("🖼️ Generar y Descargar Plan DXF (CAD)", use_container_width=True):
+                    with st.spinner("Generando plano CAD con IA..."):
+                        dxf_content = generar_plano_cad(plan_json)
+                        st.download_button(
+                            label="💾 Descargar DXF generado",
+                            data=dxf_content.encode("utf-8"),
+                            file_name="planta_mvp.dxf",
+                            mime="application/octet-stream",
+                            use_container_width=True,
+                            help="Plano CAD generado por IA en formato DXF"
+                        )
+                        st.success("✅ Plano DXF generado y listo para descargar!")
+
+            st.info("📋 Próximas integraciones: Exportación real a PDF con formato profesional. DXF generado por IA listo para AutoCAD/LibreCAD.")
+
+        else:
+            st.warning("💳 Completa el pago para habilitar las descargas de documentación.")
+
+        # --- Exportación (mantener funcionalidad existente) ---
+        st.markdown("---")
+        st.subheader("📄 Exportar Plan")
+        col_exp1, col_exp2 = st.columns(2)
+        with col_exp1:
+            if st.button("📄 Exportar a PDF", use_container_width=True):
+                st.info("Funcionalidad de exportación PDF próximamente...")
+        with col_exp2:
+            if st.button("🖼️ Exportar a CAD/DWG", use_container_width=True):
+                st.info("Funcionalidad de exportación CAD próximamente...")
+
+    st.markdown("---")
+    # === FIN SECCIÓN MVP ===
+
+    # Puente inteligente con marketplace existente (funcionalidad original)
+    st.subheader("📍 Análisis Avanzado de Parcela Existente")
     plots = list_published_plots()
 
     if not plots:
@@ -181,7 +601,7 @@ def main():
                    for p in plots}
     selected_plot_name = st.selectbox("Selecciona una parcela del marketplace:",
                                      list(plot_options.keys()),
-                                     key="gemelo_plot_select")
+                                     key="gemelo_parcela_select_avanzado")
     selected_plot = plot_options[selected_plot_name] if selected_plot_name else None
 
     if selected_plot:
@@ -303,10 +723,42 @@ def main():
         # Visualización 3D del gemelo
         st.markdown("---")
         st.subheader("🏗️ Visualización 3D del Gemelo Digital")
-        plan_actual = st.session_state.get('plan_vivienda')
-        fig = crear_visualizacion_gemelo(selected_plot, temperatura, ocupacion,
-                                       material_muros, sistema_clima, paneles_solares, plan_actual)
-        st.plotly_chart(fig, use_container_width=True)
+
+        # Si hay un plan de vivienda generado por IA, usar la nueva visualización 3D
+        if 'plan_vivienda' in st.session_state and st.session_state['plan_vivienda']:
+            plan_actual = st.session_state['plan_vivienda']
+            if 'distribucion' in plan_actual:
+                # Convertir el formato del plan a JSON compatible con create_gemelo_3d
+                plan_json = {
+                    "habitaciones": [
+                        {
+                            "nombre": hab["nombre"],
+                            "m2": hab["m2"]
+                        } for hab in plan_actual["distribucion"]
+                        if hab["tipo"] != "garage"
+                    ]
+                }
+
+                # Añadir garage si existe
+                garage_hab = next((h for h in plan_actual["distribucion"] if h["tipo"] == "garage"), None)
+                if garage_hab:
+                    plan_json["garage"] = {"m2": garage_hab["m2"]}
+
+                # Crear visualización 3D del plan generado por IA
+                fig = create_gemelo_3d(plan_json)
+                st.plotly_chart(fig, use_container_width=True)
+
+                st.info("💡 **Visualización IA**: Este modelo 3D muestra el plan generado automáticamente basado en tus preferencias.")
+            else:
+                # Fallback a la visualización tradicional si no hay distribución detallada
+                fig = crear_visualizacion_gemelo(selected_plot, temperatura, ocupacion,
+                                               material_muros, sistema_clima, paneles_solares, plan_actual)
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            # Visualización tradicional del gemelo sin plan específico
+            fig = crear_visualizacion_gemelo(selected_plot, temperatura, ocupacion,
+                                           material_muros, sistema_clima, paneles_solares, None)
+            st.plotly_chart(fig, use_container_width=True)
 
         # Información adicional
         with st.expander("ℹ️ Acerca del Gemelo Digital"):
@@ -625,3 +1077,116 @@ def posicionar_habitaciones(habitaciones, lado_edificio):
         fila_altura = max(fila_altura, lado_cuadrado)
 
     return habitaciones_posicionadas
+
+
+def create_gemelo_3d(plan_json: dict):
+    """
+    Renderiza un modelo 3D básico de la vivienda a partir del JSON de la IA.
+    - Centra los cubos en la parcela.
+    - Escala visualmente los cubos para que se vean proporcionados.
+    - Superpone los cubos sobre el plano base de la parcela.
+    """
+
+    fig = go.Figure()
+
+    # ✅ Coordenadas base de la parcela (simulada como cuadrado de 100x100 m)
+    parcela_x = [10, 90, 90, 10, 10]
+    parcela_y = [10, 10, 90, 90, 10]
+    parcela_z = [0] * len(parcela_x)
+
+    fig.add_trace(go.Scatter3d(
+        x=parcela_x,
+        y=parcela_y,
+        z=parcela_z,
+        mode="lines",
+        line=dict(color="brown", width=4),
+        name="Parcela"
+    ))
+
+    # ✅ Centro de la parcela
+    centro_x = 50
+    centro_y = 50
+
+    # ✅ Escala visual para que los cubos se vean bien
+    escala_visual = 2.5
+
+    # ✅ Posición inicial relativa al centro
+    offset_x = -20
+    offset_y = -20
+
+    colores = ["lightblue", "lightgreen", "lightpink", "lightyellow", "lavender", "beige", "lightgray"]
+
+    # ✅ Dibujar habitaciones
+    if "habitaciones" in plan_json:
+        for idx, hab in enumerate(plan_json["habitaciones"]):
+            nombre = hab.get("nombre", f"Habitación {idx+1}")
+            m2 = hab.get("m2", 10)
+
+            lado = int((m2) ** 0.5) * escala_visual
+            altura = 3
+
+            x0 = centro_x + offset_x
+            x1 = x0 + lado
+            y0 = centro_y + offset_y
+            y1 = y0 + lado
+            z0, z1 = 0, altura
+
+            fig.add_trace(go.Mesh3d(
+                x=[x0, x1, x1, x0, x0, x1, x1, x0],
+                y=[y0, y0, y1, y1, y0, y0, y1, y1],
+                z=[z0, z0, z0, z0, z1, z1, z1, z1],
+                i=[0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 4, 5],
+                j=[1, 2, 3, 5, 6, 7, 5, 6, 7, 6, 0, 1],
+                k=[2, 3, 0, 6, 7, 4, 6, 7, 4, 7, 5, 2],
+                opacity=0.5,
+                color=random.choice(colores),
+                name=nombre
+            ))
+
+            fig.add_trace(go.Scatter3d(
+                x=[(x0+x1)/2], y=[(y0+y1)/2], z=[altura+0.5],
+                mode="text",
+                text=[f"{nombre} ({m2} m²)"],
+                textposition="top center"
+            ))
+
+            offset_x += lado + 5  # Separación entre cubos
+
+    # ✅ Dibujar garage si existe
+    if "garage" in plan_json:
+        m2 = plan_json["garage"].get("m2", 20)
+        lado = int((m2) ** 0.5) * escala_visual
+        altura = 3
+
+        x0 = centro_x + offset_x
+        x1 = x0 + lado
+        y0 = centro_y + offset_y
+        y1 = y0 + lado
+        z0, z1 = 0, altura
+
+        fig.add_trace(go.Mesh3d(
+            x=[x0, x1, x1, x0, x0, x1, x1, x0],
+            y=[y0, y0, y1, y1, y0, y0, y1, y1],
+            z=[z0, z0, z0, z0, z1, z1, z1, z1],
+            i=[0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 4, 5],
+            j=[1, 2, 3, 5, 6, 7, 5, 6, 7, 6, 0, 1],
+            k=[2, 3, 0, 6, 7, 4, 6, 7, 4, 7, 5, 2],
+            opacity=0.5,
+            color="gray",
+            name="Garage"
+        ))
+
+        fig.add_trace(go.Scatter3d(
+            x=[(x0+x1)/2], y=[(y0+y1)/2], z=[altura+0.5],
+            mode="text",
+            text=[f"Garage ({m2} m²)"],
+            textposition="top center"
+        ))
+
+    fig.update_layout(scene=dict(
+        xaxis_title="Ancho (m)",
+        yaxis_title="Largo (m)",
+        zaxis_title="Altura (m)"
+    ))
+
+    return fig

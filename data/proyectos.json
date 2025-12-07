@@ -1,0 +1,47 @@
+[
+  {
+    "titulo": "Casa Moderna 3 Habitaciones",
+    "autor_id": 1,
+    "autor_tipo": "arquitecto",
+    "total_m2": 240,
+    "tipo": "residencial",
+    "precio": 85000,
+    "estilo": "Moderno",
+    "descripcion": "Diseno moderno con jardin integrado",
+    "superficie_m2": 800,
+    "estado": "disponible",
+    "id": 1,
+    "fecha_creacion": "2025-12-07T20:43:22.944139",
+    "version": 1
+  },
+  {
+    "titulo": "Vivienda Tradicional 2 Plantas",
+    "autor_id": 2,
+    "autor_tipo": "arquitecto",
+    "total_m2": 280,
+    "tipo": "residencial",
+    "precio": 95000,
+    "estilo": "Tradicional",
+    "descripcion": "Estilo tradicional con toques contemporaneos",
+    "superficie_m2": 800,
+    "estado": "disponible",
+    "id": 2,
+    "fecha_creacion": "2025-12-07T20:43:23.001162",
+    "version": 1
+  },
+  {
+    "titulo": "Casa Minimalista 2 Habitaciones",
+    "autor_id": 1,
+    "autor_tipo": "arquitecto",
+    "total_m2": 180,
+    "tipo": "residencial",
+    "precio": 65000,
+    "estilo": "Minimalista",
+    "descripcion": "Diseno minimalista funcional",
+    "superficie_m2": 600,
+    "estado": "disponible",
+    "id": 3,
+    "fecha_creacion": "2025-12-07T20:43:23.053164",
+    "version": 1
+  }
+]

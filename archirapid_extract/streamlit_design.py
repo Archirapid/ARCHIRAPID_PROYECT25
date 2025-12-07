@@ -25,7 +25,7 @@ def main():
         st.header("1. Seleccionar Parcela")
         plots = list_published_plots()
         plot_options = {f"{p['title']} ({p['surface_m2']} m²)": p for p in plots}
-        selected_plot_name = st.selectbox("Elige una parcela del marketplace:", list(plot_options.keys()), key="plot_select")
+        selected_plot_name = st.selectbox("Elige una parcela del marketplace:", list(plot_options.keys()), key="design_plot_select")
         selected_plot = plot_options[selected_plot_name] if selected_plot_name else None
 
         if selected_plot:

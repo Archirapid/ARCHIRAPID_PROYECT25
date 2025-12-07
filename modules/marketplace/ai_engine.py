@@ -22,6 +22,9 @@ def get_ai_response(prompt: str) -> str:
     Para cambiar proveedor: Modifica esta función.
     """
     # API Key de OpenRouter (setea OPENROUTER_API_KEY en entorno)
+    # Para configurar en Windows: setx OPENROUTER_API_KEY "tu_clave_aqui"
+    # Para configurar en PowerShell: $env:OPENROUTER_API_KEY = "tu_clave_aqui"
+    # Reinicia la terminal después de configurar
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         return "Error: OPENROUTER_API_KEY no configurada. Setea la variable de entorno."

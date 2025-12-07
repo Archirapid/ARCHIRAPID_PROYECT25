@@ -420,6 +420,11 @@ def analizar_gemelo_digital(plot, temp, hum, ori, ocup, uso, horario, efic, mat,
 def crear_visualizacion_gemelo(plot, temp, ocup, mat, clima, solar, plan_vivienda=None):
     """Crea visualización 3D dinámica del gemelo digital con habitaciones individuales"""
 
+    # Inicialización segura de variables base
+    altura_base = 3  # Altura por planta por defecto (3 metros)
+    # Nota: En futuras versiones, altura_base podría calcularse dinámicamente
+    # basado en material, ocupación o normativa local (ej: altura_base = 2.8 si mat == 'Madera')
+
     fig = go.Figure()
 
     # Dimensiones base adaptadas a la parcela
@@ -497,7 +502,9 @@ def crear_visualizacion_gemelo(plot, temp, ocup, mat, clima, solar, plan_viviend
 
     else:
         # Visualización básica anterior (cuando no hay plan detallado)
-        altura_base = 3  # Altura por planta
+        # altura_base ya está inicializada al principio de la función
+        pass
+
     plantas = max(1, min(3, ocup // 2))  # Estimación de plantas basada en ocupación
     altura_total = plantas * altura_base
 

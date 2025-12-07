@@ -11,6 +11,157 @@ import json
 from modules.marketplace.utils import list_published_plots
 from modules.marketplace.ai_engine import get_ai_response
 
+def generar_plan_vivienda(plot_data, num_habitaciones, num_banos, con_garage, presupuesto_max):
+    """
+    Genera un plan de vivienda estructurado usando IA.
+    Devuelve JSON con distribución de habitaciones y cálculos automáticos.
+
+    Args:
+        plot_data: Datos de la parcela del marketplace
+        num_habitaciones: Número de habitaciones deseadas
+        num_banos: Número de baños deseados
+        con_garage: Si incluye garage
+        presupuesto_max: Presupuesto máximo en euros
+
+    Returns:
+        dict: Plan estructurado en formato JSON
+    """
+    superficie_parcela = plot_data['surface_m2']
+    m2_construibles = int(superficie_parcela * 0.33)  # 33% de edificabilidad
+
+    prompt = f"""
+    ERES UN ARQUITECTO EXPERTO EN DISEÑO DE VIVIENDAS EFICIENTES.
+
+    Debes generar un PLAN DE VIVIENDA COMPLETO en formato JSON válido.
+
+    DATOS DE ENTRADA:
+    - Superficie parcela: {superficie_parcela} m²
+    - Superficie construible máxima: {m2_construibles} m²
+    - Habitaciones deseadas: {num_habitaciones}
+    - Baños deseados: {num_banos}
+    - Garage incluido: {"Sí" if con_garage else "No"}
+    - Presupuesto máximo: €{presupuesto_max}
+
+    INSTRUCCIONES:
+    1. Calcula distribución óptima respetando normativa española
+    2. Asigna m² realistas a cada habitación (salón 20-30m², dormitorios 10-18m², etc.)
+    3. Incluye garage de 15-25m² si se solicita
+    4. Mantén total_m2_construido ≤ {m2_construibles}
+    5. Calcula presupuesto aproximado (€/m² construcción: 800-1200)
+
+    FORMATO JSON REQUERIDO (responde SOLO con JSON válido):
+    {{
+        "distribucion": [
+            {{"tipo": "salon", "nombre": "Salón-Comedor", "m2": 25, "descripcion": "Espacio principal con luz natural"}},
+            {{"tipo": "dormitorio", "nombre": "Dormitorio Principal", "m2": 15, "descripcion": "Suite con baño en suite"}},
+            {{"tipo": "cocina", "nombre": "Cocina", "m2": 10, "descripcion": "Cocina moderna integrada"}},
+            {{"tipo": "bano", "nombre": "Baño Principal", "m2": 6, "descripcion": "Baño completo"}},
+            {{"tipo": "garage", "nombre": "Garage", "m2": 20, "descripcion": "Para 2 vehículos"}} (solo si con_garage=true)
+        ],
+        "metricas": {{
+            "total_m2_construidos": 76,
+            "m2_parcela_usados": 76,
+            "eficiencia_parcela": 23,
+            "presupuesto_estimado": 76000,
+            "tiempo_construccion_meses": 8
+        }},
+        "validaciones": {{
+            "cumple_normativa": true,
+            "edificabilidad_ok": true,
+            "presupuesto_ok": true,
+            "observaciones": "Distribución óptima para familia de 4 personas"
+        }}
+    }}
+    """
+
+    try:
+        respuesta_ia = get_ai_response(prompt)
+
+        # Intentar parsear el JSON
+        try:
+            plan_json = json.loads(respuesta_ia)
+            return plan_json
+        except json.JSONDecodeError:
+            # Si no es JSON válido, extraer el JSON del texto
+            import re
+            json_match = re.search(r'\{.*\}', respuesta_ia, re.DOTALL)
+            if json_match:
+                plan_json = json.loads(json_match.group())
+                return plan_json
+            else:
+                # Fallback: crear plan básico
+                return crear_plan_fallback(num_habitaciones, num_banos, con_garage, m2_construibles)
+
+    except Exception as e:
+        st.error(f"Error generando plan con IA: {e}")
+        return crear_plan_fallback(num_habitaciones, num_banos, con_garage, m2_construibles)
+
+def crear_plan_fallback(num_habitaciones, num_banos, con_garage, m2_max):
+    """Plan básico de fallback cuando la IA falla"""
+    distribucion = []
+
+    # Salón básico
+    distribucion.append({
+        "tipo": "salon",
+        "nombre": "Salón-Comedor",
+        "m2": min(25, m2_max // 4),
+        "descripcion": "Espacio principal"
+    })
+
+    # Cocina
+    distribucion.append({
+        "tipo": "cocina",
+        "nombre": "Cocina",
+        "m2": 10,
+        "descripcion": "Cocina funcional"
+    })
+
+    # Dormitorios
+    for i in range(num_habitaciones):
+        distribucion.append({
+            "tipo": "dormitorio",
+            "nombre": f"Dormitorio {i+1}",
+            "m2": 12 if i == 0 else 10,
+            "descripcion": "Habitación cómoda" if i == 0 else "Habitación secundaria"
+        })
+
+    # Baños
+    for i in range(num_banos):
+        distribucion.append({
+            "tipo": "bano",
+            "nombre": f"Baño {i+1}",
+            "m2": 6 if i == 0 else 4,
+            "descripcion": "Baño completo" if i == 0 else "Baño secundario"
+        })
+
+    # Garage si aplica
+    if con_garage:
+        distribucion.append({
+            "tipo": "garage",
+            "nombre": "Garage",
+            "m2": 20,
+            "descripcion": "Para 2 vehículos"
+        })
+
+    total_m2 = sum(item['m2'] for item in distribucion)
+
+    return {
+        "distribucion": distribucion,
+        "metricas": {
+            "total_m2_construidos": total_m2,
+            "m2_parcela_usados": total_m2,
+            "eficiencia_parcela": round((total_m2 / 100) * 100, 1),  # Asumiendo parcela de 100m² para cálculo
+            "presupuesto_estimado": total_m2 * 1000,
+            "tiempo_construccion_meses": 6
+        },
+        "validaciones": {
+            "cumple_normativa": total_m2 <= m2_max,
+            "edificabilidad_ok": total_m2 <= m2_max,
+            "presupuesto_ok": True,
+            "observaciones": "Plan básico generado automáticamente"
+        }
+    }
+
 def main():
     """Interfaz principal del Gemelo Digital"""
     st.title("🏠 Gemelo Digital Inteligente")
@@ -53,7 +204,75 @@ def main():
 
         st.markdown("---")
 
-        # Parámetros dinámicos del gemelo digital
+        # 🎯 NUEVO: Generador Interactivo de Plan de Vivienda
+        st.subheader("🏠 Diseña Tu Vivienda - Guía Paso a Paso")
+
+        col1, col2 = st.columns([1, 2])
+
+        with col1:
+            st.markdown("**📋 Especificaciones de tu hogar**")
+
+            # Sliders interactivos para el diseño
+            num_habitaciones = st.slider("Número de habitaciones", 1, 6, 3, key="num_hab")
+            num_banos = st.slider("Número de baños", 1, 4, 2, key="num_banos")
+            con_garage = st.checkbox("Incluir garage", value=True, key="con_garage")
+            presupuesto_max = st.slider("Presupuesto máximo (€)", 50000, 500000, 150000, key="presupuesto")
+
+            # Botón para generar plan
+            if st.button("🚀 Generar Plan de Vivienda con IA", type="primary", key="generar_plan"):
+                with st.spinner("🎨 Creando distribución óptima con IA..."):
+                    plan_generado = generar_plan_vivienda(
+                        selected_plot, num_habitaciones, num_banos,
+                        con_garage, presupuesto_max
+                    )
+                    st.session_state['plan_vivienda'] = plan_generado
+                    st.success("✅ Plan generado exitosamente!")
+
+        with col2:
+            # Mostrar plan generado si existe
+            if 'plan_vivienda' in st.session_state:
+                plan = st.session_state['plan_vivienda']
+
+                if 'distribucion' in plan:
+                    st.markdown("**📐 Distribución Generada**")
+
+                    # Mostrar resumen
+                    metricas = plan.get('metricas', {})
+                    col_a, col_b, col_c = st.columns(3)
+                    with col_a:
+                        st.metric("Superficie Construida", f"{metricas.get('total_m2_construidos', 0)} m²")
+                    with col_b:
+                        st.metric("Presupuesto Estimado", f"€{metricas.get('presupuesto_estimado', 0):,}")
+                    with col_c:
+                        st.metric("Tiempo Construcción", f"{metricas.get('tiempo_construccion_meses', 0)} meses")
+
+                    # Mostrar habitaciones en una tabla bonita
+                    st.markdown("**🏠 Habitaciones del Plan**")
+                    for hab in plan['distribucion']:
+                        tipo_icon = {
+                            'salon': '🛋️', 'dormitorio': '🛏️', 'cocina': '🍳',
+                            'bano': '🚿', 'garage': '🚗'
+                        }.get(hab['tipo'], '🏠')
+
+                        st.markdown(f"{tipo_icon} **{hab['nombre']}** - {hab['m2']} m²")
+                        if 'descripcion' in hab:
+                            st.caption(hab['descripcion'])
+
+                    # Validaciones
+                    validaciones = plan.get('validaciones', {})
+                    if validaciones.get('cumple_normativa'):
+                        st.success("✅ Diseño cumple normativa urbanística")
+                    else:
+                        st.warning("⚠️ Revisar cumplimiento normativo")
+
+                else:
+                    st.error("Error en el formato del plan generado")
+            else:
+                st.info("👆 Configura tus preferencias y genera un plan personalizado")
+
+        st.markdown("---")
+
+        # Análisis del gemelo digital (existente)
         st.subheader("🎛️ Parámetros del Gemelo Digital")
 
         col1, col2, col3 = st.columns(3)
@@ -88,8 +307,9 @@ def main():
         # Visualización 3D del gemelo
         st.markdown("---")
         st.subheader("🏗️ Visualización 3D del Gemelo Digital")
+        plan_actual = st.session_state.get('plan_vivienda')
         fig = crear_visualizacion_gemelo(selected_plot, temperatura, ocupacion,
-                                       material_muros, sistema_clima, paneles_solares)
+                                       material_muros, sistema_clima, paneles_solares, plan_actual)
         st.plotly_chart(fig, use_container_width=True)
 
         # Información adicional
@@ -197,8 +417,8 @@ def analizar_gemelo_digital(plot, temp, hum, ori, ocup, uso, horario, efic, mat,
             st.error(f"❌ Error en el análisis IA: {str(e)}")
             st.info("Verifica que la API key de OpenRouter esté configurada correctamente.")
 
-def crear_visualizacion_gemelo(plot, temp, ocup, mat, clima, solar):
-    """Crea visualización 3D dinámica del gemelo digital"""
+def crear_visualizacion_gemelo(plot, temp, ocup, mat, clima, solar, plan_vivienda=None):
+    """Crea visualización 3D dinámica del gemelo digital con habitaciones individuales"""
 
     fig = go.Figure()
 
@@ -217,8 +437,67 @@ def crear_visualizacion_gemelo(plot, temp, ocup, mat, clima, solar):
         opacity=0.3
     ))
 
-    # Edificio principal (adaptado a parámetros)
-    altura_base = 3  # Altura por planta
+    if plan_vivienda and 'distribucion' in plan_vivienda:
+        # Visualización avanzada con habitaciones del plan
+        habitaciones = plan_vivienda['distribucion']
+
+        # Colores por tipo de habitación
+        colores_por_tipo = {
+            'salon': 'lightblue',
+            'dormitorio': 'lightcoral',
+            'cocina': 'orange',
+            'bano': 'lightcyan',
+            'garage': 'gray',
+            'terraza': 'green',
+            'pasillo': 'beige'
+        }
+
+        # Calcular posiciones y tamaños
+        total_m2 = sum(h['m2'] for h in habitaciones if h['tipo'] != 'garage')
+        lado_edificio = min(lado * 0.8, (total_m2 ** 0.5) * 1.2)
+
+        # Posicionar habitaciones en una distribución lógica
+        habitaciones_posicionadas = posicionar_habitaciones(habitaciones, lado_edificio)
+
+        for hab in habitaciones_posicionadas:
+            tipo = hab['tipo']
+            color = colores_por_tipo.get(tipo, 'lightgray')
+
+            # Crear cubo para cada habitación
+            x0, y0 = hab['pos_x'], hab['pos_y']
+            ancho, largo = hab['ancho'], hab['largo']
+            altura = 3  # Altura estándar
+
+            # Vertices del cubo
+            x = [x0, x0+ancho, x0+ancho, x0, x0, x0+ancho, x0+ancho, x0]
+            y = [y0, y0, y0+largo, y0+largo, y0, y0, y0+largo, y0+largo]
+            z = [0, 0, 0, 0, altura, altura, altura, altura]
+
+            fig.add_trace(go.Mesh3d(
+                x=x, y=y, z=z,
+                i=[0, 0, 0, 1, 4, 4, 2, 6, 4, 0, 3, 7],
+                j=[1, 2, 3, 2, 5, 6, 6, 5, 1, 5, 2, 6],
+                k=[2, 3, 0, 3, 6, 7, 3, 2, 6, 1, 6, 2],
+                color=color,
+                name=f"{hab['nombre']} ({hab['m2']}m²)",
+                opacity=0.8,
+                hovertext=f"{hab['nombre']}<br>{hab['m2']} m²<br>{hab.get('descripcion', '')}"
+            ))
+
+            # Añadir etiqueta de texto
+            fig.add_trace(go.Scatter3d(
+                x=[x0 + ancho/2],
+                y=[y0 + largo/2],
+                z=[altura + 0.5],
+                mode='text',
+                text=[hab['nombre']],
+                textposition="middle center",
+                showlegend=False
+            ))
+
+    else:
+        # Visualización básica anterior (cuando no hay plan detallado)
+        altura_base = 3  # Altura por planta
     plantas = max(1, min(3, ocup // 2))  # Estimación de plantas basada en ocupación
     altura_total = plantas * altura_base
 
@@ -312,3 +591,34 @@ def crear_visualizacion_gemelo(plot, temp, ocup, mat, clima, solar):
     )
 
     return fig
+
+def posicionar_habitaciones(habitaciones, lado_edificio):
+    """Posiciona habitaciones en el plano de forma lógica"""
+    habitaciones_posicionadas = []
+    x_actual = 0
+    y_actual = 0
+    fila_altura = 0
+
+    for hab in habitaciones:
+        m2 = hab['m2']
+        lado_cuadrado = m2 ** 0.5  # Aproximación cuadrada
+
+        # Si no cabe en la fila actual, pasar a nueva fila
+        if x_actual + lado_cuadrado > lado_edificio:
+            x_actual = 0
+            y_actual += fila_altura
+            fila_altura = lado_cuadrado
+
+        hab_pos = hab.copy()
+        hab_pos.update({
+            'pos_x': x_actual,
+            'pos_y': y_actual,
+            'ancho': lado_cuadrado,
+            'largo': lado_cuadrado
+        })
+
+        habitaciones_posicionadas.append(hab_pos)
+        x_actual += lado_cuadrado
+        fila_altura = max(fila_altura, lado_cuadrado)
+
+    return habitaciones_posicionadas

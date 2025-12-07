@@ -9,7 +9,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import json
 from modules.marketplace.utils import list_published_plots
-from modules.marketplace.ai_engine import get_ai_response
+from modules.marketplace.ai_engine import get_ai_response, plan_vivienda
 
 def generar_plan_vivienda(plot_data, num_habitaciones, num_banos, con_garage, presupuesto_max):
     """
@@ -24,77 +24,73 @@ def generar_plan_vivienda(plot_data, num_habitaciones, num_banos, con_garage, pr
         presupuesto_max: Presupuesto máximo en euros
 
     Returns:
-        dict: Plan estructurado en formato JSON
+        dict: Plan estructurado en formato JSON compatible con visualización 3D
     """
     superficie_parcela = plot_data['surface_m2']
-    m2_construibles = int(superficie_parcela * 0.33)  # 33% de edificabilidad
 
-    prompt = f"""
-    ERES UN ARQUITECTO EXPERTO EN DISEÑO DE VIVIENDAS EFICIENTES.
+    # Usar la nueva función plan_vivienda del ai_engine
+    plan_simple = plan_vivienda(superficie_parcela, num_habitaciones, con_garage)
 
-    Debes generar un PLAN DE VIVIENDA COMPLETO en formato JSON válido.
+    # Si hay error en la respuesta de IA, usar fallback
+    if "error" in plan_simple:
+        return crear_plan_fallback(num_habitaciones, num_banos, con_garage, int(superficie_parcela * 0.33))
 
-    DATOS DE ENTRADA:
-    - Superficie parcela: {superficie_parcela} m²
-    - Superficie construible máxima: {m2_construibles} m²
-    - Habitaciones deseadas: {num_habitaciones}
-    - Baños deseados: {num_banos}
-    - Garage incluido: {"Sí" if con_garage else "No"}
-    - Presupuesto máximo: €{presupuesto_max}
+    # Convertir el formato simple al formato complejo esperado
+    distribucion = []
 
-    INSTRUCCIONES:
-    1. Calcula distribución óptima respetando normativa española
-    2. Asigna m² realistas a cada habitación (salón 20-30m², dormitorios 10-18m², etc.)
-    3. Incluye garage de 15-25m² si se solicita
-    4. Mantén total_m2_construido ≤ {m2_construibles}
-    5. Calcula presupuesto aproximado (€/m² construcción: 800-1200)
+    # Convertir habitaciones
+    tipos_habitacion = ["dormitorio", "salon", "cocina", "bano", "terraza"]
+    for i, hab in enumerate(plan_simple.get("habitaciones", [])):
+        tipo = tipos_habitacion[min(i, len(tipos_habitacion)-1)]
+        distribucion.append({
+            "tipo": tipo,
+            "nombre": hab["nombre"],
+            "m2": hab["m2"],
+            "descripcion": f"Habitación tipo {tipo}"
+        })
 
-    FORMATO JSON REQUERIDO (responde SOLO con JSON válido):
-    {{
-        "distribucion": [
-            {{"tipo": "salon", "nombre": "Salón-Comedor", "m2": 25, "descripcion": "Espacio principal con luz natural"}},
-            {{"tipo": "dormitorio", "nombre": "Dormitorio Principal", "m2": 15, "descripcion": "Suite con baño en suite"}},
-            {{"tipo": "cocina", "nombre": "Cocina", "m2": 10, "descripcion": "Cocina moderna integrada"}},
-            {{"tipo": "bano", "nombre": "Baño Principal", "m2": 6, "descripcion": "Baño completo"}},
-            {{"tipo": "garage", "nombre": "Garage", "m2": 20, "descripcion": "Para 2 vehículos"}} (solo si con_garage=true)
-        ],
-        "metricas": {{
-            "total_m2_construidos": 76,
-            "m2_parcela_usados": 76,
-            "eficiencia_parcela": 23,
-            "presupuesto_estimado": 76000,
+    # Agregar baños si se especificaron
+    for i in range(num_banos):
+        distribucion.append({
+            "tipo": "bano",
+            "nombre": f"Baño {i+1}",
+            "m2": 6,
+            "descripcion": "Baño completo"
+        })
+
+    # Agregar garage si se solicitó
+    if con_garage and "garage" in plan_simple:
+        distribucion.append({
+            "tipo": "garage",
+            "nombre": "Garage",
+            "m2": plan_simple["garage"]["m2"],
+            "descripcion": "Estacionamiento para vehículos"
+        })
+
+    # Calcular métricas
+    total_m2 = plan_simple.get("total_m2", sum(h["m2"] for h in distribucion))
+    eficiencia_parcela = (total_m2 / superficie_parcela) * 100
+    presupuesto_estimado = total_m2 * 1000  # €1000/m² aproximado
+
+    # Crear respuesta en formato esperado
+    plan_completo = {
+        "distribucion": distribucion,
+        "metricas": {
+            "total_m2_construidos": total_m2,
+            "m2_parcela_usados": total_m2,
+            "eficiencia_parcela": round(eficiencia_parcela, 1),
+            "presupuesto_estimado": presupuesto_estimado,
             "tiempo_construccion_meses": 8
-        }},
-        "validaciones": {{
-            "cumple_normativa": true,
-            "edificabilidad_ok": true,
-            "presupuesto_ok": true,
-            "observaciones": "Distribución óptima para familia de 4 personas"
-        }}
-    }}
-    """
+        },
+        "validaciones": {
+            "cumple_normativa": total_m2 <= int(superficie_parcela * 0.33),
+            "edificabilidad_ok": eficiencia_parcela <= 33,
+            "presupuesto_ok": presupuesto_estimado <= presupuesto_max,
+            "observaciones": f"Plan generado por IA para {num_habitaciones} habitaciones"
+        }
+    }
 
-    try:
-        respuesta_ia = get_ai_response(prompt)
-
-        # Intentar parsear el JSON
-        try:
-            plan_json = json.loads(respuesta_ia)
-            return plan_json
-        except json.JSONDecodeError:
-            # Si no es JSON válido, extraer el JSON del texto
-            import re
-            json_match = re.search(r'\{.*\}', respuesta_ia, re.DOTALL)
-            if json_match:
-                plan_json = json.loads(json_match.group())
-                return plan_json
-            else:
-                # Fallback: crear plan básico
-                return crear_plan_fallback(num_habitaciones, num_banos, con_garage, m2_construibles)
-
-    except Exception as e:
-        st.error(f"Error generando plan con IA: {e}")
-        return crear_plan_fallback(num_habitaciones, num_banos, con_garage, m2_construibles)
+    return plan_completo
 
 def crear_plan_fallback(num_habitaciones, num_banos, con_garage, m2_max):
     """Plan básico de fallback cuando la IA falla"""

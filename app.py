@@ -1,4 +1,3 @@
-# app.py (entry)
 import streamlit as st
 
 st.set_page_config(page_title="ARCHIRAPID", layout="wide")
@@ -6,8 +5,10 @@ st.sidebar.title("ARCHIRAPID")
 page = st.sidebar.radio("Navegación", [
     "Home",
     "Propietario (Gemelo Digital)",
+    "Propietarios (Subir Fincas)",
     "Diseñador de Vivienda",
     "Inmobiliaria (Mapa)",
+    "👤 Panel de Cliente",
     "Arquitectos (Marketplace)",
     "Intranet"
 ])
@@ -47,6 +48,12 @@ elif page == "Propietario (Gemelo Digital)":
         from modules.marketplace import gemelo_digital
         gemelo_digital.main()
 
+elif page == "Propietarios (Subir Fincas)":
+    with st.container():
+        # Propietarios suben fincas al marketplace inmobiliario
+        from modules.marketplace import owners
+        owners.main()
+
 elif page == "Diseñador de Vivienda":
     with st.container():
         # Flujo secundario: Cliente diseña vivienda personalizada
@@ -56,8 +63,14 @@ elif page == "Diseñador de Vivienda":
 elif page == "Inmobiliaria (Mapa)":
     with st.container():
         # Flujo terciario: Cliente explora fincas y proyectos
-        from modules.marketplace import inmobiliaria_mapa
-        inmobiliaria_mapa.mostrar_mapa_inmobiliario()
+        from modules.marketplace import marketplace
+        marketplace.main()
+
+elif page == "👤 Panel de Cliente":
+    with st.container():
+        # Panel de cliente con acceso a transacciones y servicios
+        from modules.marketplace import client_panel
+        client_panel.main()
 
 elif page == "Arquitectos (Marketplace)":
     with st.container():

@@ -175,7 +175,7 @@ def show_home():
                 if 'images' in selected_plot and selected_plot['images']:
                     img_path = os.path.join(BASE, selected_plot['images'][0])
                     if os.path.exists(img_path):
-                        st.image(img_path, use_column_width="always")
+                        st.image(img_path, use_container_width=True)
                     else:
                         st.info("Imagen no disponible")
 

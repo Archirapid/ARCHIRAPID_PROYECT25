@@ -10,7 +10,7 @@ def init_pago_state():
     if "pagado" not in st.session_state:
         st.session_state.pagado = False
 
-def render_paso_pago():
+def render_paso_pago(proyecto_id=None):
     """
     Renderiza el paso de pago simulado con un botón único.
     Marca el pago como validado al pulsar el botón.
@@ -20,8 +20,9 @@ def render_paso_pago():
     st.subheader("💳 Pago (MVP)")
 
     if not st.session_state.pagado:
-        # Botón único de pago simulado
-        if st.button("💳 Pagar (MVP)", type="primary", use_container_width=True):
+        # Botón único de pago simulado con key único
+        key = f"pagar_{proyecto_id}" if proyecto_id else "pagar_mvp"
+        if st.button("💳 Pagar (MVP)", type="primary", use_container_width=True, key=key):
             st.session_state.pagado = True
             st.success("✅ Pago verificado (MVP). Descargas habilitadas.")
             st.balloons()  # Celebración visual

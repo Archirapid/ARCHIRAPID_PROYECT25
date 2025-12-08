@@ -1,5 +1,5 @@
 import streamlit as st
-from modules.marketplace.utils import list_published_plots, save_upload, reserve_plot, list_projects
+from modules.marketplace.utils import list_published_plots, save_upload, reserve_plot, list_projects, calculate_edificability
 from streamlit_folium import st_folium
 import folium
 import uuid
@@ -21,7 +21,11 @@ def get_plot_image_path(plot):
         try:
             paths = json.loads(plot['photo_paths'])
             if paths and isinstance(paths, list):
-                return paths[0]
+                # Añadir el prefijo uploads/ al nombre del archivo
+                upload_path = f"uploads/{paths[0]}"
+                # Verificar si el archivo existe
+                if os.path.exists(upload_path):
+                    return upload_path
         except (json.JSONDecodeError, TypeError):
             pass
     return PLOT_IMAGES.get(plot['id'], 'assets/fincas/image1.jpg')
@@ -34,6 +38,36 @@ def get_image_base64(image_path):
             return f"data:image/jpeg;base64,{base64.b64encode(img_file.read()).decode()}"
     except Exception as e:
         return ""
+
+def extract_cadastral_data(plot):
+    """Extrae datos catastrales de la nota si existe."""
+    cadastral_data = {}
+
+    if plot.get('registry_note_path'):
+        try:
+            # Usar módulos de extracción existentes - simplificado por ahora
+            # TODO: Integrar con extract_pdf.py y parse_project_memoria.py cuando estén disponibles
+            cadastral_data.update({
+                'surface_m2': plot.get('surface_m2'),
+                'cadastral_ref': plot.get('cadastral_ref', 'Extraído de nota'),
+                'shape': 'Rectangular',
+                'dimensions': 'N/A',
+                'buildable_m2': int(plot.get('surface_m2', 0) * 0.33)
+            })
+        except Exception as e:
+            st.warning(f"No se pudieron extraer datos catastrales: {e}")
+
+    # Fallback a datos básicos
+    if not cadastral_data:
+        cadastral_data = {
+            'surface_m2': plot.get('surface_m2'),
+            'cadastral_ref': plot.get('cadastral_ref', 'No disponible'),
+            'shape': 'Rectangular (estimado)',
+            'dimensions': 'N/A',
+            'buildable_m2': int(plot.get('surface_m2', 0) * 0.33)
+        }
+
+    return cadastral_data
 
 def main():
     # Handle URL params for plot selection
@@ -50,11 +84,14 @@ def main():
     max_m = st.sidebar.number_input("Max m²", value=100000)
     q = st.sidebar.text_input("Buscar (provincia, título)")
 
-    plots = list_published_plots()
-    # simple filters
-    plots = [p for p in plots if (p["surface_m2"] is None or (p["surface_m2"]>=min_m and p["surface_m2"]<=max_m))]
+    plots_all = list_published_plots()
+    # simple filters - pero mantener todas para detalles
+    plots_filtered = [p for p in plots_all if (p["surface_m2"] is None or (p["surface_m2"]>=min_m and p["surface_m2"]<=max_m))]
     if q:
-        plots = [p for p in plots if q.lower() in (p.get("title","")+" "+str(p.get("cadastral_ref",""))).lower()]
+        plots_filtered = [p for p in plots_filtered if q.lower() in (p.get("title","")+" "+str(p.get("cadastral_ref",""))).lower()]
+
+    # Usar plots_filtered para mostrar en mapa y miniaturas, pero plots_all para detalles
+    plots = plots_filtered
 
     left,right = st.columns([1,2])
     with left:
@@ -82,57 +119,275 @@ def main():
                 <h4>{p['title']}</h4>
                 <img src='{img_base64}' width='200' style='margin-bottom:10px;'>
                 <div>{p.get('surface_m2')} m² · €{p.get('price')}</div>
-                <a href='?selected_plot={p["id"]}' target='_self'>Ver detalles aquí</a>
+                <button onclick="window.location.href = window.location.pathname + '?selected_plot={p['id']}'" style='display:block; margin-top:10px; padding:5px; background:#4CAF50; color:white; border:none; border-radius:3px; text-align:center; width:100%; cursor:pointer;'>Ver detalles aquí</button>
             </div>
             """
-            folium.Marker([lat,lon], icon=icon, popup=popup_html, id=p['id'], onclick=f"window.location.href = window.location.pathname + '?selected_plot={p['id']}'").add_to(m)
+            marker = folium.Marker([lat,lon], icon=icon, popup=popup_html)
+            marker.add_to(m)
+            # Asignar ID al marker para identificación
+            marker._id = p['id']
         map_data = st_folium(m, width=700, height=600)
 
-    # Detalles de finca seleccionada
-    if selected_plot_local:
+        # NO detectar clics aquí - usar solo el botón del popup que cambia URL
+
+    # Detalles de finca seleccionada - MODAL DESACTIVADO TEMPORALMENTE
+    # Para resolver conflicto de múltiples dialogs en Streamlit
+    """
+    if selected_plot_local and not st.session_state.get("show_client_form", False):
         pid = selected_plot_local
         st.session_state["selected_plot"] = pid  # sync
-        st.markdown("---")
-        st.subheader("Detalle de Finca Seleccionada")
-        p = next((x for x in plots if x["id"]==pid), None)
-        if p:
-            img_path = get_plot_image_path(p)
-            st.image(img_path, width=400)
-            st.write(f"**Título:** {p['title']}")
-            st.write(f"**Superficie:** {p.get('surface_m2')} m²")
-            st.write(f"**Precio:** €{p.get('price')}")
-            st.write(f"**Referencia catastral:** {p.get('cadastral_ref', 'N/A')}")
+
+        # Modal grande horizontal
+        @st.dialog("Detalle de Finca Seleccionada", width="large")
+        def show_plot_details(plots_data, plot_id):
+            try:
+                p = next((x for x in plots_data if x["id"]==plot_id), None)
+                if p:
+                    cadastral_data = extract_cadastral_data(p)
+
+                    # Layout horizontal con columnas
+                    col_left, col_right = st.columns([1, 1])
+
+                    with col_left:
+                        st.subheader("📋 Datos Catastrales")
+                        img_path = get_plot_image_path(p)
+                        if os.path.exists(img_path):
+                            st.image(img_path, width=300, caption=p['title'])
+                        else:
+                            st.image("assets/fincas/image1.jpg", width=300, caption=p['title'])
+
+                        st.markdown(f"**🏠 Título:** {p['title']}")
+                        st.markdown(f"**📏 Superficie:** {cadastral_data.get('surface_m2', p.get('surface_m2', 'N/A'))} m²")
+                        st.markdown(f"**🏗️ Máx. Construible:** {cadastral_data.get('buildable_m2', int(p.get('surface_m2', 0) * 0.33))} m²")
+                        st.markdown(f"**💰 Precio:** €{p.get('price', 'N/A')}")
+                        st.markdown(f"**📋 Ref. Catastral:** {cadastral_data.get('cadastral_ref', p.get('cadastral_ref', 'N/A'))}")
+                        st.markdown(f"**📍 Ubicación:** {p.get('lat', 'N/A')}, {p.get('lon', 'N/A')}")
+
+                        if cadastral_data.get('shape'):
+                            st.markdown(f"**🔷 Forma:** {cadastral_data['shape']}")
+                        if cadastral_data.get('dimensions'):
+                            st.markdown(f"**📐 Dimensiones:** {cadastral_data['dimensions']}")
+
+                    with col_right:
+                        # Acciones generales de la finca
+                        st.subheader("🛠️ Acciones")
+                        
+                        col_res_finca, col_comp_finca = st.columns(2)
+                        with col_res_finca:
+                            if st.button("💰 Reservar Finca (10%)", key=f"reserve_finca_10_{p['id']}", use_container_width=True, help="Reservar finca con 10% del precio"):
+                                amount = (p.get("price") or 0) * 0.10
+                                rid = reserve_plot(p['id'], "Cliente Demo", "cliente@demo.com", amount, kind="reservation")
+                                st.success(f"✅ Reserva de finca simulada: {rid} — {amount}€")
+                                st.session_state["show_client_form"] = True
+                                st.session_state["transaction_type"] = "reservation"
+                                st.session_state["transaction_id"] = rid
+                                st.rerun()
+                        with col_comp_finca:
+                            if st.button("🏠 Comprar Finca (100%)", key=f"purchase_finca_100_{p['id']}", use_container_width=True, help="Comprar finca completa"):
+                                amount = p.get("price") or 0
+                                rid = reserve_plot(p['id'], "Cliente Demo", "cliente@demo.com", amount, kind="purchase")
+                                st.success(f"✅ Compra de finca simulada: {rid} — {amount}€")
+                                st.session_state["show_client_form"] = True
+                                st.session_state["transaction_type"] = "purchase"
+                                st.session_state["transaction_id"] = rid
+                                st.rerun()
+                        
+                        # Herramientas avanzadas
+                        st.markdown("---")
+                        col_analizar, col_informe = st.columns(2)
+                        with col_analizar:
+                            if st.button("🔍 Analizar Nota Castral", key=f"analyze_note_{p['id']}", use_container_width=True, help="Analizar documento catastral"):
+                                st.info("🔄 Analizando nota catastral...")
+                                # Aquí iría la lógica de análisis de nota
+                                st.success("✅ Análisis completado - Datos extraídos de la nota")
+                        with col_informe:
+                            if st.button("📋 Generar Informe PDF", key=f"generate_report_{p['id']}", use_container_width=True, help="Generar informe completo en PDF"):
+                                st.info("🔄 Generando informe PDF...")
+                                # Aquí iría la lógica de generación de PDF
+                                st.success("✅ Informe PDF generado y descargado")
+                        
+                        # Edificabilidad
+                        if st.button("🏗️ Examinar Edificabilidad", key=f"check_edificability_{p['id']}", use_container_width=True, help="Análisis detallado de edificabilidad"):
+                            edificabilidad_detallada = calculate_edificability(cadastral_data.get('surface_m2', p.get('surface_m2', 0)))
+                            st.info(f"🏗️ **Análisis de Edificabilidad:**\n\n"
+                                   f"- Superficie total: {cadastral_data.get('surface_m2', p.get('surface_m2', 0)):.0f} m²\n"
+                                   f"- Coeficiente de edificabilidad: 33%\n"
+                                   f"- Área máxima construible: {edificabilidad_detallada:.0f} m²\n"
+                                   f"- Área disponible: {edificabilidad_detallada:.0f} m²")
+                        
+                        st.markdown("---")
+
+                        # Proyectos compatibles
+                        edificabilidad = calculate_edificability(cadastral_data.get('surface_m2', p.get('surface_m2', 0)))
+                        projects_all_list = list_projects()
+                        # Eliminar duplicados por ID
+                        unique_projects = []
+                        seen_ids = set()
+                        for proj in projects_all_list:
+                            if proj['id'] not in seen_ids:
+                                unique_projects.append(proj)
+                                seen_ids.add(proj['id'])
+                        compatible_projects = [proj for proj in unique_projects if proj['area_m2'] <= edificabilidad]
+
+                        st.subheader("🔍 Proyectos Arquitectónicos Compatibles")
+                        if compatible_projects:
+                            st.success(f"Edificabilidad máxima: {edificabilidad:.0f} m² (33% de superficie)")
+                            for proj in compatible_projects[:5]:
+                                with st.expander(f"🏗️ {proj['title']} - {proj['area_m2']} m² - €{proj['price']}"):
+                                    st.write(f"**📝 Descripción:** {proj['description']}")
+                                    st.write(f"**👷 Arquitecto:** {proj['architect_name']}")
+                                    if proj['company']:
+                                        st.write(f"**🏢 Empresa:** {proj['company']}")
+
+                                    # Botones de acción
+                                    col_res, col_comp = st.columns(2)
+                                    with col_res:
+                                        if st.button(f"📋 Reservar 10%", key=f"reserve_10_{proj['id']}_{p['id']}", use_container_width=True):
+                                            amount = (p.get("price") or 0) * 0.10
+                                            rid = reserve_plot(p['id'], "Cliente Demo", "cliente@demo.com", amount, kind="reservation")
+                                            st.success(f"✅ Reserva simulada: {rid} — {amount}€")
+                                            st.session_state["show_client_form"] = True
+                                            st.session_state["transaction_type"] = "reservation"
+                                            st.session_state["transaction_id"] = rid
+                                            st.rerun()
+                                    with col_comp:
+                                        if st.button(f"💰 Comprar (100%)", key=f"purchase_100_{proj['id']}_{p['id']}", use_container_width=True):
+                                            amount = p.get("price") or 0
+                                            rid = reserve_plot(p['id'], "Cliente Demo", "cliente@demo.com", amount, kind="purchase")
+                                            st.success(f"✅ Compra simulada: {rid} — {amount}€")
+                                            st.session_state["show_client_form"] = True
+                                            st.session_state["transaction_type"] = "purchase"
+                                            st.session_state["transaction_id"] = rid
+                                            st.rerun()
+                        else:
+                            st.info("No hay proyectos compatibles para esta finca.")
+
+                        # Información adicional
+                        if st.button("📊 Mostrar Información Adicional", key=f"info_{p['id']}", help="Ver datos técnicos completos"):
+                            st.json({**p, **cadastral_data})
+                else:
+                    st.error(f"No se encontró la finca con ID: {plot_id}")
+            except Exception as e:
+                st.error(f"Error al cargar detalles de la finca: {str(e)}")
+                st.exception(e)
+
+        show_plot_details(plots_all, pid)
+    """
+
+    # Formulario de datos personales después de reserva/compra - DESACTIVADO TEMPORALMENTE
+    # Para evitar conflicto de múltiples dialogs en Streamlit
+    """
+    if st.session_state.get("show_client_form", False):
+        # Limpiar el estado de la modal de detalles para evitar conflictos
+        if "selected_plot" in st.session_state:
+            del st.session_state["selected_plot"]
+
+        # @st.dialog("Complete sus datos personales")  # DESACTIVADO: Conflicto con múltiples dialogs
+        def show_client_form():
+            st.subheader("📝 Datos Personales")
+            st.write("Por favor complete sus datos para finalizar la transacción:")
+
+            with st.form("client_form"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    nombre = st.text_input("Nombre *", placeholder="Su nombre")
+                    apellidos = st.text_input("Apellidos *", placeholder="Sus apellidos")
+                    email = st.text_input("Email *", placeholder="+34 600 000 000")
+                with col2:
+                    telefono = st.text_input("Teléfono *", placeholder="+34 600 000 000")
+                    direccion = st.text_area("Dirección completa *", placeholder="Calle, número, CP, ciudad, provincia")
+                    observaciones = st.text_area("Observaciones", placeholder="Comentarios adicionales (opcional)")
+
+                submitted = st.form_submit_button("✅ Confirmar y Finalizar")
+
+                if submitted:
+                    if not nombre or not apellidos or not email or not telefono or not direccion:
+                        st.error("Por favor complete todos los campos obligatorios (*)")
+                    else:
+                        # Procesar la transacción
+                        transaction_type = st.session_state.get("transaction_type", "reservation")
+                        transaction_id = st.session_state.get("transaction_id", "")
+
+                        # Aquí iría la lógica para guardar los datos del cliente
+                        st.success(f"✅ {transaction_type.title()} completada exitosamente!")
+                        st.success(f"📧 Recibirás un email de confirmación en {email}")
+                        st.success(f"🆔 ID de transacción: {transaction_id}")
+
+                        # Limpiar estado
+                        st.session_state["show_client_form"] = False
+                        if "transaction_type" in st.session_state:
+                            del st.session_state["transaction_type"]
+                        if "transaction_id" in st.session_state:
+                            del st.session_state["transaction_id"]
+
+                        st.balloons()
+                        st.rerun()
+
+        # show_client_form()  # DESACTIVADO: Conflicto con múltiples dialogs
+    """
+
+    # Panel de cliente fuera del dialog
+    if st.session_state.get("transaction_completed", False):
+        
+        # Panel de cliente fuera del dialog
+        if st.session_state.get("transaction_completed", False):
+            st.success("🎉 ¡Transacción completada exitosamente!")
+            st.balloons()
+
+            st.markdown("---")
             
-            # Proyectos compatibles
-            from modules.marketplace.utils import calculate_edificability
-            edificabilidad = calculate_edificability(p.get('surface_m2', 0))
-            projects_all = list_projects()
-            compatible_projects = [proj for proj in projects_all if proj['area_m2'] <= edificabilidad]
+            # Panel de cliente mejorado
+            st.subheader("🏠 Panel de Cliente - ARCHIRAPID")
+            st.info(f"**✅ Transacción completada:** {st.session_state.get('transaction_type', 'N/A').title()} - ID: {st.session_state.get('transaction_id', 'N/A')}")
             
-            st.subheader("🔍 Proyectos Arquitectónicos Compatibles")
-            if compatible_projects:
-                st.write(f"Edificabilidad máxima: {edificabilidad:.0f} m² (33% de superficie)")
-                for proj in compatible_projects[:5]:
-                    with st.expander(f"🏗️ {proj['title']} - {proj['area_m2']} m² - €{proj['price']}"):
-                        st.write(f"**Descripción:** {proj['description']}")
-                        st.write(f"**Arquitecto:** {proj['architect_name']}")
-                        if proj['company']:
-                            st.write(f"**Empresa:** {proj['company']}")
-                        if st.button(f"Ver Detalles Completos", key=f"view_proj_{proj['id']}"):
-                            st.session_state.selected_proj = proj['id']
-            else:
-                st.info("No hay proyectos compatibles para esta finca.")
+            st.markdown("### 🎯 ¿Qué desea hacer ahora?")
             
-            # Additional actions
-            st.subheader("💰 Opciones de Compra")
-            if st.button("Reservar 10%", key=f"reserve_10_list_{pid}"):
-                amount = (p.get("price") or 0) * 0.10
-                rid = reserve_plot(pid, "Demo buyer", "demo@example.com", amount, kind="reservation")
-                st.success(f"Reserva simulada: {rid} — {amount}€")
-            if st.button("Comprar (100%)", key=f"purchase_100_list_{pid}"):
-                amount = (p.get("price") or 0)
-                rid = reserve_plot(pid, "Demo buyer", "demo@example.com", amount, kind="purchase")
-                st.success(f"Compra simulada: {rid} — {amount}€")
+            # Opciones principales en cards
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("#### 🏡 DISEÑAR VIVIENDA")
+                st.write("Cree su casa ideal con nuestros arquitectos")
+                if st.button("🚀 Ir al Diseñador", key="go_designer", use_container_width=True, type="primary"):
+                    st.success("🎨 Redirigiendo al Diseñador de Vivienda...")
+                    st.info("Aquí se abriría el módulo de diseño de vivienda")
+                    # Aquí iría la navegación real al diseñador
+            
+            with col2:
+                st.markdown("#### 📐 GESTIONAR PROYECTOS") 
+                st.write("Vea proyectos compatibles con su finca")
+                if st.button("📋 Ver Mis Proyectos", key="go_projects", use_container_width=True, type="primary"):
+                    st.success("📐 Redirigiendo a Gestión de Proyectos...")
+                    st.info("Aquí se mostrarían los proyectos disponibles para su finca")
+                    # Aquí iría la navegación real a gestión de proyectos
+            
+            st.markdown("---")
+            
+            # Opciones adicionales
+            st.markdown("### 🔧 Opciones Adicionales")
+            col_a, col_b, col_c = st.columns(3)
+            
+            with col_a:
+                if st.button("📊 Ver Transacción", key="view_transaction", use_container_width=True):
+                    st.info(f"📋 **Detalles de la transacción:**\n"
+                           f"- Tipo: {st.session_state.get('transaction_type', 'N/A')}\n"
+                           f"- ID: {st.session_state.get('transaction_id', 'N/A')}\n"
+                           f"- Cliente: {st.session_state.get('client_name', 'N/A')}\n"
+                           f"- Email: {st.session_state.get('client_email', 'N/A')}")
+            
+            with col_b:
+                if st.button("🏠 Volver al Marketplace", key="back_marketplace", use_container_width=True):
+                    st.success("🏠 Volviendo al marketplace...")
+                    # Limpiar estado
+                    for key in ["show_client_form", "transaction_completed", "transaction_type", "transaction_id", "client_name", "client_email"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+            
+            with col_c:
+                if st.button("📧 Contactar Soporte", key="contact_support", use_container_width=True):
+                    st.info("📧 Contactando con soporte técnico...")
+                    st.info("Un agente se pondrá en contacto con usted pronto")
 
     # Proyectos Arquitectónicos
     st.markdown("---")

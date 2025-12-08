@@ -18,7 +18,45 @@ _fincas = [
     }
 ]
 
-_proyectos = []
+_proyectos = [
+    {
+        "id": 1,
+        "titulo": "Casa Residencial Moderna",
+        "finca_id": 1,
+        "autor_tipo": "arquitecto",
+        "total_m2": 3200,
+        "precio": 450000,
+        "etiquetas": ["residencial", "moderna", "3_plantas"],
+        "descripcion": "Proyecto moderno de 3 plantas con jardín",
+        "pdf_memoria_url": "memoria_moderna.pdf",
+        "cad_url": "plano_moderno.dxf"
+    },
+    {
+        "id": 2,
+        "titulo": "Chalet Tradicional",
+        "finca_id": 1,
+        "autor_tipo": "arquitecto",
+        "total_m2": 2800,
+        "precio": 380000,
+        "etiquetas": ["residencial", "tradicional", "2_plantas"],
+        "descripcion": "Chalet tradicional de 2 plantas con garaje",
+        "pdf_memoria_url": "memoria_chalet.pdf",
+        "cad_url": "plano_chalet.dxf"
+    },
+    {
+        "id": 3,
+        "titulo": "Edificio de Apartamentos IA",
+        "finca_id": 1,
+        "autor_tipo": "ia",
+        "total_m2": 4000,
+        "precio": 600000,
+        "etiquetas": ["residencial", "apartamentos", "4_plantas"],
+        "descripcion": "Edificio de apartamentos generado por IA",
+        "pdf_memoria_url": "memoria_apartamentos.pdf",
+        "cad_url": "plano_apartamentos.dxf"
+    }
+]
+
 _transacciones = []
 
 def get_finca(finca_id: int) -> dict:

@@ -127,6 +127,16 @@ def main():
                     }
                     create_plot_record(plot)
                     st.success("Finca creada y publicada exitosamente!")
+                    
+                    # Mensaje informativo para acceder al panel de cliente
+                    st.info("🎯 **¡Importante!** Ahora puedes gestionar tu finca desde el **Panel de Cliente**")
+                    st.markdown("Accede desde el menú lateral para ver propuestas de arquitectos, gestionar reservas y controlar el estado de tu propiedad.")
+                    
+                    # Botón directo al panel de cliente
+                    if st.button("👤 Ir al Panel de Cliente ahora", type="primary", use_container_width=True):
+                        st.success("Redirigiendo al Panel de Cliente...")
+                        st.session_state["redirect_to_client_panel"] = True
+                        st.rerun()
                 except Exception as e:
                     st.error(f"Error al guardar: {e}")
 

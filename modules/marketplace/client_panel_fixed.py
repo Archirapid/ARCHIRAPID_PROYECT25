@@ -4,6 +4,16 @@ from modules.marketplace.utils import db_conn
 import json
 import os
 
+# Imports para el flujo unificado
+from modules.marketplace import data_access
+from modules.marketplace.catastro_api import fetch_by_ref_catastral
+from modules.marketplace.gemelo_editor import editor_tabiques
+from modules.marketplace.gemelo_digital_vis import create_gemelo_3d, mostrar_visualizacion_3d
+from modules.marketplace.validacion import validar_plan_local
+from modules.marketplace.exportacion_extendida import bloque_exportacion
+from modules.marketplace.pago_simulado import verificar_pago, render_paso_pago
+from modules.marketplace.ai_engine import get_ai_response
+
 def main():
     st.title("👤 Panel de Cliente - ARCHIRAPID")
     
@@ -115,33 +125,178 @@ def main():
     role_text = "Comprador" if user_role == "buyer" else "Propietario"
     st.success(f"{role_emoji} **Bienvenido/a {role_text}** - {client_email}")
     
-    # Navegación interna del panel de cliente
-    tab_panel, tab_diseno, tab_gemelo = st.tabs([
-        f"📊 Panel de {role_text}",
-        "🏗️ Diseñar Vivienda", 
-        "🤖 Gemelo Digital"
+    # Estado persistente para el flujo unificado
+    if "finca_id" not in st.session_state:
+        st.session_state["finca_id"] = None
+    if "plan_json" not in st.session_state:
+        st.session_state["plan_json"] = None
+    if "proyecto_id" not in st.session_state:
+        st.session_state["proyecto_id"] = None
+    if "version" not in st.session_state:
+        st.session_state["version"] = 1
+    
+    # Flujo unificado de proyecto por finca
+    tab_datos, tab_diseno_ia, tab_editor, tab_gemelo, tab_export = st.tabs([
+        "📋 Datos Catastrales",
+        "🤖 Diseño con IA", 
+        "✏️ Editor Interactivo",
+        "🌐 Gemelo Digital",
+        "📄 Exportación"
     ])
     
-    with tab_panel:
-        # Contenido diferente según el rol
-        if user_role == "buyer" and has_transactions:
-            # Panel para compradores con transacciones
-            show_buyer_panel(client_email)
-        elif user_role == "owner" and has_properties:
-            # Panel para propietarios con fincas
-            show_owner_panel_v2(client_email)
+    # Tab 1: Selección de finca y datos catastrales
+    with tab_datos:
+        st.subheader("🏡 Selección de Finca")
+        
+        if user_role == "owner":
+            # Obtener fincas del propietario
+            conn = db_conn()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, title, surface_m2, status FROM plots WHERE owner_email = ? ORDER BY created_at DESC", (client_email,))
+            fincas = cursor.fetchall()
+            conn.close()
+            
+            if fincas:
+                finca_options = [f"{f[1]} - {f[2]} m² ({f[3]})" for f in fincas]
+                finca_selected = st.selectbox("Selecciona tu finca para trabajar:", finca_options)
+                
+                if finca_selected:
+                    finca_index = finca_options.index(finca_selected)
+                    finca_id = fincas[finca_index][0]
+                    st.session_state["finca_id"] = finca_id
+                    
+                    # Mostrar datos de la finca seleccionada
+                    finca = data_access.get_finca(finca_id)
+                    if finca:
+                        st.success(f"✅ Finca seleccionada: {finca.get('title', 'Sin título')}")
+                        st.json({
+                            "Referencia Catastral": finca.get('ref_catastral', 'N/D'),
+                            "Superficie": f"{finca.get('superficie_m2', 0)} m²",
+                            "Ubicación": finca.get('ubicacion_geo', 'N/D'),
+                            "Estado": finca.get('status', 'N/D')
+                        })
+                    else:
+                        st.error("Error al cargar datos de la finca")
+            else:
+                st.warning("No tienes fincas registradas. Ve a 'Propietarios (Subir Fincas)' para agregar una.")
         else:
-            st.error("Error: No se pudo determinar el tipo de panel apropiado")
+            st.info("Como comprador, contacta con el propietario para acceder al diseño de la finca.")
     
-    with tab_diseno:
-        st.subheader("🏗️ Diseñar Vivienda con IA")
-        from modules.marketplace import disenador_vivienda
-        disenador_vivienda.main()
+    # Tab 2: Diseño con IA
+    with tab_diseno_ia:
+        st.subheader("🤖 Diseño con IA")
+        
+        finca_id = st.session_state.get("finca_id")
+        if finca_id is None:
+            st.error("Primero selecciona una finca en la pestaña 'Datos Catastrales'")
+        else:
+            finca = data_access.get_finca(finca_id)
+            if finca:
+                st.info(f"Generando diseño para: {finca.get('title', 'Finca')} - {finca.get('superficie_m2', 0)} m²")
+                
+                # Parámetros de diseño
+                habitaciones = st.number_input("Número de habitaciones", min_value=1, max_value=10, value=3, key="habitaciones_ia")
+                garage = st.checkbox("Incluir garage", value=True, key="garage_ia")
+                
+                if st.button("🚀 Generar Plan con IA", type="primary"):
+                    superficie = finca.get("superficie_m2", 0)
+                    if superficie <= 0:
+                        st.error("La superficie de la finca es inválida")
+                    else:
+                        # Incrementar versión
+                        st.session_state["version"] = st.session_state.get("version", 1) + 1
+                        
+                        # Generar plan con IA usando ai_engine
+                        prompt = f"""
+Genera un plan de vivienda en formato JSON para una finca de {superficie} m².
+Requisitos:
+- {habitaciones} habitaciones
+- {'Incluir garage' if garage else 'Sin garage'}
+- Distribución lógica de espacios
+- Superficies realistas
+
+Formato JSON esperado:
+{{
+    "habitaciones": [
+        {{"nombre": "Salón Comedor", "m2": 25}},
+        {{"nombre": "Cocina", "m2": 12}},
+        ...
+    ],
+    "garage": {{"m2": 20}} si se incluye,
+    "total_m2": suma de todas las superficies
+}}
+"""
+                        plan_json_str = get_ai_response(prompt)
+                        try:
+                            plan_json = json.loads(plan_json_str)
+                            st.session_state["plan_json"] = plan_json
+                        except json.JSONDecodeError:
+                            st.error("Error al generar el plan con IA. Inténtalo de nuevo.")
+                            st.stop()
+                        
+                        # Guardar proyecto vinculado a la finca
+                        proyecto = data_access.save_proyecto({
+                            "finca_id": finca_id,
+                            "autor_tipo": "ia",
+                            "version": st.session_state["version"],
+                            "json_distribucion": plan_json,
+                            "total_m2": plan_json.get("total_m2", 0),
+                            "ubicacion": finca.get("ubicacion_geo"),
+                            "ref_catastral": finca.get("ref_catastral")
+                        })
+                        st.session_state["proyecto_id"] = proyecto["id"]
+                        
+                        st.success(f"✅ Plan generado y guardado. Proyecto ID: {proyecto['id']} (v{st.session_state['version']})")
+                        st.json(plan_json)
+            else:
+                st.error("Error al cargar datos de la finca")
     
+    # Tab 3: Editor Interactivo
+    with tab_editor:
+        st.subheader("✏️ Editor Interactivo")
+        
+        plan_json = st.session_state.get("plan_json")
+        finca_id = st.session_state.get("finca_id")
+        
+        if plan_json is None:
+            st.error("Primero genera un plan con IA en la pestaña 'Diseño con IA'")
+        elif finca_id is None:
+            st.error("No hay finca seleccionada")
+        else:
+            finca = data_access.get_finca(finca_id)
+            if finca:
+                # Usar el editor existente
+                plan_actualizado, validacion = editor_tabiques(plan_json, finca.get("superficie_m2", 0))
+                
+                if plan_actualizado != plan_json:
+                    st.session_state["plan_json"] = plan_actualizado
+                    st.success("✅ Cambios guardados en el plan")
+                
+                st.json(plan_actualizado)
+            else:
+                st.error("Error al cargar datos de la finca")
+    
+    # Tab 4: Gemelo Digital
     with tab_gemelo:
-        st.subheader("🤖 Gemelo Digital con IA")
-        from modules.marketplace import gemelo_digital
-        gemelo_digital.main()
+        # Usar la función segura que verifica proyecto vigente
+        mostrar_visualizacion_3d()
+
+        # Validación del plan (si hay proyecto)
+        plan_json = st.session_state.get("plan_json")
+        finca_id = st.session_state.get("finca_id")
+
+        if plan_json and finca_id:
+            finca = data_access.get_finca(finca_id)
+            if finca:
+                # Validación del plan
+                resultado = validar_plan_local(plan_json, finca.get("superficie_m2", 0))
+                st.subheader("📊 Validación del Plan")
+                st.json(resultado)
+    
+    # Tab 5: Exportación
+    with tab_export:
+        # Usar el bloque unificado de exportación
+        bloque_exportacion()
 
 def show_buyer_panel(client_email):
     """Panel para compradores con transacciones"""

@@ -2,49 +2,25 @@ import streamlit as st
 
 """Cross-module helpers to safely interact with Streamlit query parameters.
 
-Some Streamlit environments may use older experimental APIs alongside the newer
-`st.query_params` stable API; calling both in the same script raises
-StreamlitAPIException. These helpers prefer `st.query_params` but gracefully
-fallback to `st.experimental_get_query_params`/`st.experimental_set_query_params`
-if needed.
+Updated to use the stable st.query_params API.
 """
 
 
 def get_query_params():
-    try:
-        return st.query_params
-    except Exception:
-        try:
-            return st.experimental_get_query_params()
-        except Exception:
-            return {}
+    """Get current query parameters."""
+    return st.query_params
 
 
 def set_query_params(new_q: dict):
-    try:
-        st.query_params = new_q
-    except Exception:
-        try:
-            st.experimental_set_query_params(**new_q)
-        except Exception:
-            pass
+    """Set query parameters."""
+    st.query_params.update(new_q)
 
 
 def update_query_params(**kwargs):
-    try:
-        st.query_params.update(kwargs)
-    except Exception:
-        try:
-            st.experimental_set_query_params(**kwargs)
-        except Exception:
-            pass
+    """Update query parameters with new values."""
+    st.query_params.update(kwargs)
 
 
 def clear_query_params():
-    try:
-        st.query_params.clear()
-    except Exception:
-        try:
-            st.experimental_set_query_params()
-        except Exception:
-            pass
+    """Clear all query parameters."""
+    st.query_params.clear()

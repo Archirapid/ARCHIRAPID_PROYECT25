@@ -115,16 +115,33 @@ def main():
     role_text = "Comprador" if user_role == "buyer" else "Propietario"
     st.success(f"{role_emoji} **Bienvenido/a {role_text}** - {client_email}")
     
-    # Contenido diferente según el rol
-    if user_role == "buyer" and has_transactions:
-        # Panel para compradores con transacciones
-        show_buyer_panel(client_email)
-    elif user_role == "owner" and has_properties:
-        # Panel para propietarios con fincas
-        show_owner_panel_v2(client_email)
-    else:
-        st.error("Error: No se pudo determinar el tipo de panel apropiado")
-        st.stop()
+    # Navegación interna del panel de cliente
+    tab_panel, tab_diseno, tab_gemelo = st.tabs([
+        f"📊 Panel de {role_text}",
+        "🏗️ Diseñar Vivienda", 
+        "🤖 Gemelo Digital"
+    ])
+    
+    with tab_panel:
+        # Contenido diferente según el rol
+        if user_role == "buyer" and has_transactions:
+            # Panel para compradores con transacciones
+            show_buyer_panel(client_email)
+        elif user_role == "owner" and has_properties:
+            # Panel para propietarios con fincas
+            show_owner_panel_v2(client_email)
+        else:
+            st.error("Error: No se pudo determinar el tipo de panel apropiado")
+    
+    with tab_diseno:
+        st.subheader("🏗️ Diseñar Vivienda con IA")
+        from modules.marketplace import disenador_vivienda
+        disenador_vivienda.main()
+    
+    with tab_gemelo:
+        st.subheader("🤖 Gemelo Digital con IA")
+        from modules.marketplace import gemelo_digital
+        gemelo_digital.main()
 
 def show_buyer_panel(client_email):
     """Panel para compradores con transacciones"""

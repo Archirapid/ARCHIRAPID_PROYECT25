@@ -20,14 +20,12 @@ default_page = st.session_state.get("auto_select_page", "Home")
 selected_page = st.session_state.get("selected_page", default_page)
 page = st.sidebar.radio("Navegación", [
     "Home",
-    "Propietario (Gemelo Digital)",
     "Propietarios (Subir Fincas)",
-    "Diseñador de Vivienda",
     "Inmobiliaria (Mapa)",
     "👤 Panel de Cliente",
     "Arquitectos (Marketplace)",
     "Intranet"
-], index=["Home", "Propietario (Gemelo Digital)", "Propietarios (Subir Fincas)", "Diseñador de Vivienda", "Inmobiliaria (Mapa)", "👤 Panel de Cliente", "Arquitectos (Marketplace)", "Intranet"].index(selected_page) if selected_page in ["Home", "Propietario (Gemelo Digital)", "Propietarios (Subir Fincas)", "Diseñador de Vivienda", "Inmobiliaria (Mapa)", "👤 Panel de Cliente", "Arquitectos (Marketplace)", "Intranet"] else 0)
+], index=["Home", "Propietarios (Subir Fincas)", "Inmobiliaria (Mapa)", "👤 Panel de Cliente", "Arquitectos (Marketplace)", "Intranet"].index(selected_page) if selected_page in ["Home", "Propietarios (Subir Fincas)", "Inmobiliaria (Mapa)", "👤 Panel de Cliente", "Arquitectos (Marketplace)", "Intranet"] else 0)
 
 # Limpiar estado de navegación automática
 if "auto_select_page" in st.session_state:
@@ -65,23 +63,11 @@ if page == "Home":
         *MVP unificado - Tres entradas, un núcleo, escalable*
         """)
     show_footer()
-elif page == "Propietario (Gemelo Digital)":
-    with st.container():
-        # Flujo principal: Propietario sube finca → IA genera plan
-        from modules.marketplace import gemelo_digital
-        gemelo_digital.main()
-    show_footer()
 elif page == "Propietarios (Subir Fincas)":
     with st.container():
         # Propietarios suben fincas al marketplace inmobiliario
         from modules.marketplace import owners
         owners.main()
-    show_footer()
-elif page == "Diseñador de Vivienda":
-    with st.container():
-        # Flujo secundario: Cliente diseña vivienda personalizada
-        from modules.marketplace import disenador_vivienda
-        disenador_vivienda.main()
     show_footer()
 elif page == "Inmobiliaria (Mapa)":
     with st.container():

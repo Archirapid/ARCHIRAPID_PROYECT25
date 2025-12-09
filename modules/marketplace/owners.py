@@ -107,6 +107,7 @@ def main():
                     plot = {
                         "id": uuid.uuid4().hex,
                         "owner_id": st.session_state["owner_id"],
+                        "owner_email": st.session_state["owner_email"],
                         "title": title,
                         "cadastral_ref": None,
                         "surface_m2": surface_m2,
@@ -135,7 +136,9 @@ def main():
                     # Botón directo al panel de cliente
                     if st.button("👤 Ir al Panel de Cliente ahora", type="primary", use_container_width=True):
                         st.success("Redirigiendo al Panel de Cliente...")
-                        st.session_state["redirect_to_client_panel"] = True
+                        # Usar session state para navegación
+                        st.session_state["navigate_to_client_panel"] = True
+                        st.session_state["navigate_owner_email"] = st.session_state["owner_email"]
                         st.rerun()
                 except Exception as e:
                     st.error(f"Error al guardar: {e}")

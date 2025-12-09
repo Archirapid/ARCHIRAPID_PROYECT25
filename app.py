@@ -1,4 +1,5 @@
 import streamlit as st
+from modules.marketplace.footer import show_footer
 
 st.set_page_config(page_title="ARCHIRAPID", layout="wide")
 st.sidebar.title("ARCHIRAPID")
@@ -63,36 +64,37 @@ if page == "Home":
         ---
         *MVP unificado - Tres entradas, un núcleo, escalable*
         """)
+    show_footer()
 elif page == "Propietario (Gemelo Digital)":
     with st.container():
         # Flujo principal: Propietario sube finca → IA genera plan
         from modules.marketplace import gemelo_digital
         gemelo_digital.main()
-
+    show_footer()
 elif page == "Propietarios (Subir Fincas)":
     with st.container():
         # Propietarios suben fincas al marketplace inmobiliario
         from modules.marketplace import owners
         owners.main()
-
+    show_footer()
 elif page == "Diseñador de Vivienda":
     with st.container():
         # Flujo secundario: Cliente diseña vivienda personalizada
         from modules.marketplace import disenador_vivienda
         disenador_vivienda.main()
-
+    show_footer()
 elif page == "Inmobiliaria (Mapa)":
     with st.container():
         # Flujo terciario: Cliente explora fincas y proyectos
         from modules.marketplace import marketplace
         marketplace.main()
-
+    show_footer()
 elif page == "👤 Panel de Cliente":
     with st.container():
         # Panel de cliente con acceso a transacciones y servicios
         from modules.marketplace import client_panel_fixed as client_panel
         client_panel.main()
-
+    show_footer()
 elif page == "Arquitectos (Marketplace)":
     with st.container():
         # Arquitectos suben proyectos al marketplace
@@ -130,8 +132,9 @@ elif page == "Arquitectos (Marketplace)":
             for proyecto in proyectos:
                 marketplace_upload.mostrar_proyecto_arquitecto(proyecto)
                 st.divider()
-
+    show_footer()
 elif page == "Intranet":
     with st.container():
         from modules.marketplace import intranet
         intranet.main()
+    show_footer()

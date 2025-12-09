@@ -2,6 +2,21 @@ import streamlit as st
 
 st.set_page_config(page_title="ARCHIRAPID", layout="wide")
 st.sidebar.title("ARCHIRAPID")
+
+# Detectar navegación automática desde session state (de owners.py)
+if "navigate_to_client_panel" in st.session_state:
+    st.session_state["auto_select_page"] = "👤 Panel de Cliente"
+    st.session_state["selected_page"] = "👤 Panel de Cliente"  # Forzar selección
+    if "navigate_owner_email" in st.session_state:
+        st.session_state["auto_owner_email"] = st.session_state["navigate_owner_email"]
+    # Limpiar estado de navegación
+    del st.session_state["navigate_to_client_panel"]
+    del st.session_state["navigate_owner_email"]
+    st.rerun()  # Forzar recarga completa
+
+# Determinar página seleccionada
+default_page = st.session_state.get("auto_select_page", "Home")
+selected_page = st.session_state.get("selected_page", default_page)
 page = st.sidebar.radio("Navegación", [
     "Home",
     "Propietario (Gemelo Digital)",
@@ -11,7 +26,13 @@ page = st.sidebar.radio("Navegación", [
     "👤 Panel de Cliente",
     "Arquitectos (Marketplace)",
     "Intranet"
-])
+], index=["Home", "Propietario (Gemelo Digital)", "Propietarios (Subir Fincas)", "Diseñador de Vivienda", "Inmobiliaria (Mapa)", "👤 Panel de Cliente", "Arquitectos (Marketplace)", "Intranet"].index(selected_page) if selected_page in ["Home", "Propietario (Gemelo Digital)", "Propietarios (Subir Fincas)", "Diseñador de Vivienda", "Inmobiliaria (Mapa)", "👤 Panel de Cliente", "Arquitectos (Marketplace)", "Intranet"] else 0)
+
+# Limpiar estado de navegación automática
+if "auto_select_page" in st.session_state:
+    del st.session_state["auto_select_page"]
+if "selected_page" in st.session_state:
+    del st.session_state["selected_page"]
 
 if page == "Home":
     with st.container():
@@ -69,7 +90,7 @@ elif page == "Inmobiliaria (Mapa)":
 elif page == "👤 Panel de Cliente":
     with st.container():
         # Panel de cliente con acceso a transacciones y servicios
-        from modules.marketplace import client_panel
+        from modules.marketplace import client_panel_fixed as client_panel
         client_panel.main()
 
 elif page == "Arquitectos (Marketplace)":

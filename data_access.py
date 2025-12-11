@@ -19,6 +19,11 @@ class APIClient:
     """Cliente para conectar con el backend FastAPI"""
 
     def __init__(self, base_url: str = "http://localhost:8000"):
+        # Forzar HTTP para evitar problemas SSL con localhost
+        if base_url.startswith("https://"):
+            base_url = base_url.replace("https://", "http://", 1)
+        elif not base_url.startswith("http://"):
+            base_url = f"http://{base_url}"
         self.base_url = base_url
         self.session = requests.Session()
         self.session.timeout = 30  # Timeout de 30 segundos
@@ -289,9 +294,12 @@ def verificar_conexion_backend() -> bool:
     Verifica si el backend está disponible
     """
     try:
-        response = api_client._make_request("GET", "/health")
-        return "error" not in response
-    except:
+        # Usar requests directamente para evitar problemas con st.error()
+        response = requests.get(f"{api_client.base_url}/health", timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        return "error" not in data
+    except Exception as e:
         return False
 
 def obtener_estadisticas() -> Dict:
@@ -320,25 +328,14 @@ def mostrar_estado_conexion():
     else:
         st.error("🔴 Backend desconectado - Modo demo activado")
 
-        with st.expander("🔧 Solución de problemas"):
-            st.markdown("""
-            **Para conectar con el backend:**
+        st.info("""
+        **🔧 Solución de problemas:**
 
-            1. **Ejecuta el backend FastAPI:**
-               ```bash
-               cd backend
-               python main.py
-               ```
-
-            2. **O ejecuta con uvicorn:**
-               ```bash
-               uvicorn backend.main:app --reload
-               ```
-
-            3. **Verifica que esté corriendo en:** `http://localhost:8000`
-
-            4. **Documentación API:** `http://localhost:8000/docs`
-            """)
+        Para conectar con el backend:
+        1. Ejecuta: `python backend/main.py`
+        2. Verifica: http://localhost:8000
+        3. Documentación: http://localhost:8000/docs
+        """)
 
 def cache_con_api(func):
     """
@@ -444,22 +441,19 @@ def obtener_proyectos_con_fallback(filtros: Optional[Dict] = None) -> List[Dict]
 
 def inicializar_conexion():
     """Inicializa la conexión y configura el estado"""
-    if "api_initialized" not in st.session_state:
-        st.session_state.api_initialized = True
+    try:
+        if "api_initialized" not in st.session_state:
+            st.session_state.api_initialized = True
 
-        # Mostrar estado de conexión
-        mostrar_estado_conexion()
+            # Verificar conexión con backend
+            backend_disponible = verificar_conexion_backend()
 
-        # Configurar modo de operación
-        st.session_state.usar_api_real = usar_api_real()
-
-        if st.session_state.usar_api_real:
-            st.session_state.modo_operacion = "API Real"
-        else:
-            st.session_state.modo_operacion = "Modo Demo"
-
-# Ejecutar inicialización automática (solo en contexto Streamlit)
-try:
-    inicializar_conexion()
-except:
-    pass  # Silenciar errores si no hay contexto Streamlit
+            if backend_disponible:
+                st.session_state.usar_api_real = True
+                st.session_state.modo_operacion = "Modo Producción"
+            else:
+                st.session_state.usar_api_real = False
+                st.session_state.modo_operacion = "Modo Demo"
+    except Exception as e:
+        st.session_state.usar_api_real = False
+        st.session_state.modo_operacion = "Modo Demo"

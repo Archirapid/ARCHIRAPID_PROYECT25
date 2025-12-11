@@ -1,87 +1,20 @@
-# FastAPI mínima para fincas, proyectos y exportación
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import Optional, List, Dict
-import uvicorn
+# FastAPI mínima para ARCHIRAPID
+from fastapi import FastAPI
 
 app = FastAPI(title="ARCHIRAPID API")
 
-# ---- In-memory store (cambia a SQLite al final) ----
-DB = {"fincas": {}, "proyectos": {}, "exports": {}}
-SEQ = {"fincas": 1, "proyectos": 1, "exports": 1}
+@app.get("/")
+def root():
+    return {"message": "Backend ARCHIRAPID activo"}
 
-class Finca(BaseModel):
-    direccion: str
-    superficie_m2: float
-    ref_catastral: Optional[str] = None
-    foto_url: Optional[str] = None
-    ubicacion_geo: Optional[Dict[str, float]] = None
-    max_construible_m2: Optional[float] = None
-    retranqueos: Optional[Dict[str, float]] = None
-    propietario_email: Optional[str] = None
-    estado: Optional[str] = "validada"
-
-class Proyecto(BaseModel):
-    finca_id: int
-    nombre: str
-    autor_tipo: str  # ia | user+ia | arquitecto
-    version: int
-    json_distribucion: Dict
-    total_m2: float
-    extras: Optional[Dict] = None
-    precio_estimado: Optional[float] = 0.0
-
-class ExportRequest(BaseModel):
-    proyecto_id: int
-    tipo: str  # pdf | cad | zip
-    precio: float
-
-@app.post("/fincas")
-def crear_finca(f: Finca):
-    fid = SEQ["fincas"]; SEQ["fincas"] += 1
-    DB["fincas"][fid] = {**f.dict(), "id": fid}
-    return {"id": fid, "status": "validada", "finca": DB["fincas"][fid]}
-
-@app.get("/fincas/{fid}")
-def get_finca(fid: int):
-    f = DB["fincas"].get(fid)
-    if not f: raise HTTPException(404, "Finca no encontrada")
-    return f
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 @app.get("/fincas")
-def list_fincas(propietario_email: Optional[str] = None, publicas: Optional[bool] = None):
-    fincas = list(DB["fincas"].values())
-    if propietario_email:
-        fincas = [f for f in fincas if f.get("propietario_email") == propietario_email]
-    if publicas is True:
-        fincas = [f for f in fincas if not f.get("propietario_email")]
-    return fincas
-
-@app.post("/proyectos")
-def crear_proyecto(p: Proyecto):
-    pid = SEQ["proyectos"]; SEQ["proyectos"] += 1
-    DB["proyectos"][pid] = {**p.dict(), "id": pid}
-    return DB["proyectos"][pid]
-
-@app.get("/proyectos/{pid}")
-def get_proyecto(pid: int):
-    pr = DB["proyectos"].get(pid)
-    if not pr: raise HTTPException(404, "Proyecto no encontrado")
-    return pr
-
-@app.get("/proyectos")
-def list_proyectos(finca_id: Optional[int] = None):
-    projs = list(DB["proyectos"].values())
-    if finca_id is not None:
-        projs = [p for p in projs if p["finca_id"] == finca_id]
-    return projs
-
-@app.post("/export")
-def exportar(req: ExportRequest):
-    eid = SEQ["exports"]; SEQ["exports"] += 1
-    DB["exports"][eid] = {"id": eid, "proyecto_id": req.proyecto_id, "tipo": req.tipo, "precio": req.precio, "status": "generado"}
-    # Devuelve URL simulada; en MVP, mensaje de éxito
-    return {"id": eid, "status": "generado", "download_url": f"/descargas/{eid}"}
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+def list_fincas():
+    return [
+        {'id': 1, 'direccion': 'Calle Mayor 1, Madrid', 'superficie_m2': 10500.0, 'ubicacion_geo': {'lat': 40.416, 'lng': -3.703}, 'max_construible_m2': 3500.0, 'estado': 'validada'},
+        {'id': 2, 'direccion': 'Av. Diagonal 200, Barcelona', 'superficie_m2': 8000.0, 'ubicacion_geo': {'lat': 41.385, 'lng': 2.173}, 'max_construible_m2': 2600.0, 'estado': 'validada'},
+        {'id': 3, 'direccion': 'Camino Real 5, Sevilla', 'superficie_m2': 6000.0, 'ubicacion_geo': {'lat': 37.389, 'lng': -5.984}, 'max_construible_m2': 2000.0, 'estado': 'validada'}
+    ]

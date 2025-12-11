@@ -10,6 +10,7 @@ import os
 from datetime import datetime
 import time
 import requests
+from geopy.geocoders import Nominatim
 
 # ==========================================
 # COMPONENTES LOCALES
@@ -117,15 +118,11 @@ def main():
         # Navegación principal
         opciones = [
             "🏠 Inicio",
-            "🏡 Ficha de Finca",
-            "🏠 Mapa Inmobiliario",
-            "👥 Registro Arquitectos",
-            "🎨 Diseñar con IA",
-            "💰 Precios en Vivo",
-            "📦 Exportar Proyecto",
+            "👥 Owners",
             "📊 Mis Proyectos",
             "🏢 Intranet Arquitectos",
-            "🧠 Gemelo Digital"
+            "🧠 Gemelo Digital",
+            "📦 Exportar Proyecto"
         ]
 
         seleccion = st.radio("Navegación:", opciones, key="navegacion_radio")
@@ -157,18 +154,8 @@ def main():
     # Contenido principal - SIEMPRE accesible
     if seleccion == "🏠 Inicio":
         render_inicio()
-    elif seleccion == "🏡 Ficha de Finca":
-        render_ficha_finca()
-    elif seleccion == "🏠 Mapa Inmobiliario":
-        render_mapa_inmobiliario()
-    elif seleccion == "👥 Registro Arquitectos":
-        render_registro_arquitectos()
-    elif seleccion == "🎨 Diseñar con IA":
-        render_diseno_ia()
-    elif seleccion == "💰 Precios en Vivo":
-        render_precios_vivo()
-    elif seleccion == "📦 Exportar Proyecto":
-        render_exportacion()
+    elif seleccion == "👥 Owners":
+        render_owners()
     elif seleccion == "📊 Mis Proyectos":
         render_mis_proyectos()
     elif seleccion == "🏢 Intranet Arquitectos":
@@ -178,8 +165,6 @@ def main():
         render_precios_vivo()
     elif seleccion == "📦 Exportar Proyecto":
         render_exportacion()
-    elif seleccion == "📊 Mis Proyectos":
-        render_mis_proyectos(email)
 
 # ==========================================
 # PANTALLA DE INICIO
@@ -294,6 +279,122 @@ def render_ficha_finca():
     st.markdown("### 📋 Información Adicional")
     st.info(f"**Estado:** {finca.get('estado', 'No especificado')}")
     st.info("**Nota:** Esta finca está disponible para diseño arquitectónico con IA. Los diseños cumplen con las normativas locales de edificabilidad.")
+
+    render_footer()
+
+def render_owners():
+    st.header("👥 Panel de Propietarios - Subir Fincas")
+
+    st.markdown("""
+    ### 🏠 Sube tu finca al mercado inmobiliario
+
+    Completa los datos de tu propiedad para que aparezca en el mapa y arquitectos puedan diseñar proyectos con IA.
+    """)
+
+    # Formulario de subida de fincas
+    with st.form("form_finca"):
+        st.subheader("📋 Datos de la Finca")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            direccion = st.text_input("Dirección completa", placeholder="Calle Mayor 123, Madrid")
+            superficie = st.number_input("Superficie (m²)", min_value=1.0, step=1.0, value=100.0)
+            pvp = st.number_input("Precio de venta (PVP, €)", min_value=0.0, step=1000.0, value=150000.0)
+
+        with col2:
+            ref_catastral = st.text_input("Referencia catastral (opcional)")
+            lat = st.number_input("Latitud", value=40.4168, format="%.6f")
+            lng = st.number_input("Longitud", value=-3.7038, format="%.6f")
+
+        # Nota catastral
+        st.subheader("📄 Nota Catastral")
+        nota_catastral_text = st.text_area("Descripción o resumen de la nota catastral", height=100)
+        nota_catastral_file = st.file_uploader("Subir nota catastral (PDF/imagen)", type=["pdf","png","jpg","jpeg"])
+
+        # Fotos
+        st.subheader("📸 Fotos de la Finca")
+        fotos = st.file_uploader("Subir fotos", type=["png","jpg","jpeg"], accept_multiple_files=True)
+
+        # Geocodificación
+        st.subheader("📍 Ubicación")
+        if st.form_submit_button("🔍 Calcular coordenadas por dirección"):
+            if direccion:
+                try:
+                    geolocator = Nominatim(user_agent="archirapid_mvp")
+                    loc = geolocator.geocode(direccion)
+                    if loc:
+                        lat, lng = loc.latitude, loc.longitude
+                        st.success(f"✅ Coordenadas calculadas: {lat:.6f}, {lng:.6f}")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ No se encontraron coordenadas para esa dirección. Introduce manualmente.")
+                except Exception as e:
+                    st.error(f"❌ Error en geocodificación: {e}")
+            else:
+                st.warning("⚠️ Introduce una dirección primero.")
+
+        # Comisión estimada
+        if pvp and pvp > 0:
+            st.subheader("💰 Estimación de Comisión")
+            com_min = round(pvp * 0.07, 2)
+            com_max = round(pvp * 0.10, 2)
+            neto_min = round(pvp - com_min, 2)
+            neto_max = round(pvp - com_max, 2)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Comisión mínima (7%)", f"€{com_min:,.0f}")
+                st.metric("Neto para empresa", f"€{neto_min:,.0f}")
+            with col2:
+                st.metric("Comisión máxima (10%)", f"€{com_max:,.0f}")
+                st.metric("Neto para empresa", f"€{neto_max:,.0f}")
+
+            st.caption("La comisión real se ajustará según negociación y servicios prestados.")
+
+        # Botón de guardar
+        submitted = st.form_submit_button("💾 Guardar Finca", type="primary")
+
+        if submitted:
+            # Validaciones
+            if not direccion or superficie <= 0 or (lat == 0.0 and lng == 0.0):
+                st.error("❌ Dirección, superficie y coordenadas son obligatorias.")
+                return
+
+            # Preparar payload
+            foto_urls = []
+            if fotos:
+                # En MVP, usar placeholders para fotos
+                for _ in fotos:
+                    foto_urls.append("https://via.placeholder.com/300x200.png?text=Foto+Finca")
+
+            payload = {
+                "direccion": direccion,
+                "superficie_m2": float(superficie),
+                "ref_catastral": ref_catastral or None,
+                "foto_url": foto_urls if foto_urls else None,
+                "ubicacion_geo": {"lat": float(lat), "lng": float(lng)},
+                "max_construible_m2": float(superficie * 0.33),  # 33% de la superficie
+                "retranqueos": None,
+                "propietario_email": st.session_state.get("email"),
+                "estado": "pendiente",
+                "pvp": float(pvp) if pvp else None
+            }
+
+            # Enviar al backend
+            try:
+                BACKEND_URL = "http://localhost:8000"
+                r = requests.post(f"{BACKEND_URL}/fincas", json=payload, timeout=5)
+                if r.status_code in (200, 201):
+                    st.success("✅ Finca creada correctamente y añadida al mapa.")
+                    # Forzar recarga del mapa
+                    if "fincas_cache" in st.session_state:
+                        del st.session_state.fincas_cache
+                    st.rerun()
+                else:
+                    st.error(f"❌ Error al crear finca: {r.status_code} → {r.text}")
+            except Exception as e:
+                st.error(f"❌ Error de conexión al backend: {e}")
 
     render_footer()
 

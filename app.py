@@ -1705,13 +1705,8 @@ def render_mapa_inmobiliario(fincas):
         </div>
         """
 
-        # Usar IFrame + Popup y añadir como folium.Marker para mejor compatibilidad con HTML interactivo
-        try:
-            iframe = folium.IFrame(popup_html, width=240, height=200)
-            popup = folium.Popup(iframe, max_width=260)
-        except Exception:
-            # Fallback si IFrame falla
-            popup = folium.Popup(popup_html, max_width=260, parse_html=True)
+        # Crear popup directo (sin IFrame) para asegurar que el HTML se renderice correctamente
+        popup = folium.Popup(popup_html, max_width=260)
 
         marker = folium.Marker(
             location=[lat, lng],

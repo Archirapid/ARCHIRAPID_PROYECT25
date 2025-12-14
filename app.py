@@ -7,9 +7,11 @@ IA Avanzada + Precios en Vivo + Exportación Profesional
 import streamlit as st
 import json
 import os
+import html
 from datetime import datetime
 import time
 import requests
+from urllib.parse import quote as url_quote
 from geopy.geocoders import Nominatim
 from streamlit.components.v1 import html as components_html
 
@@ -1691,21 +1693,37 @@ def render_mapa_inmobiliario(fincas):
         else:
             img_src = get_browser_image_url(placeholder)
 
+        # Escapar datos para prevenir XSS
+        direccion_safe = html.escape(str(finca.get('direccion', 'Finca sin dirección')))
+        superficie_safe = html.escape(str(finca.get('superficie_m2', 0)))
+        pvp_safe = html.escape(str(finca.get('pvp', '—')))
+        
+        # Para el ID, usar url_quote ya que se usará en un parámetro de URL
+        finca_id = str(finca.get('id', ''))
+        finca_id_url = url_quote(finca_id, safe='')
+        
+        # Para img_src, validar que sea data URL de imagen válida o escapar si es URL externa
+        if img_src.startswith('data:image/'):
+            img_src_safe = img_src  # Data URLs de imagen son seguras
+        else:
+            img_src_safe = html.escape(img_src)
+        
         # Popup con información y botón que fuerza la navegación en la ventana superior
         popup_html = f"""
         <div style="width: 220px; font-family: Arial, sans-serif;">
-          <h4 style="margin: 0 0 8px 0; font-size:14px;">{finca.get('direccion', 'Finca sin dirección')}</h4>
-          <img src="{img_src}" width="140" height="90" style="border-radius: 4px; margin-bottom: 8px;"><br/>
-          <p style="margin: 4px 0; font-size:13px;"><strong>Superficie:</strong> {finca.get('superficie_m2', 0)} m²</p>
-          <p style="margin: 4px 0; font-size:13px;"><strong>PVP:</strong> €{finca.get('pvp','—')}</p>
-                    <a href="?modal=1&fid={finca.get('id')}" target="_top"
-                         style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;text-decoration:none;">
+          <h4 style="margin: 0 0 8px 0; font-size:14px;">{direccion_safe}</h4>
+          <img src="{img_src_safe}" width="140" height="90" style="border-radius: 4px; margin-bottom: 8px;"><br/>
+          <p style="margin: 4px 0; font-size:13px;"><strong>Superficie:</strong> {superficie_safe} m²</p>
+          <p style="margin: 4px 0; font-size:13px;"><strong>PVP:</strong> €{pvp_safe}</p>
+                    <a href="javascript:void(0)" 
+                       onclick="window.parent.location.href='?modal=1&fid=' + '{finca_id_url}';"
+                       style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;text-decoration:none;cursor:pointer;">
                         Ver detalles
                     </a>
         </div>
         """
 
-        # Crear popup directo (sin IFrame) para asegurar que el HTML se renderice correctamente
+        # Crear popup directo (sin IFrame) - renderiza HTML correctamente
         popup = folium.Popup(popup_html, max_width=260)
 
         marker = folium.Marker(

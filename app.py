@@ -1697,13 +1697,13 @@ def render_mapa_inmobiliario(fincas):
         superficie_safe = html.escape(str(finca.get('superficie_m2', 0)))
         pvp_safe = html.escape(str(finca.get('pvp', '—')))
         
-        # Para el ID, escapar para contexto JavaScript (comillas simples y dobles)
+        # Para el ID, usar json.dumps para escape completo en contexto JavaScript
         finca_id = str(finca.get('id', ''))
-        finca_id_js = finca_id.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
+        finca_id_js = json.dumps(finca_id)[1:-1]  # Quitar comillas externas de JSON
         
-        # Para img_src, no escapar si es data URL (base64), solo para URLs externas
-        if img_src.startswith('data:'):
-            img_src_safe = img_src  # Data URLs no necesitan escape
+        # Para img_src, validar que sea data URL de imagen válida o escapar si es URL externa
+        if img_src.startswith('data:image/'):
+            img_src_safe = img_src  # Data URLs de imagen son seguras
         else:
             img_src_safe = html.escape(img_src)
         

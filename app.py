@@ -11,6 +11,7 @@ from datetime import datetime
 import time
 import requests
 from geopy.geocoders import Nominatim
+from streamlit.components.v1 import html as components_html
 
 # ==========================================
 # COMPONENTES LOCALES
@@ -54,6 +55,16 @@ from data_access import (
 )
 
 # ==========================================
+# CONFIGURACIÓN DE LA APP
+# ==========================================
+
+st.set_page_config(
+    page_title="ARCHIRAPID - IA + Precios en Vivo",
+    layout="wide",
+    page_icon="🏗️"
+)
+
+# ==========================================
 # FUNCIONES AUXILIARES PARA FINCAS
 # ==========================================
 
@@ -94,15 +105,33 @@ def get_finca_by_id(fincas, fid):
             return f
     return None
 
-def get_thumb(finca, placeholder="/static/no-photo.png"):
+def get_thumb(finca, placeholder="https://via.placeholder.com/320x240?text=No+Photo"):
+    """Return a usable image URL for Streamlit. If the finca has no valid
+    image (or uses the local '/static/no-photo.png' placeholder), return
+    the external placeholder URL to avoid Streamlit trying to open a
+    non-existent local file.
+    """
     val = finca.get("foto_url")
-    if not val: return placeholder
-    if isinstance(val, list): return val[0] or placeholder
-    if isinstance(val, str): return val or placeholder
+    if not val:
+        return placeholder
+
+    # If it's a list, prefer the first valid entry
+    if isinstance(val, list):
+        first = val[0] if len(val) > 0 else None
+        if not first or first == "/static/no-photo.png":
+            return placeholder
+        return first
+
+    # If it's a string
+    if isinstance(val, str):
+        if val == "/static/no-photo.png":
+            return placeholder
+        return val
+
     return placeholder
 
 # Placeholder para imágenes
-placeholder = "/static/no-photo.png"
+placeholder = "https://via.placeholder.com/320x240?text=No+Photo"
 
 # Función para convertir URLs relativas a absolutas para Streamlit
 def get_image_url(relative_path):
@@ -137,10 +166,159 @@ def get_browser_image_url(relative_path):
             except:
                 pass
 
-        # Fallback a placeholder
-        return get_browser_image_url("/static/no-photo.png")
+        # Fallback a placeholder externo (evita recursión si no existe el archivo)
+        return placeholder
 
     return relative_path
+
+
+def inject_history_replace():
+    """Inject a small client-side script to remove query params from the URL (history.replaceState).
+    This helps avoid leaving query parameters or iframe navigation remnants after closing modals.
+    """
+    try:
+        import streamlit.components.v1 as components
+        script = """
+        <script>
+        (function(){
+            try {
+                if (window.history && window.history.replaceState) {
+                    const base = window.location.protocol + '//' + window.location.host + window.location.pathname;
+                    window.history.replaceState({}, document.title, base);
+                }
+            } catch(e) {
+                /* ignore */
+            }
+        })();
+        </script>
+        """
+        # height 0 ensures minimal footprint
+        components.html(script, height=0)
+    except Exception:
+        pass
+
+
+def render_small_card(top_modal, finca):
+    """Render a compact card in the top placeholder with thumb, brief info and 'Ver más detalles'"""
+    if finca is None:
+        return
+    thumb = get_browser_image_url(get_thumb(finca))
+    with top_modal.container():
+        cols = st.columns([1, 3, 1])
+        with cols[0]:
+            try:
+                st.image(thumb, width=120)
+            except Exception:
+                st.image(placeholder, width=120)
+        with cols[1]:
+            st.markdown(f"**{finca.get('direccion','—')}**")
+            st.markdown(f"Superficie: {finca.get('superficie_m2','—')} m2")
+            st.markdown(f"PVP: {finca.get('pvp','—')} €")
+        with cols[2]:
+            if st.button("Ver más detalles", key=f"vermas_{finca.get('id')}"):
+                st.session_state['show_small_card'] = False
+                st.session_state['show_modal'] = True
+                st.session_state['finca_id'] = str(finca.get('id'))
+                st.experimental_rerun()
+            if st.button("Cerrar", key=f"close_small_{finca.get('id')}"):
+                st.session_state['clicked_fid'] = None
+                st.session_state['show_small_card'] = False
+                try:
+                    st.experimental_set_query_params()
+                except Exception:
+                    pass
+                try:
+                    top_modal.empty()
+                except Exception:
+                    pass
+                try:
+                    inject_history_replace()
+                except Exception:
+                    pass
+                st.experimental_rerun()
+
+
+def render_large_modal(top_modal, finca):
+    """Render detailed modal using native Streamlit widgets inside the top placeholder.
+    Buttons here trigger Python state changes so closure is clean.
+    """
+    if finca is None:
+        return
+    thumb = get_browser_image_url(get_thumb(finca))
+    # Prefer native Streamlit modal if available (overlay handled by Streamlit)
+    try:
+        with st.modal("Detalles de la Finca"):
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                try:
+                    st.image(thumb, use_column_width=True)
+                except Exception:
+                    st.image(placeholder, use_column_width=True)
+            with c2:
+                st.header(finca.get('direccion','—'))
+                st.write(f"**Superficie:** {finca.get('superficie_m2','—')} m2")
+                st.write(f"**PVP:** {finca.get('pvp','—')} €")
+                st.write(f"**Ref. catastral:** {finca.get('ref_catastral','—')}")
+                st.write(f"\n{finca.get('descripcion','')}")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button("Reservar", key=f"reserve_{finca.get('id')}"):
+                        st.experimental_set_query_params(action='reserve', fid=finca.get('id'))
+                with col_b:
+                    if st.button("Comprar", key=f"buy_{finca.get('id')}"):
+                        st.experimental_set_query_params(action='buy', fid=finca.get('id'))
+                if st.button("Cerrar", key=f"close_modal_{finca.get('id')}"):
+                    st.session_state['show_modal'] = False
+                    st.session_state['clicked_fid'] = None
+                    st.session_state['finca_id'] = None
+                    try:
+                        st.experimental_set_query_params()
+                    except Exception:
+                        pass
+                    try:
+                        inject_history_replace()
+                    except Exception:
+                        pass
+                    st.experimental_rerun()
+    except Exception:
+        # Fallback to rendering inside top_modal if st.modal isn't available
+        with top_modal.container():
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                try:
+                    st.image(thumb, use_column_width=True)
+                except Exception:
+                    st.image(placeholder, use_column_width=True)
+            with c2:
+                st.header(finca.get('direccion','—'))
+                st.write(f"**Superficie:** {finca.get('superficie_m2','—')} m2")
+                st.write(f"**PVP:** {finca.get('pvp','—')} €")
+                st.write(f"**Ref. catastral:** {finca.get('ref_catastral','—')}")
+                st.write(f"\n{finca.get('descripcion','')}")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button("Reservar", key=f"reserve_{finca.get('id')}"):
+                        st.experimental_set_query_params(action='reserve', fid=finca.get('id'))
+                with col_b:
+                    if st.button("Comprar", key=f"buy_{finca.get('id')}"):
+                        st.experimental_set_query_params(action='buy', fid=finca.get('id'))
+                if st.button("Cerrar", key=f"close_modal_{finca.get('id')}"):
+                    st.session_state['show_modal'] = False
+                    st.session_state['clicked_fid'] = None
+                    st.session_state['finca_id'] = None
+                    try:
+                        st.experimental_set_query_params()
+                    except Exception:
+                        pass
+                    try:
+                        top_modal.empty()
+                    except Exception:
+                        pass
+                    try:
+                        inject_history_replace()
+                    except Exception:
+                        pass
+                    st.experimental_rerun()
 
 # ==========================================
 # FUNCIONES DE DIAGNÓSTICO
@@ -152,16 +330,6 @@ def check_backend():
         return r.status_code == 200 and r.json().get("status") == "ok"
     except Exception:
         return False
-
-# ==========================================
-# CONFIGURACIÓN DE LA APP
-# ==========================================
-
-st.set_page_config(
-    page_title="ARCHIRAPID - IA + Precios en Vivo",
-    layout="wide",
-    page_icon="🏗️"
-)
 
 # ==========================================
 # INICIALIZACIÓN DEL SISTEMA
@@ -182,16 +350,40 @@ def render_app_header():
 # ==========================================
 
 def main():
+    # Inicializar estado de sesión para coherencia
+    if "finca_id" not in st.session_state:
+        st.session_state["finca_id"] = None
+    if "show_modal" not in st.session_state:
+        st.session_state["show_modal"] = False
+    if "clicked_fid" not in st.session_state:
+        st.session_state["clicked_fid"] = None
+    if "show_small_card" not in st.session_state:
+        st.session_state["show_small_card"] = False
+
     # Normalizar estado y entrada (query params + session)
     params = st.experimental_get_query_params()
     if params.get("modal", ["0"])[0] == "1" and params.get("fid"):
         st.session_state["finca_id"] = params["fid"][0]
         st.session_state["show_modal"] = True
-        # Limpiar query params para evitar reabrir
-        st.experimental_set_query_params()
+    # Manejar acciones de reserva/compra vía query params (página de confirmación)
+    action = params.get("action", [None])[0]
+    if action in ("reserve", "buy") and params.get("fid"):
+        fid_act = params["fid"][0]
+        # Mostrar página simple de confirmación y evitar render normal
+        st.title("Confirmación de acción")
+        if action == "reserve":
+            st.success(f"✅ Reserva registrada para finca {fid_act}")
+            st.write("Te enviaremos más detalles por email (MVP).")
+        else:
+            st.success(f"✅ Compra simulada completada para finca {fid_act}")
+            st.write("Gracias por tu compra. Se abrirán más opciones para seguir (MVP).")
+        st.write("[Volver al inicio](./)")
+        return
 
     # Mostrar header siempre
     render_app_header()
+    # Placeholder en la parte superior para modal (se usa para mostrar overlay en top)
+    top_modal = st.empty()
 
     # Indicador global de backend mejorado
     BACKEND_URL = "http://localhost:8000"
@@ -236,7 +428,7 @@ def main():
         ]
 
         seleccion = st.radio("Navegación:", opciones, key="navegacion_radio")
-        
+
         # Actualizar session_state
         st.session_state.seleccion = seleccion
 
@@ -263,7 +455,7 @@ def main():
 
     # Contenido principal - SIEMPRE accesible
     if seleccion == "🏠 Inicio":
-        render_inicio()
+        render_inicio(top_modal)
     elif seleccion == "👥 Owners":
         render_owners()
     elif seleccion == "📊 Panel Cliente":
@@ -284,7 +476,7 @@ def main():
 # PANTALLA DE INICIO
 # ==========================================
 
-def render_inicio():
+def render_inicio(top_modal=None):
     st.header("🏠 Bienvenido a ARCHIRAPID")
 
     st.markdown("""
@@ -300,25 +492,38 @@ def render_inicio():
     - 🔄 **Iteración Continua**: Modifica y perfecciona tu diseño paso a paso
     """)
 
+    # Ensure we have a top placeholder to render modal overlay
+    if top_modal is None:
+        top_modal = st.empty()
+
+    # Limpieza: si no hay card ni modal activo, asegurarse de vaciar el placeholder superior
+    if not st.session_state.get('show_small_card', False) and not st.session_state.get('show_modal', False):
+        try:
+            top_modal.empty()
+        except Exception:
+            pass
+
     # Mostrar mapa con fincas disponibles
-    render_mapa_inmobiliario()
+    fincas = load_fincas()
+    if not fincas:
+        st.warning("No hay fincas disponibles. El sistema está en modo demo.")
+        return
+    render_mapa_inmobiliario(fincas)
+
+    # Si el usuario ha hecho clic en un marcador, mostrar el small card en el placeholder superior
+    if st.session_state.get('clicked_fid') and st.session_state.get('show_small_card', False):
+        finca = get_finca_by_id(fincas, st.session_state.get('clicked_fid'))
+        render_small_card(top_modal, finca)
+
+    # Si el usuario pide ver más detalles, mostrar modal grande
+    if st.session_state.get('show_modal'):
+        fid = st.session_state.get('finca_id') or st.session_state.get('clicked_fid')
+        finca = get_finca_by_id(fincas, fid)
+        render_large_modal(top_modal, finca)
 
     # Lista lateral con fincas para explorar
     st.markdown("---")
     st.subheader("🏡 Fincas Disponibles")
-
-    # Obtener fincas - intentar backend primero, luego demo
-    try:
-        BACKEND_URL = "http://localhost:8000"
-        r = requests.get(f"{BACKEND_URL}/fincas", timeout=5)
-        if r.status_code == 200:
-            fincas = r.json()
-            if not fincas:  # Si backend responde pero no hay fincas, usar demo
-                fincas = demo_fincas()
-        else:
-            fincas = demo_fincas()
-    except Exception:
-        fincas = demo_fincas()
 
     if not fincas:
         st.warning("No hay fincas disponibles. El sistema está en modo demo.")
@@ -345,60 +550,73 @@ def render_inicio():
                             st.image(img_src, width=120)
                         with cols[1]:
                             st.write(f"{f['direccion']}")
-                            st.write(f"Superficie: {f['superficie_m2']} m²")
+                            st.write(f"Superficie: {f['superficie_m2']} m2")
                             st.write(f"PVP: {f.get('pvp','—')} €")
                             if st.button(f"Ver detalles {f.get('id','')}"):
-                                st.session_state["finca_id"] = f.get("id")
+                                st.session_state["finca_id"] = str(f.get("id"))
                                 st.session_state["show_modal"] = True
                                 st.experimental_rerun()  # usar st.rerun si está disponible
 
-    # Modal overlay 75% — render SOLO en Inicio
+    # Modal — render en el placeholder superior para que aparezca encima del mapa
     if st.session_state.get("show_modal", False):
         fid = st.session_state.get("finca_id")
-        finca = get_finca_by_id(load_fincas(), fid)
+        finca = get_finca_by_id(fincas, fid)
 
-        # Backdrop
-        st.markdown('<div style="position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:999;"></div>', unsafe_allow_html=True)
+        # Render overlay via components.html to ensure true overlay behavior
+        img_src = get_browser_image_url(get_thumb(finca)) if finca else ""
+        fid_js = fid or ""
+        direccion = finca.get('direccion') if finca else ''
+        superficie = finca.get('superficie_m2') if finca else ''
+        pvp_val = finca.get('pvp') if finca else ''
+        ref_cat = finca.get('ref_catastral') if finca else ''
 
-        # Contenedor modal
-        st.markdown('''
-        <div style="
-          position:fixed;top:10%;left:12%;
-          width:75%;height:75%;
-          background:#fff;border-radius:10px;
-          box-shadow:0 12px 28px rgba(0,0,0,0.25);
-          border:1px solid #ddd;padding:20px;
-          z-index:1000;overflow:auto;">
-        ''', unsafe_allow_html=True)
+        popup_html = """
+<style>
+.ar_overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.25); z-index: 9999; display:flex; align-items:center; justify-content:center; padding:24px; }}
+.ar_modal {{ background: #fff; border-radius:8px; width:90%; max-width:920px; padding:20px; box-shadow:0 12px 32px rgba(0,0,0,0.25); font-family: Arial, sans-serif; max-height:85vh; overflow:auto; }}
+.ar_row {{ display:flex; gap:16px; flex-wrap:wrap; }}
+.ar_img {{ width:320px; flex:0 0 320px; }}
+.ar_actions button {{ margin-right:8px; padding:8px 12px; border-radius:6px; border:none; cursor:pointer; }}
+.btn_reserve {{ background:#f0ad4e; color:#111 }}
+.btn_buy {{ background:#d9534f; color:#fff }}
+.btn_close {{ background:#6c757d; color:#fff }}
+</style>
+<div class="ar_overlay" id="ar_overlay">
+    <div class="ar_modal" role="dialog" aria-modal="true">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h3 style="margin:0;">Detalles de la Finca</h3>
+            <button onclick="(function(){document.getElementById('ar_overlay').style.display='none';})()" class="btn_close">Cerrar</button>
+        </div>
+        <div class="ar_row">
+            <div class="ar_img"><img src="{img_src}" style="width:100%;border-radius:6px;"/></div>
+            <div style="flex:1;min-width:260px;">
+                <h4 id="ar_direccion">{direccion}</h4>
+                <p id="ar_superficie"><strong>Superficie:</strong> {superficie} m2</p>
+                <p id="ar_pvp"><strong>PVP:</strong> {pvp_val} €</p>
+                <p id="ar_ref"><strong>Ref. catastral:</strong> {ref_cat}</p>
+                <div class="ar_actions" style="margin-top:12px;">
+                    <button class="btn_reserve" onclick="window.top.location.href='?action=reserve&fid={fid_js}'">Reservar</button>
+                    <button class="btn_buy" onclick="window.top.location.href='?action=buy&fid={fid_js}'">Comprar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+"""
+        # Use safe replacements instead of .format() to avoid interpreting CSS/JS braces
+        popup_html = popup_html.replace('{img_src}', img_src)
+        popup_html = popup_html.replace('{direccion}', direccion)
+        popup_html = popup_html.replace('{superficie}', str(superficie))
+        popup_html = popup_html.replace('{pvp_val}', str(pvp_val))
+        popup_html = popup_html.replace('{ref_cat}', str(ref_cat))
+        popup_html = popup_html.replace('{fid_js}', str(fid_js))
 
-        if finca:
-            st.image(get_thumb(finca), width=320)
-            st.markdown(f"### {finca.get('direccion','—')}")
-            st.write(f"**Superficie:** {finca.get('superficie_m2','—')} m²")
-            st.write(f"**PVP:** {finca.get('pvp','—')} €")
-            st.write(f"**Ref. catastral:** {finca.get('ref_catastral','—')}")
-            c1, c2, c3 = st.columns([1,1,1])
-            with c1:
-                if st.button("Reservar/Comprar"):
-                    st.success("Reserva registrada (MVP)")
-            with c2:
-                if st.button("Diseñar con IA"):
-                    st.session_state["force_menu"] = "Diseñar con IA"
-                    st.session_state["show_modal"] = False
-                    st.experimental_rerun()
-            with c3:
-                if st.button("Contactar"):
-                    st.info("Contacto enviado (MVP)")
-        else:
-            st.error("No se encontró la finca seleccionada.")
-
-        # Cerrar: limpia estado y query params
-        if st.button("Cerrar"):
-            st.session_state["show_modal"] = False
-            st.experimental_set_query_params()
-            st.experimental_rerun()
-
-        st.markdown("</div>", unsafe_allow_html=True)
+        # Render the HTML inside the top placeholder so it appears above all content
+        try:
+            with top_modal:
+                components_html(popup_html, height=700)
+        except Exception:
+            # Fallback: render in-place if top_modal context fails
+            components_html(popup_html, height=700)
 
     render_footer()
 
@@ -424,7 +642,7 @@ def render_owners():
 
         **Propietario:** {propietario.get('nombre', 'N/A')}  
         **Finca:** {finca.get('direccion', 'N/A')}  
-        **Superficie:** {finca.get('superficie_m2', 0)} m²
+        **Superficie:** {finca.get('superficie_m2', 0)} m2
 
         Tu propiedad ha sido añadida al mapa y está disponible para que arquitectos diseñen proyectos con IA.
 
@@ -473,7 +691,7 @@ def render_owners():
 
         with col1:
             direccion = st.text_input("Dirección completa de la finca", placeholder="Calle Mayor 123, Madrid")
-            superficie = st.number_input("Superficie (m²)", min_value=1.0, step=1.0, value=100.0)
+            superficie = st.number_input("Superficie (m2)", min_value=1.0, step=1.0, value=100.0)
             pvp = st.number_input("Precio de venta (PVP, €)", min_value=0.0, step=1000.0, value=150000.0)
 
         with col2:
@@ -685,7 +903,7 @@ def render_panel_cliente():
 
                 with col1:
                     st.markdown(f"**🏡 {finca['direccion']}**")
-                    st.markdown(f"**Superficie:** {finca['superficie_m2']} m²")
+                    st.markdown(f"**Superficie:** {finca['superficie_m2']} m2")
                     if finca.get('pvp'):
                         st.markdown(f"**PVP:** €{finca['pvp']:,.0f}")
                     st.markdown(f"**Estado:** {finca.get('estado', 'Pendiente')}")
@@ -796,8 +1014,8 @@ def render_ficha_finca():
 
         # Información básica
         st.subheader("📋 Información Básica")
-        st.write(f"**Superficie:** {finca['superficie_m2']} m²")
-        st.write(f"**Máx. Construible:** {finca.get('max_construible_m2', finca['superficie_m2'] * 0.33):.0f} m²")
+        st.write(f"**Superficie:** {finca['superficie_m2']} m2")
+        st.write(f"**Máx. Construible:** {finca.get('max_construible_m2', finca['superficie_m2'] * 0.33):.0f} m2")
         pvp = finca.get('pvp')
         st.write(f"**PVP:** {f'€{pvp:,.0f}' if pvp else 'No especificado'}")
 
@@ -1029,7 +1247,7 @@ def render_plan_actual():
 
     with col2:
         total_m2 = plan.get("program", {}).get("total_m2", 0)
-        st.metric("Superficie Total", f"{total_m2} m²")
+        st.metric("Superficie Total", f"{total_m2} m2")
 
     with col3:
         precio = calculate_live_price(plan)
@@ -1065,19 +1283,19 @@ def render_precios_vivo():
 
         # Sistema eléctrico inteligente
         electrico_smart = st.checkbox(
-            "⚡ Sistema Eléctrico Inteligente (+€35/m²)",
+            "⚡ Sistema Eléctrico Inteligente (+€35/m2)",
             value=plan.get("systems", {}).get("electrical", {}).get("smart_home", False)
         )
 
         # Iluminación LED
         iluminacion_led = st.checkbox(
-            "💡 Iluminación LED Premium (+€25/m²)",
+            "💡 Iluminación LED Premium (+€25/m2)",
             value=plan.get("systems", {}).get("lighting", {}).get("led_lighting", False)
         )
 
         # Domótica completa
         domotica = st.checkbox(
-            "🏠 Domótica Completa (+€35/m²)",
+            "🏠 Domótica Completa (+€35/m2)",
             value=plan.get("systems", {}).get("smart_home", {}).get("enabled", False)
         )
 
@@ -1093,7 +1311,7 @@ def render_precios_vivo():
 
         # Piscina
         piscina = st.checkbox(
-            "🏊 Piscina (+€300/m²)",
+            "🏊 Piscina (+€300/m2)",
             value=plan.get("site", {}).get("pool", {}).get("exists", False)
         )
 
@@ -1111,7 +1329,7 @@ def render_precios_vivo():
 
         # Garaje
         garaje = st.checkbox(
-            "🚗 Garaje (+€25/m²)",
+            "🚗 Garaje (+€25/m2)",
             value=False
         )
 
@@ -1179,7 +1397,7 @@ def render_precios_vivo():
         st.metric(
             "TOTAL",
             f"€{pricing['breakdown']['total']:,.0f}",
-            delta=f"€{pricing['per_m2']:,.0f}/m²",
+            delta=f"€{pricing['per_m2']:,.0f}/m2",
             help="Precio final completo"
         )
 
@@ -1398,7 +1616,7 @@ def render_mis_proyectos():
 
             with col1:
                 st.metric("Versión", proyecto.get("version", 1))
-                st.metric("Superficie", f"{proyecto.get('total_m2', 0)} m²")
+                st.metric("Superficie", f"{proyecto.get('total_m2', 0)} m2")
 
             with col2:
                 presupuesto = proyecto.get("presupuesto", 0)
@@ -1435,26 +1653,8 @@ def render_mis_proyectos():
 # MAPA INMOBILIARIO
 # ==========================================
 
-def render_mapa_inmobiliario():
+def render_mapa_inmobiliario(fincas):
     st.header("🏠 Mapa Inmobiliario ARCHIRAPID")
-
-    # Obtener fincas - intentar backend primero, luego demo
-    try:
-        BACKEND_URL = "http://localhost:8000"
-        r = requests.get(f"{BACKEND_URL}/fincas", timeout=5)
-        if r.status_code == 200:
-            fincas = r.json()
-            if fincas:  # Si hay fincas del backend, usarlas
-                pass  # fincas ya está asignada
-            else:
-                # Si backend responde pero no hay fincas, usar demo
-                fincas = demo_fincas()
-        else:
-            # Si backend no responde, usar demo
-            fincas = demo_fincas()
-    except Exception:
-        # Si hay error de conexión, usar demo
-        fincas = demo_fincas()
 
     if not fincas:
         st.warning("No hay fincas disponibles para mostrar en el mapa.")
@@ -1491,48 +1691,60 @@ def render_mapa_inmobiliario():
         else:
             img_src = get_browser_image_url(placeholder)
 
-        # Popup con información, miniatura y botón
+        # Popup con información y botón que fuerza la navegación en la ventana superior
         popup_html = f"""
-        <div style="width: 200px; font-family: Arial, sans-serif;">
-            <h4 style="margin: 0 0 8px 0;">{finca.get('direccion', 'Finca sin dirección')}</h4>
-            <img src="{img_src}" width="120" height="80" style="border-radius: 4px; margin-bottom: 8px;"><br/>
-            <p style="margin: 4px 0;"><strong>Superficie:</strong> {finca.get('superficie_m2', 0)} m²</p>
-            <p style="margin: 4px 0;"><strong>PVP:</strong> {pvp_str}</p>
-            <a href="?modal=1&fid={finca.get('id')}" target="_self" style="text-decoration:none;">
-                <button style="background:#d9534f;color:#fff;border:none;padding:6px 10px;border-radius:4px;width:100%;cursor:pointer;">
-                    Ver detalles
-                </button>
-            </a>
+        <div style="width: 220px; font-family: Arial, sans-serif;">
+          <h4 style="margin: 0 0 8px 0; font-size:14px;">{finca.get('direccion', 'Finca sin dirección')}</h4>
+          <img src="{img_src}" width="140" height="90" style="border-radius: 4px; margin-bottom: 8px;"><br/>
+          <p style="margin: 4px 0; font-size:13px;"><strong>Superficie:</strong> {finca.get('superficie_m2', 0)} m²</p>
+          <p style="margin: 4px 0; font-size:13px;"><strong>PVP:</strong> €{finca.get('pvp','—')}</p>
+                    <a href="?modal=1&fid={finca.get('id')}" target="_top"
+                         style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;text-decoration:none;">
+                        Ver detalles
+                    </a>
         </div>
         """
 
-        folium.CircleMarker(
+        # Usar IFrame + Popup y añadir como folium.Marker para mejor compatibilidad con HTML interactivo
+        try:
+            iframe = folium.IFrame(popup_html, width=240, height=200)
+            popup = folium.Popup(iframe, max_width=260)
+        except Exception:
+            # Fallback si IFrame falla
+            popup = folium.Popup(popup_html, max_width=260, parse_html=True)
+
+        marker = folium.Marker(
             location=[lat, lng],
-            radius=8,
-            color=color,
-            fill=True,
-            fill_color=color,
-            fill_opacity=0.7,
-            popup=folium.Popup(popup_html, max_width=300)
-        ).add_to(mapa)
+            popup=popup,
+            tooltip='Haz clic aquí para ver más',
+            icon=folium.Icon(color=color)
+        )
+        marker.add_to(mapa)
 
-    # Mostrar mapa con captura de eventos
-    map_data = st_folium(mapa, width=800, height=600, returned_objects=["last_clicked"])
+    # Mostrar mapa con captura de eventos (capturamos también 'last_object_clicked')
+    map_data = st_folium(mapa, width=800, height=600, returned_objects=["last_clicked", "last_object_clicked"])
 
-    # Manejar clic en marcador para ir a ficha
-    if map_data and map_data.get("last_clicked"):
-        clicked_lat = map_data["last_clicked"]["lat"]
-        clicked_lng = map_data["last_clicked"]["lng"]
+    # Manejar clic en marcador para mostrar card/modal
+    clicked_obj = None
+    if map_data:
+        clicked_obj = map_data.get("last_object_clicked") or map_data.get("last_clicked")
 
-        # Encontrar finca por coordenadas (aproximado)
-        for finca in fincas:
-            finca_lat = finca.get('ubicacion_geo', {}).get('lat', 0)
-            finca_lng = finca.get('ubicacion_geo', {}).get('lng', 0)
-            if abs(finca_lat - clicked_lat) < 0.001 and abs(finca_lng - clicked_lng) < 0.001:
-                st.session_state.finca_id = finca.get('id')
-                st.session_state.seleccion = "🏡 Ficha Finca"
-                st.rerun()
-                break
+    if clicked_obj:
+        # 'last_object_clicked' y 'last_clicked' suelen exponer 'lat'/'lng'
+        clicked_lat = clicked_obj.get("lat")
+        clicked_lng = clicked_obj.get("lng")
+
+        if clicked_lat is not None and clicked_lng is not None:
+            # Encontrar finca por coordenadas (aproximado)
+            for finca in fincas:
+                finca_lat = finca.get('ubicacion_geo', {}).get('lat', 0)
+                finca_lng = finca.get('ubicacion_geo', {}).get('lng', 0)
+                if abs(finca_lat - clicked_lat) < 0.001 and abs(finca_lng - clicked_lng) < 0.001:
+                    # Store clicked finca and show a small card (first step)
+                    st.session_state.finca_id = str(finca.get('id'))
+                    st.session_state['clicked_fid'] = str(finca.get('id'))
+                    st.session_state['show_small_card'] = True
+                    break
 
     # Estadísticas
     st.markdown("---")
@@ -1545,11 +1757,11 @@ def render_mapa_inmobiliario():
 
     with col2:
         superficie_total = sum(f.get('superficie_m2', 0) for f in fincas)
-        st.metric("Superficie Total", f"{superficie_total:,.0f} m²")
+        st.metric("Superficie Total", f"{superficie_total:,.0f} m2")
 
     with col3:
         superficie_promedio = superficie_total / len(fincas) if fincas else 0
-        st.metric("Superficie Promedio", f"{superficie_promedio:,.0f} m²")
+        st.metric("Superficie Promedio", f"{superficie_promedio:,.0f} m2")
 
     with col4:
         disponibles = sum(1 for f in fincas if f.get('estado') == 'disponible')

@@ -1698,8 +1698,9 @@ def render_mapa_inmobiliario(fincas):
           <img src="{img_src}" width="140" height="90" style="border-radius: 4px; margin-bottom: 8px;"><br/>
           <p style="margin: 4px 0; font-size:13px;"><strong>Superficie:</strong> {finca.get('superficie_m2', 0)} m²</p>
           <p style="margin: 4px 0; font-size:13px;"><strong>PVP:</strong> €{finca.get('pvp','—')}</p>
-                    <a href="?modal=1&fid={finca.get('id')}" target="_top"
-                         style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;text-decoration:none;">
+                    <a href="javascript:void(0)" 
+                       onclick="window.parent.location.href='?modal=1&fid={finca.get('id')}';"
+                       style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;text-decoration:none;cursor:pointer;">
                         Ver detalles
                     </a>
         </div>

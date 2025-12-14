@@ -7,6 +7,7 @@ IA Avanzada + Precios en Vivo + Exportación Profesional
 import streamlit as st
 import json
 import os
+import html
 from datetime import datetime
 import time
 import requests
@@ -1691,15 +1692,22 @@ def render_mapa_inmobiliario(fincas):
         else:
             img_src = get_browser_image_url(placeholder)
 
+        # Escapar datos para prevenir XSS
+        direccion_safe = html.escape(str(finca.get('direccion', 'Finca sin dirección')))
+        superficie_safe = html.escape(str(finca.get('superficie_m2', 0)))
+        pvp_safe = html.escape(str(finca.get('pvp', '—')))
+        finca_id_safe = html.escape(str(finca.get('id', '')))
+        img_src_safe = html.escape(img_src)
+        
         # Popup con información y botón que fuerza la navegación en la ventana superior
         popup_html = f"""
         <div style="width: 220px; font-family: Arial, sans-serif;">
-          <h4 style="margin: 0 0 8px 0; font-size:14px;">{finca.get('direccion', 'Finca sin dirección')}</h4>
-          <img src="{img_src}" width="140" height="90" style="border-radius: 4px; margin-bottom: 8px;"><br/>
-          <p style="margin: 4px 0; font-size:13px;"><strong>Superficie:</strong> {finca.get('superficie_m2', 0)} m²</p>
-          <p style="margin: 4px 0; font-size:13px;"><strong>PVP:</strong> €{finca.get('pvp','—')}</p>
+          <h4 style="margin: 0 0 8px 0; font-size:14px;">{direccion_safe}</h4>
+          <img src="{img_src_safe}" width="140" height="90" style="border-radius: 4px; margin-bottom: 8px;"><br/>
+          <p style="margin: 4px 0; font-size:13px;"><strong>Superficie:</strong> {superficie_safe} m²</p>
+          <p style="margin: 4px 0; font-size:13px;"><strong>PVP:</strong> €{pvp_safe}</p>
                     <a href="javascript:void(0)" 
-                       onclick="window.parent.location.href='?modal=1&fid={finca.get('id')}';"
+                       onclick="window.parent.location.href='?modal=1&fid={finca_id_safe}';"
                        style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;text-decoration:none;cursor:pointer;">
                         Ver detalles
                     </a>

@@ -200,6 +200,41 @@ def inject_history_replace():
         pass
 
 
+def inject_postmessage_listener():
+    """Inyecta un listener en la página principal que escucha mensajes postMessage
+    desde iframes/ componentes (como el mapa) y navega a `?modal=1&fid=...` cuando
+    recibe un mensaje con `{type: 'open_modal', fid: <id>}`.
+    Esto evita depender de `target=_top` o `window.top.location` desde iframes.
+    """
+    try:
+        import streamlit.components.v1 as components
+        script = """
+        <script>
+        (function(){
+            if (window.__archirapid_postmessage_installed) return;
+            window.__archirapid_postmessage_installed = true;
+            window.addEventListener('message', function(e){
+                try {
+                    var data = e.data || {};
+                    if (typeof data === 'string') {
+                        try { data = JSON.parse(data); } catch(_) { return; }
+                    }
+                    if (data && data.type === 'open_modal' && data.fid) {
+                        const base = window.location.protocol + '//' + window.location.host + window.location.pathname;
+                        const newUrl = base + '?modal=1&fid=' + encodeURIComponent(data.fid);
+                        // Use replace to avoid adding history entries if desired
+                        window.location.href = newUrl;
+                    }
+                } catch(err) { /* ignore */ }
+            }, false);
+        })();
+        </script>
+        """
+        components.html(script, height=0)
+    except Exception:
+        pass
+
+
 
 
 # ==========================================
@@ -263,6 +298,14 @@ def main():
     render_app_header()
     # Placeholder en la parte superior para modal (se usa para mostrar overlay en top)
     top_modal = st.empty()
+
+    # Inject postMessage listener so popups inside the map iframe can ask the parent
+    # page to open the modal. This is necessary because direct top navigation from
+    # the component iframe may be blocked by browser sandboxing.
+    try:
+        inject_postmessage_listener()
+    except Exception:
+        pass
 
     # Indicador global de backend mejorado
     BACKEND_URL = "http://localhost:8000"
@@ -355,47 +398,62 @@ def main():
 # MODAL NATIVO DE STREAMLIT
 # ==========================================
 
-@st.dialog("Detalles de la Finca", width="large")
 def mostrar_modal_finca(finca):
-    """Modal nativo de Streamlit con detalles completos de la finca"""
+    """Mostrar detalles de la finca en un modal si `st.modal` está disponible,
+    o en un contenedor superior como fallback.
+    """
     if finca is None:
         st.error("Finca no encontrada")
         return
-    
+
     thumb = get_browser_image_url(get_thumb(finca))
-    
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
+
+    def _render_body(container):
+        with container:
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                try:
+                    st.image(thumb, use_column_width=True)
+                except Exception:
+                    st.image(placeholder, use_column_width=True)
+            with c2:
+                st.subheader(finca.get('direccion', '—'))
+                st.write(f"**Superficie:** {finca.get('superficie_m2', '—')} m²")
+                pvp = finca.get('pvp')
+                st.write(f"**PVP:** €{pvp:,}" if pvp is not None else "**PVP:** No especificado")
+                st.write(f"**Ref. catastral:** {finca.get('ref_catastral', '—')}")
+
+                descripcion = finca.get('descripcion', '')
+                if descripcion:
+                    st.markdown("---")
+                    st.write(descripcion)
+
+                st.markdown("---")
+                st.markdown("### 🎯 Acciones")
+
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button("💰 Reservar", use_container_width=True, type="primary", key=f"modal_reservar_{finca.get('id')}"):
+                        st.success("✅ Reserva registrada correctamente (MVP)")
+                        st.balloons()
+                with col_b:
+                    if st.button("🛒 Comprar", use_container_width=True, key=f"modal_comprar_{finca.get('id')}"):
+                        st.success("✅ Compra registrada correctamente (MVP)")
+                        st.balloons()
+
+    # Use native modal when available
+    if hasattr(st, "modal"):
         try:
-            st.image(thumb, use_column_width=True)
+            with st.modal("Detalles de la Finca"):
+                _render_body(st)
         except Exception:
-            st.image(placeholder, use_column_width=True)
-    
-    with col2:
-        st.subheader(finca.get('direccion', '—'))
-        st.write(f"**Superficie:** {finca.get('superficie_m2', '—')} m²")
-        pvp = finca.get('pvp')
-        st.write(f"**PVP:** €{pvp:,}" if pvp is not None else "**PVP:** No especificado")
-        st.write(f"**Ref. catastral:** {finca.get('ref_catastral', '—')}")
-        
-        descripcion = finca.get('descripcion', '')
-        if descripcion:
-            st.markdown("---")
-            st.write(descripcion)
-        
-        st.markdown("---")
-        st.markdown("### 🎯 Acciones")
-        
-        col_a, col_b = st.columns(2)
-        with col_a:
-            if st.button("💰 Reservar", use_container_width=True, type="primary", key=f"modal_reservar_{finca.get('id')}"):
-                st.success("✅ Reserva registrada correctamente (MVP)")
-                st.balloons()
-        with col_b:
-            if st.button("🛒 Comprar", use_container_width=True, key=f"modal_comprar_{finca.get('id')}"):
-                st.success("✅ Compra registrada correctamente (MVP)")
-                st.balloons()
+            # If modal fails for any reason, fallback to inline container
+            fallback = st.empty()
+            _render_body(fallback)
+    else:
+        # Fallback: render into a top-level placeholder so it appears above content
+        fallback = st.empty()
+        _render_body(fallback)
 
 # ==========================================
 # PANTALLA DE INICIO
@@ -1561,19 +1619,17 @@ def render_mapa_inmobiliario(fincas):
             img_src_safe = img_src  # Data URLs de imagen son seguras
         else:
             img_src_safe = html.escape(img_src)
-        
-        # Popup con información y botón que fuerza la navegación en la ventana superior
+
+        # Popup con información y botón que envía postMessage al padre
         popup_html = f"""
         <div style="width: 220px; font-family: Arial, sans-serif;">
           <h4 style="margin: 0 0 8px 0; font-size:14px;">{direccion_safe}</h4>
           <img src="{img_src_safe}" width="140" height="90" style="border-radius: 4px; margin-bottom: 8px;"><br/>
           <p style="margin: 4px 0; font-size:13px;"><strong>Superficie:</strong> {superficie_safe} m²</p>
           <p style="margin: 4px 0; font-size:13px;"><strong>PVP:</strong> €{pvp_safe}</p>
-                    <a href="javascript:void(0)" 
-                       onclick="window.parent.location.href='?modal=1&fid=' + '{finca_id_url}';"
-                       style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;text-decoration:none;cursor:pointer;">
-                        Ver detalles
-                    </a>
+                    <div style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;">
+                        Ver detalles — haz clic en el marcador
+                    </div>
         </div>
         """
 
@@ -1607,8 +1663,11 @@ def render_mapa_inmobiliario(fincas):
                 finca_lat = finca.get('ubicacion_geo', {}).get('lat', 0)
                 finca_lng = finca.get('ubicacion_geo', {}).get('lng', 0)
                 if abs(finca_lat - clicked_lat) < 0.001 and abs(finca_lng - clicked_lng) < 0.001:
-                    # Store clicked finca to show modal directly
-                    st.session_state['clicked_fid'] = str(finca.get('id'))
+                    # Store clicked finca and open modal (same action as 'Ver detalles' list button)
+                    fid = str(finca.get('id'))
+                    st.session_state['finca_id'] = fid
+                    st.session_state['clicked_fid'] = fid
+                    st.session_state['show_modal'] = True
                     break
 
     # Estadísticas

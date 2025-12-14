@@ -241,7 +241,9 @@ def main():
     # Normalizar estado y entrada (query params + session)
     params = st.experimental_get_query_params()
     if params.get("modal", ["0"])[0] == "1" and params.get("fid"):
-        st.session_state["clicked_fid"] = params["fid"][0]
+        fid = params["fid"][0]
+        st.session_state["clicked_fid"] = fid
+        st.session_state["finca_id"] = fid  # Mantener para compatibilidad
     # Manejar acciones de reserva/compra vía query params (página de confirmación)
     action = params.get("action", [None])[0]
     if action in ("reserve", "buy") and params.get("fid"):
@@ -373,8 +375,8 @@ def mostrar_modal_finca(finca):
     with col2:
         st.subheader(finca.get('direccion', '—'))
         st.write(f"**Superficie:** {finca.get('superficie_m2', '—')} m²")
-        pvp = finca.get('pvp', 0)
-        st.write(f"**PVP:** €{pvp:,}" if pvp else "**PVP:** No especificado")
+        pvp = finca.get('pvp')
+        st.write(f"**PVP:** €{pvp:,}" if pvp is not None else "**PVP:** No especificado")
         st.write(f"**Ref. catastral:** {finca.get('ref_catastral', '—')}")
         
         descripcion = finca.get('descripcion', '')
@@ -431,8 +433,9 @@ def render_inicio(top_modal=None):
         finca = get_finca_by_id(fincas, fid)
         if finca:
             mostrar_modal_finca(finca)
-        # Limpiar flag después de mostrar el modal
-        st.session_state['clicked_fid'] = None
+            # Limpiar flag después de que el modal se ha mostrado
+            # Esto permite que el modal se renderice en el rerun actual
+            st.session_state['clicked_fid'] = None
     
     render_mapa_inmobiliario(fincas)
 

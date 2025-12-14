@@ -241,8 +241,7 @@ def main():
     # Normalizar estado y entrada (query params + session)
     params = st.experimental_get_query_params()
     if params.get("modal", ["0"])[0] == "1" and params.get("fid"):
-        st.session_state["finca_id"] = params["fid"][0]
-        st.session_state["show_modal"] = True
+        st.session_state["clicked_fid"] = params["fid"][0]
     # Manejar acciones de reserva/compra vía query params (página de confirmación)
     action = params.get("action", [None])[0]
     if action in ("reserve", "buy") and params.get("fid"):

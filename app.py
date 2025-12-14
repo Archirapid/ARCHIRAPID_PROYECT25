@@ -1696,8 +1696,16 @@ def render_mapa_inmobiliario(fincas):
         direccion_safe = html.escape(str(finca.get('direccion', 'Finca sin dirección')))
         superficie_safe = html.escape(str(finca.get('superficie_m2', 0)))
         pvp_safe = html.escape(str(finca.get('pvp', '—')))
-        finca_id_safe = html.escape(str(finca.get('id', '')))
-        img_src_safe = html.escape(img_src)
+        
+        # Para el ID, escapar para contexto JavaScript (comillas simples y dobles)
+        finca_id = str(finca.get('id', ''))
+        finca_id_js = finca_id.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
+        
+        # Para img_src, no escapar si es data URL (base64), solo para URLs externas
+        if img_src.startswith('data:'):
+            img_src_safe = img_src  # Data URLs no necesitan escape
+        else:
+            img_src_safe = html.escape(img_src)
         
         # Popup con información y botón que fuerza la navegación en la ventana superior
         popup_html = f"""
@@ -1707,7 +1715,7 @@ def render_mapa_inmobiliario(fincas):
           <p style="margin: 4px 0; font-size:13px;"><strong>Superficie:</strong> {superficie_safe} m²</p>
           <p style="margin: 4px 0; font-size:13px;"><strong>PVP:</strong> €{pvp_safe}</p>
                     <a href="javascript:void(0)" 
-                       onclick="window.parent.location.href='?modal=1&fid={finca_id_safe}';"
+                       onclick="window.parent.location.href='?modal=1&fid={finca_id_js}';"
                        style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;text-decoration:none;cursor:pointer;">
                         Ver detalles
                     </a>

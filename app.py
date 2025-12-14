@@ -11,6 +11,7 @@ import html
 from datetime import datetime
 import time
 import requests
+from urllib.parse import quote as url_quote
 from geopy.geocoders import Nominatim
 from streamlit.components.v1 import html as components_html
 
@@ -1697,9 +1698,9 @@ def render_mapa_inmobiliario(fincas):
         superficie_safe = html.escape(str(finca.get('superficie_m2', 0)))
         pvp_safe = html.escape(str(finca.get('pvp', '—')))
         
-        # Para el ID, usar json.dumps para escape completo en contexto JavaScript
+        # Para el ID, usar url_quote ya que se usará en un parámetro de URL
         finca_id = str(finca.get('id', ''))
-        finca_id_js = json.dumps(finca_id)[1:-1]  # Quitar comillas externas de JSON
+        finca_id_url = url_quote(finca_id, safe='')
         
         # Para img_src, validar que sea data URL de imagen válida o escapar si es URL externa
         if img_src.startswith('data:image/'):
@@ -1715,7 +1716,7 @@ def render_mapa_inmobiliario(fincas):
           <p style="margin: 4px 0; font-size:13px;"><strong>Superficie:</strong> {superficie_safe} m²</p>
           <p style="margin: 4px 0; font-size:13px;"><strong>PVP:</strong> €{pvp_safe}</p>
                     <a href="javascript:void(0)" 
-                       onclick="window.parent.location.href='?modal=1&fid={finca_id_js}';"
+                       onclick="window.parent.location.href='?modal=1&fid=' + '{finca_id_url}';"
                        style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;text-decoration:none;cursor:pointer;">
                         Ver detalles
                     </a>

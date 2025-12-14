@@ -35,9 +35,9 @@ def render_header():
     st.markdown("---")
 
 def render_footer():
-    """Footer con información de contacto"""
+    """Footer con información de contacto y copyright"""
     st.divider()
-    st.caption("© 2025 ARCHIRAPID — MVP demostrativo")
+    st.caption("© 2025 ARCHIRAPID — Todos los derechos reservados. No se permite la copia o reproducción sin autorización expresa.")
     st.caption("📧 moskovia@me.com | 📱 +34 623 172 704 | 📍 Madrid (Spain)")
 
 # ==========================================
@@ -49,8 +49,98 @@ from export_ops import generate_professional_export, get_export_options
 from data_access import (
     obtener_fincas_con_fallback, obtener_proyectos_con_fallback,
     crear_proyecto, actualizar_proyecto, exportar_proyecto,
-    mostrar_estado_conexion, inicializar_conexion
+    mostrar_estado_conexion, inicializar_conexion,
+    demo_fincas
 )
+
+# ==========================================
+# FUNCIONES AUXILIARES PARA FINCAS
+# ==========================================
+
+def load_fincas():
+    """Carga fincas desde backend o demo con manejo robusto de errores"""
+    try:
+        BACKEND_URL = "http://localhost:8000"
+        r = requests.get(f"{BACKEND_URL}/fincas", timeout=5)
+        if r.status_code == 200:
+            fincas = r.json()
+            if not fincas:  # Si backend responde pero no hay fincas, usar demo
+                fincas = demo_fincas()
+        else:
+            fincas = demo_fincas()
+    except requests.exceptions.ConnectionError:
+        # Backend no está disponible
+        st.warning("❌ **Backend no disponible**: El servidor FastAPI no está ejecutándose en http://localhost:8000")
+        st.info("💡 **Solución**: Ejecute `uvicorn main:app --host 0.0.0.0 --port 8000` en la carpeta backend")
+        st.info("🔄 **Modo demo activado**: Usando datos de ejemplo para demostración")
+        fincas = demo_fincas()
+    except Exception as e:
+        st.error(f"❌ Error inesperado al cargar fincas: {str(e)}")
+        fincas = demo_fincas()
+    return fincas
+
+def normalize_id(fid):
+    """Normaliza ID: acepta str/int y evita None"""
+    try:
+        return int(fid)
+    except Exception:
+        return fid  # si viene string ya usable
+
+def get_finca_by_id(fincas, fid):
+    if fid is None: return None
+    fid_str = str(fid)
+    for f in fincas:
+        if str(f.get("id")) == fid_str:
+            return f
+    return None
+
+def get_thumb(finca, placeholder="/static/no-photo.png"):
+    val = finca.get("foto_url")
+    if not val: return placeholder
+    if isinstance(val, list): return val[0] or placeholder
+    if isinstance(val, str): return val or placeholder
+    return placeholder
+
+# Placeholder para imágenes
+placeholder = "/static/no-photo.png"
+
+# Función para convertir URLs relativas a absolutas para Streamlit
+def get_image_url(relative_path):
+    """Convierte URL relativa a URL absoluta accesible por Streamlit"""
+    if relative_path.startswith("/static/"):
+        # Para desarrollo local, usar ruta absoluta del sistema de archivos
+        import os
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        full_path = os.path.join(base_dir, relative_path.lstrip("/"))
+        return full_path
+    return relative_path
+
+# Función para obtener URL del navegador (para popups)
+def get_browser_image_url(relative_path):
+    """Convierte URL relativa a URL accesible desde el navegador"""
+    if relative_path.startswith("/static/"):
+        # Usar data URLs para imágenes pequeñas (base64 encoded)
+        import os
+        import base64
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        full_path = os.path.join(base_dir, relative_path.lstrip("/"))
+
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, "rb") as f:
+                    image_data = f.read()
+                    encoded = base64.b64encode(image_data).decode()
+                    ext = os.path.splitext(full_path)[1].lower()
+                    mime_type = "image/png" if ext == ".png" else "image/jpeg"
+                    return f"data:{mime_type};base64,{encoded}"
+            except:
+                pass
+
+        # Fallback a placeholder
+        return get_browser_image_url("/static/no-photo.png")
+
+    return relative_path
 
 # ==========================================
 # FUNCIONES DE DIAGNÓSTICO
@@ -92,10 +182,18 @@ def render_app_header():
 # ==========================================
 
 def main():
+    # Normalizar estado y entrada (query params + session)
+    params = st.experimental_get_query_params()
+    if params.get("modal", ["0"])[0] == "1" and params.get("fid"):
+        st.session_state["finca_id"] = params["fid"][0]
+        st.session_state["show_modal"] = True
+        # Limpiar query params para evitar reabrir
+        st.experimental_set_query_params()
+
     # Mostrar header siempre
     render_app_header()
 
-    # Indicador global de backend
+    # Indicador global de backend mejorado
     BACKEND_URL = "http://localhost:8000"
     try:
         r = requests.get(f"{BACKEND_URL}/health", timeout=2)
@@ -103,12 +201,22 @@ def main():
     except Exception:
         is_backend_ok = False
 
-    status_label = "🟢 Backend conectado - Modo Producción" if is_backend_ok else "🔴 Backend no disponible - Usando demo"
-    st.markdown(f"**{status_label}**")
+    if is_backend_ok:
+        status_label = "🟢 **Backend conectado** - Modo Producción"
+        status_color = "green"
+    else:
+        status_label = "🔴 **Backend desconectado** - Modo Demo"
+        status_color = "red"
+
+    st.markdown(f"<h4 style='color: {status_color};'>{status_label}</h4>", unsafe_allow_html=True)
+
+    if not is_backend_ok:
+        st.warning("⚠️ El backend FastAPI no está disponible. La aplicación funciona en modo demostración con datos de ejemplo.")
+        st.info("💡 **Para activar modo producción**: Ejecute en terminal: `cd backend && uvicorn main:app --host 0.0.0.0 --port 8000`")
 
     col1, col2 = st.columns([3, 1])
     with col2:
-        if st.button("🔄 Actualizar", help="Actualizar estado del backend"):
+        if st.button("🔄 Actualizar estado", help="Verificar conexión con backend"):
             st.rerun()
 
     # Sidebar con navegación
@@ -119,6 +227,8 @@ def main():
         opciones = [
             "🏠 Inicio",
             "👥 Owners",
+            "📊 Panel Cliente",
+            "🏡 Ficha Finca",
             "📊 Mis Proyectos",
             "🏢 Intranet Arquitectos",
             "🧠 Gemelo Digital",
@@ -156,6 +266,10 @@ def main():
         render_inicio()
     elif seleccion == "👥 Owners":
         render_owners()
+    elif seleccion == "📊 Panel Cliente":
+        render_panel_cliente()
+    elif seleccion == "🏡 Ficha Finca":
+        render_ficha_finca()
     elif seleccion == "📊 Mis Proyectos":
         render_mis_proyectos()
     elif seleccion == "🏢 Intranet Arquitectos":
@@ -193,92 +307,98 @@ def render_inicio():
     st.markdown("---")
     st.subheader("🏡 Fincas Disponibles")
 
-    fincas = obtener_fincas_con_fallback()
+    # Obtener fincas - intentar backend primero, luego demo
+    try:
+        BACKEND_URL = "http://localhost:8000"
+        r = requests.get(f"{BACKEND_URL}/fincas", timeout=5)
+        if r.status_code == 200:
+            fincas = r.json()
+            if not fincas:  # Si backend responde pero no hay fincas, usar demo
+                fincas = demo_fincas()
+        else:
+            fincas = demo_fincas()
+    except Exception:
+        fincas = demo_fincas()
 
     if not fincas:
         st.warning("No hay fincas disponibles. El sistema está en modo demo.")
         return
 
-    # Mostrar lista de fincas con botones de acción
-    for finca in fincas:
-        with st.container():
-            col1, col2 = st.columns([3, 1])
+    # Mostrar lista de fincas en formato 3x3
+    # Ordenar por ID descendente (más recientes primero) y tomar máximo 9
+    fincas_ordenadas = sorted(fincas, key=lambda x: x.get('id', 0), reverse=True)[:9]
 
-            with col1:
-                st.markdown(f"**{finca.get('direccion', 'Sin dirección')}**")
-                st.caption(f"Superficie: {finca.get('superficie_m2', 0)} m²")
+    if not fincas_ordenadas:
+        st.info("No hay fincas disponibles.")
+    else:
+        # Mostrar fincas en filas de 3 columnas
+        for i in range(0, len(fincas_ordenadas), 3):
+            row = st.columns(3)
+            for j in range(3):
+                if i + j < len(fincas_ordenadas):
+                    f = fincas_ordenadas[i + j]
+                    foto = f.get("foto_url", [placeholder])[0]
+                    with row[j]:
+                        cols = st.columns([1, 2])
+                        with cols[0]:
+                            img_src = get_browser_image_url(foto)
+                            st.image(img_src, width=120)
+                        with cols[1]:
+                            st.write(f"{f['direccion']}")
+                            st.write(f"Superficie: {f['superficie_m2']} m²")
+                            st.write(f"PVP: {f.get('pvp','—')} €")
+                            if st.button(f"Ver detalles {f.get('id','')}"):
+                                st.session_state["finca_id"] = f.get("id")
+                                st.session_state["show_modal"] = True
+                                st.experimental_rerun()  # usar st.rerun si está disponible
 
-            with col2:
-                if st.button("Más detalles", key=f"detalles_{finca['id']}", use_container_width=True):
-                    st.session_state.finca_actual = finca
-                    st.session_state.seleccion = "🏡 Ficha de Finca"
-                    st.rerun()
+    # Modal overlay 75% — render SOLO en Inicio
+    if st.session_state.get("show_modal", False):
+        fid = st.session_state.get("finca_id")
+        finca = get_finca_by_id(load_fincas(), fid)
 
-        st.markdown("---")
+        # Backdrop
+        st.markdown('<div style="position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:999;"></div>', unsafe_allow_html=True)
 
-    render_footer()
+        # Contenedor modal
+        st.markdown('''
+        <div style="
+          position:fixed;top:10%;left:12%;
+          width:75%;height:75%;
+          background:#fff;border-radius:10px;
+          box-shadow:0 12px 28px rgba(0,0,0,0.25);
+          border:1px solid #ddd;padding:20px;
+          z-index:1000;overflow:auto;">
+        ''', unsafe_allow_html=True)
 
-def render_ficha_finca():
-    st.header("🏡 Ficha de Finca")
-
-    if "finca_actual" not in st.session_state:
-        st.warning("No hay finca seleccionada. Ve a Inicio y selecciona una finca.")
-        return
-
-    finca = st.session_state.finca_actual
-
-    # Título con dirección
-    st.subheader(f"📍 {finca.get('direccion', 'Finca sin dirección')}")
-
-    # Mostrar información técnica de la finca
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("### 📊 Datos Técnicos")
-        st.metric("Superficie Total", f"{finca.get('superficie_m2', 0)} m²")
-        st.metric("Máx. Construible", f"{int(finca.get('superficie_m2', 0) * 0.33)} m²")
-        st.metric("Plantas Máximas", "2 plantas")
-
-        # Validación de reglas
-        superficie = finca.get('superficie_m2', 0)
-        max_construible = int(superficie * 0.33)
-
-        if max_construible > 0:
-            st.success(f"✅ Reglas cumplidas: Máx. {max_construible}m² construibles (33% de {superficie}m²)")
+        if finca:
+            st.image(get_thumb(finca), width=320)
+            st.markdown(f"### {finca.get('direccion','—')}")
+            st.write(f"**Superficie:** {finca.get('superficie_m2','—')} m²")
+            st.write(f"**PVP:** {finca.get('pvp','—')} €")
+            st.write(f"**Ref. catastral:** {finca.get('ref_catastral','—')}")
+            c1, c2, c3 = st.columns([1,1,1])
+            with c1:
+                if st.button("Reservar/Comprar"):
+                    st.success("Reserva registrada (MVP)")
+            with c2:
+                if st.button("Diseñar con IA"):
+                    st.session_state["force_menu"] = "Diseñar con IA"
+                    st.session_state["show_modal"] = False
+                    st.experimental_rerun()
+            with c3:
+                if st.button("Contactar"):
+                    st.info("Contacto enviado (MVP)")
         else:
-            st.error("❌ Error en cálculo de superficie construible")
+            st.error("No se encontró la finca seleccionada.")
 
-    with col2:
-        st.markdown("### 🎯 Acciones Rápidas")
+        # Cerrar: limpia estado y query params
+        if st.button("Cerrar"):
+            st.session_state["show_modal"] = False
+            st.experimental_set_query_params()
+            st.experimental_rerun()
 
-        # Botón para diseñar con IA
-        if st.button("🎨 Diseñar con IA sobre esta finca", type="primary", use_container_width=True):
-            st.session_state.pantalla_actual = "diseno_ia"
-            st.rerun()
-
-        # Botón para ver proyectos existentes
-        if st.button("📊 Ver Proyectos Existentes", use_container_width=True):
-            proyectos = obtener_proyectos_con_fallback({"finca_id": finca["id"]})
-            if proyectos:
-                st.session_state.proyectos_finca = proyectos
-                st.session_state.pantalla_actual = "proyectos_finca"
-                st.rerun()
-            else:
-                st.info("No hay proyectos para esta finca aún. ¡Sé el primero en diseñar!")
-
-        # Botón para exportar (placeholder)
-        if st.button("📦 Exportar Proyecto", use_container_width=True):
-            st.info("Selecciona un proyecto existente para exportar, o crea uno nuevo con IA.")
-
-        # Botón para contactar (placeholder)
-        if st.button("📞 Contactar Propietario", use_container_width=True):
-            st.info("Funcionalidad de contacto próximamente disponible.")
-
-    # Información adicional
-    st.markdown("---")
-    st.markdown("### 📋 Información Adicional")
-    st.info(f"**Estado:** {finca.get('estado', 'No especificado')}")
-    st.info("**Nota:** Esta finca está disponible para diseño arquitectónico con IA. Los diseños cumplen con las normativas locales de edificabilidad.")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     render_footer()
 
@@ -288,24 +408,81 @@ def render_owners():
     st.markdown("""
     ### 🏠 Sube tu finca al mercado inmobiliario
 
-    Completa los datos de tu propiedad para que aparezca en el mapa y arquitectos puedan diseñar proyectos con IA.
+    Completa tus datos personales y los de tu propiedad para que aparezca en el mapa y arquitectos puedan diseñar proyectos con IA.
     """)
 
-    # Formulario de subida de fincas
-    with st.form("form_finca"):
-        st.subheader("📋 Datos de la Finca")
+    # Verificar si hay una finca recién creada para mostrar confirmación
+    if st.session_state.get("finca_creada", False):
+        propietario = st.session_state.get("propietario_actual", {})
+        finca = st.session_state.get("finca_reciente", {})
+
+        st.success("✅ ¡Propiedad registrada correctamente!")
+        st.balloons()
+
+        st.markdown(f"""
+        ### 🎉 ¡Registro completado!
+
+        **Propietario:** {propietario.get('nombre', 'N/A')}  
+        **Finca:** {finca.get('direccion', 'N/A')}  
+        **Superficie:** {finca.get('superficie_m2', 0)} m²
+
+        Tu propiedad ha sido añadida al mapa y está disponible para que arquitectos diseñen proyectos con IA.
+
+        **¿Qué sigue?**
+        - Los arquitectos podrán ver tu finca en el mapa
+        - Recibirás notificaciones cuando haya interés
+        - Podrás acceder a tu Panel Cliente para gestionar proyectos
+        """)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("👤 Ir a Mi Panel Cliente", type="primary", use_container_width=True):
+                st.session_state.seleccion = "📊 Panel Cliente"
+                st.session_state.finca_creada = False  # Limpiar flag
+                st.rerun()
+
+        with col2:
+            if st.button("➕ Registrar Otra Propiedad", use_container_width=True):
+                st.session_state.finca_creada = False  # Limpiar flag
+                st.rerun()
+
+        render_footer()
+        return
+
+    # Formulario completo: datos personales + finca
+    with st.form("form_propietario_finca"):
+        # Sección 1: Datos Personales del Propietario
+        st.subheader("👤 Datos Personales del Propietario")
 
         col1, col2 = st.columns(2)
 
         with col1:
-            direccion = st.text_input("Dirección completa", placeholder="Calle Mayor 123, Madrid")
+            nombre = st.text_input("Nombre completo", placeholder="Juan Pérez García")
+            email = st.text_input("Email", placeholder="juan@email.com")
+            telefono = st.text_input("Teléfono", placeholder="+34 600 000 000")
+
+        with col2:
+            dni = st.text_input("DNI/NIF", placeholder="12345678A")
+            direccion_propietario = st.text_input("Dirección del propietario", placeholder="Calle Mayor 123, Madrid")
+            banco = st.text_input("Cuenta bancaria (opcional)", placeholder="ES12 3456 7890 1234 5678 9012")
+
+        # Sección 2: Datos de la Finca
+        st.subheader("🏠 Datos de la Finca")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            direccion = st.text_input("Dirección completa de la finca", placeholder="Calle Mayor 123, Madrid")
             superficie = st.number_input("Superficie (m²)", min_value=1.0, step=1.0, value=100.0)
             pvp = st.number_input("Precio de venta (PVP, €)", min_value=0.0, step=1000.0, value=150000.0)
 
         with col2:
             ref_catastral = st.text_input("Referencia catastral (opcional)")
-            lat = st.number_input("Latitud", value=40.4168, format="%.6f")
-            lng = st.number_input("Longitud", value=-3.7038, format="%.6f")
+            # Campos de coordenadas (se actualizarán después de geocodificación)
+            default_lat = st.session_state.get("calculated_lat", 40.4168)
+            default_lng = st.session_state.get("calculated_lng", -3.7038)
+            lat = st.number_input("Latitud", value=default_lat, format="%.6f", key="lat_input")
+            lng = st.number_input("Longitud", value=default_lng, format="%.6f", key="lng_input")
 
         # Nota catastral
         st.subheader("📄 Nota Catastral")
@@ -318,14 +495,16 @@ def render_owners():
 
         # Geocodificación
         st.subheader("📍 Ubicación")
-        if st.form_submit_button("🔍 Calcular coordenadas por dirección"):
+        if st.form_submit_button("🔍 Calcular coordenadas por dirección", use_container_width=True):
             if direccion:
                 try:
                     geolocator = Nominatim(user_agent="archirapid_mvp")
                     loc = geolocator.geocode(direccion)
                     if loc:
-                        lat, lng = loc.latitude, loc.longitude
-                        st.success(f"✅ Coordenadas calculadas: {lat:.6f}, {lng:.6f}")
+                        # Actualizar los campos de coordenadas
+                        st.session_state.calculated_lat = loc.latitude
+                        st.session_state.calculated_lng = loc.longitude
+                        st.success(f"✅ Coordenadas calculadas: {loc.latitude:.6f}, {loc.longitude:.6f}")
                         st.rerun()
                     else:
                         st.warning("⚠️ No se encontraron coordenadas para esa dirección. Introduce manualmente.")
@@ -353,32 +532,66 @@ def render_owners():
             st.caption("La comisión real se ajustará según negociación y servicios prestados.")
 
         # Botón de guardar
-        submitted = st.form_submit_button("💾 Guardar Finca", type="primary")
+        submitted = st.form_submit_button("💾 Guardar Propiedad y Acceder al Panel Cliente", type="primary")
 
         if submitted:
             # Validaciones
-            if not direccion or superficie <= 0 or (lat == 0.0 and lng == 0.0):
-                st.error("❌ Dirección, superficie y coordenadas son obligatorias.")
+            if not nombre or not email or not telefono or not direccion or superficie <= 0 or (lat == 0.0 and lng == 0.0):
+                st.error("❌ Nombre, email, teléfono, dirección de la finca, superficie y coordenadas son obligatorios.")
                 return
 
-            # Preparar payload
+            # Preparar payload con datos del propietario
             foto_urls = []
             if fotos:
-                # En MVP, usar placeholders para fotos
-                for _ in fotos:
-                    foto_urls.append("https://via.placeholder.com/300x200.png?text=Foto+Finca")
+                # Guardar fotos en static/fotos/ con nombres únicos
+                import uuid
+                import os
+                from datetime import datetime
+                
+                fotos_dir = "static/fotos"
+                os.makedirs(fotos_dir, exist_ok=True)
+                
+                # Generar ID único para la finca (temporal hasta que el backend asigne el real)
+                temp_id = str(uuid.uuid4())[:8]
+                
+                for i, foto in enumerate(fotos):
+                    # Generar nombre único para cada foto
+                    extension = os.path.splitext(foto.name)[1].lower()
+                    if extension not in ['.jpg', '.jpeg', '.png']:
+                        extension = '.jpg'
+                    
+                    filename = f"finca_{temp_id}_{i+1}{extension}"
+                    filepath = os.path.join(fotos_dir, filename)
+                    
+                    # Guardar imagen
+                    with open(filepath, "wb") as f:
+                        f.write(foto.getbuffer())
+                    
+                    # Generar URL relativa
+                    foto_urls.append(f"/static/fotos/{filename}")
+            else:
+                # Si no hay fotos, usar placeholder
+                foto_urls = ["/static/no-photo.png"]
 
             payload = {
                 "direccion": direccion,
                 "superficie_m2": float(superficie),
                 "ref_catastral": ref_catastral or None,
-                "foto_url": foto_urls if foto_urls else None,
+                "foto_url": foto_urls,
                 "ubicacion_geo": {"lat": float(lat), "lng": float(lng)},
                 "max_construible_m2": float(superficie * 0.33),  # 33% de la superficie
                 "retranqueos": None,
-                "propietario_email": st.session_state.get("email"),
+                "propietario": {
+                    "nombre": nombre,
+                    "email": email,
+                    "telefono": telefono,
+                    "dni": dni or None,
+                    "direccion": direccion_propietario or None,
+                    "cuenta_bancaria": banco or None
+                },
                 "estado": "pendiente",
-                "pvp": float(pvp) if pvp else None
+                "pvp": float(pvp) if pvp else None,
+                "sync_intranet": False  # Preparado para futura sincronización
             }
 
             # Enviar al backend
@@ -386,15 +599,270 @@ def render_owners():
                 BACKEND_URL = "http://localhost:8000"
                 r = requests.post(f"{BACKEND_URL}/fincas", json=payload, timeout=5)
                 if r.status_code in (200, 201):
-                    st.success("✅ Finca creada correctamente y añadida al mapa.")
-                    # Forzar recarga del mapa
-                    if "fincas_cache" in st.session_state:
-                        del st.session_state.fincas_cache
+                    # Guardar datos del propietario en session_state para el panel cliente
+                    st.session_state.propietario_actual = {
+                        "nombre": nombre,
+                        "email": email,
+                        "telefono": telefono,
+                        "dni": dni,
+                        "direccion": direccion_propietario,
+                        "cuenta_bancaria": banco
+                    }
+                    st.session_state.finca_reciente = payload
+                    st.session_state.finca_creada = True  # Flag para mostrar confirmación
+                    # Limpiar coordenadas calculadas para la siguiente finca
+                    if "calculated_lat" in st.session_state:
+                        del st.session_state.calculated_lat
+                    if "calculated_lng" in st.session_state:
+                        del st.session_state.calculated_lng
                     st.rerun()
+
                 else:
-                    st.error(f"❌ Error al crear finca: {r.status_code} → {r.text}")
+                    st.error(f"❌ Error al crear propiedad: {r.status_code} → {r.text}")
             except Exception as e:
                 st.error(f"❌ Error de conexión al backend: {e}")
+
+    render_footer()
+
+def render_panel_cliente():
+    st.header("📊 Panel Cliente - Mis Propiedades")
+
+    # Verificar si hay datos del propietario
+    propietario = st.session_state.get("propietario_actual")
+    if not propietario:
+        st.warning("⚠️ No tienes propiedades registradas aún. Ve al panel de Owners para subir tu primera propiedad.")
+        if st.button("👥 Ir a Panel de Owners", type="primary"):
+            st.session_state.seleccion = "👥 Owners"
+            st.rerun()
+        render_footer()
+        return
+
+    # Bienvenida personalizada
+    st.markdown(f"""
+    ### 👋 ¡Hola {propietario['nombre']}!
+
+    Bienvenido a tu Panel Cliente personal. Aquí puedes gestionar tus propiedades y ver el progreso de los proyectos arquitectónicos.
+    """)
+
+    # Información del propietario
+    with st.expander("👤 Mis Datos Personales", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Nombre:** {propietario['nombre']}")
+            st.markdown(f"**Email:** {propietario['email']}")
+            st.markdown(f"**Teléfono:** {propietario['telefono']}")
+        with col2:
+            if propietario.get('dni'):
+                st.markdown(f"**DNI/NIF:** {propietario['dni']}")
+            if propietario.get('direccion'):
+                st.markdown(f"**Dirección:** {propietario['direccion']}")
+            if propietario.get('cuenta_bancaria'):
+                st.markdown(f"**Cuenta Bancaria:** {'*' * 16 + propietario['cuenta_bancaria'][-4:]}")
+
+    # Obtener propiedades del propietario
+    try:
+        BACKEND_URL = "http://localhost:8000"
+        r = requests.get(f"{BACKEND_URL}/fincas?propietario_email={propietario['email']}", timeout=5)
+        if r.status_code == 200:
+            fincas = r.json()
+        else:
+            fincas = []
+    except Exception as e:
+        st.error(f"❌ Error al cargar propiedades: {e}")
+        fincas = []
+
+    if not fincas:
+        st.info("📭 No tienes propiedades registradas aún.")
+        if st.button("➕ Registrar Primera Propiedad", type="primary"):
+            st.session_state.seleccion = "👥 Owners"
+            st.rerun()
+    else:
+        st.subheader("🏠 Mis Propiedades")
+
+        for finca in fincas:
+            with st.container():
+                col1, col2 = st.columns([2, 1])
+
+                with col1:
+                    st.markdown(f"**🏡 {finca['direccion']}**")
+                    st.markdown(f"**Superficie:** {finca['superficie_m2']} m²")
+                    if finca.get('pvp'):
+                        st.markdown(f"**PVP:** €{finca['pvp']:,.0f}")
+                    st.markdown(f"**Estado:** {finca.get('estado', 'Pendiente')}")
+
+                    # Estado visual
+                    if finca.get('estado') == 'activa':
+                        st.success("✅ Propiedad activa en el mercado")
+                    elif finca.get('estado') == 'vendida':
+                        st.info("💰 Propiedad vendida")
+                    else:
+                        st.warning("⏳ Pendiente de activación")
+
+                with col2:
+                    st.markdown("### 🎯 Acciones")
+
+                    # Botón para ver diseños con IA
+                    if st.button(f"🎨 Ver Diseños IA", key=f"disenos_{finca['id']}", use_container_width=True):
+                        st.session_state.finca_actual = finca
+                        st.session_state.pantalla_actual = "diseno_ia"
+                        st.rerun()
+
+                    # Botón para ver proyectos existentes
+                    if st.button(f"📊 Ver Proyectos", key=f"proyectos_{finca['id']}", use_container_width=True):
+                        proyectos = obtener_proyectos_con_fallback({"finca_id": finca["id"]})
+                        if proyectos:
+                            st.session_state.proyectos_finca = proyectos
+                            st.session_state.pantalla_actual = "proyectos_finca"
+                            st.rerun()
+                        else:
+                            st.info("No hay proyectos para esta finca aún.")
+
+                    # Botón para editar propiedad
+                    if st.button(f"✏️ Editar", key=f"editar_{finca['id']}", use_container_width=True):
+                        st.info("Funcionalidad de edición próximamente disponible.")
+
+                    # Botón para sincronizar con intranet
+                    if finca.get('sync_intranet', False):
+                        st.success("🔄 Sincronizado con Intranet")
+                    else:
+                        if st.button(f"🔄 Sync Intranet", key=f"sync_{finca['id']}", use_container_width=True):
+                            st.info("Sincronización con intranet próximamente disponible.")
+
+                st.divider()
+
+        # Estadísticas generales
+        st.subheader("📈 Estadísticas")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Total Propiedades", len(fincas))
+
+        with col2:
+            activas = sum(1 for f in fincas if f.get('estado') == 'activa')
+            st.metric("Propiedades Activas", activas)
+
+        with col3:
+            total_valor = sum(f.get('pvp', 0) for f in fincas if f.get('pvp'))
+            st.metric("Valor Total", f"€{total_valor:,.0f}")
+
+    render_footer()
+
+def render_ficha_finca():
+    st.header("🏡 Ficha de Finca")
+
+    # Obtener finca_id de session_state
+    finca_id = st.session_state.get("finca_id")
+    if not finca_id:
+        st.error("No se ha seleccionado ninguna finca.")
+        if st.button("← Volver al Inicio"):
+            st.session_state.seleccion = "🏠 Inicio"
+            st.rerun()
+        render_footer()
+        return
+
+    # Obtener finca por ID
+    try:
+        BACKEND_URL = "http://localhost:8000"
+        r = requests.get(f"{BACKEND_URL}/fincas", timeout=5)
+        if r.status_code == 200:
+            fincas = r.json()
+            finca = next((f for f in fincas if str(f.get('id')) == str(finca_id)), None)
+        else:
+            finca = None
+    except Exception as e:
+        st.error(f"Error al cargar finca: {e}")
+        finca = None
+
+    if not finca:
+        st.error("Finca no encontrada.")
+        if st.button("← Volver al Inicio"):
+            st.session_state.seleccion = "🏠 Inicio"
+            st.rerun()
+        render_footer()
+        return
+
+    # Mostrar ficha completa
+    st.markdown(f"## 🏠 {finca['direccion']}")
+
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        # Foto principal
+        foto_url = finca.get('foto_url', [])
+        if foto_url and len(foto_url) > 0:
+            st.image(foto_url[0], width=300, caption="Foto principal")
+        else:
+            st.image("https://via.placeholder.com/300x200.png?text=Sin+Foto", width=300, caption="Sin foto disponible")
+
+        # Información básica
+        st.subheader("📋 Información Básica")
+        st.write(f"**Superficie:** {finca['superficie_m2']} m²")
+        st.write(f"**Máx. Construible:** {finca.get('max_construible_m2', finca['superficie_m2'] * 0.33):.0f} m²")
+        pvp = finca.get('pvp')
+        st.write(f"**PVP:** {f'€{pvp:,.0f}' if pvp else 'No especificado'}")
+
+        # Estado
+        estado = finca.get('estado', 'pendiente')
+        if estado == 'activa':
+            st.success("✅ Propiedad activa en el mercado")
+        elif estado == 'vendida':
+            st.info("💰 Propiedad vendida")
+        else:
+            st.warning("⏳ Pendiente de activación")
+
+    with col2:
+        # Datos catastrales
+        st.subheader("📄 Datos Catastrales")
+        st.write(f"**Referencia Catastral:** {finca.get('ref_catastral', 'No especificada')}")
+
+        # Ubicación
+        st.subheader("📍 Ubicación")
+        ubicacion = finca.get('ubicacion_geo', {})
+        lat = ubicacion.get('lat', 'N/A')
+        lng = ubicacion.get('lng', 'N/A')
+        st.write(f"**Latitud:** {lat}")
+        st.write(f"**Longitud:** {lng}")
+
+        # Propietario (si está disponible)
+        propietario = finca.get('propietario', {})
+        if propietario:
+            st.subheader("👤 Propietario")
+            st.write(f"**Nombre:** {propietario.get('nombre', 'N/A')}")
+            st.write(f"**Email:** {propietario.get('email', 'N/A')}")
+            st.write(f"**Teléfono:** {propietario.get('telefono', 'N/A')}")
+
+        # Acciones
+        st.subheader("🎯 Acciones Disponibles")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🎨 Diseñar con IA", type="primary", use_container_width=True):
+                st.session_state.finca_actual = finca
+                st.session_state.seleccion = "🧠 Gemelo Digital"
+                st.rerun()
+
+            if st.button("📊 Ver Proyectos Existentes", use_container_width=True):
+                proyectos = obtener_proyectos_con_fallback({"finca_id": finca["id"]})
+                if proyectos:
+                    st.session_state.proyectos_finca = proyectos
+                    st.session_state.seleccion = "📊 Mis Proyectos"
+                    st.rerun()
+                else:
+                    st.info("No hay proyectos para esta finca aún.")
+
+        with col2:
+            if st.button("💰 Reservar/Comprar", use_container_width=True):
+                st.success("✅ Reserva realizada (MVP demostrativo)")
+                st.balloons()
+
+            if st.button("📞 Contactar Propietario", use_container_width=True):
+                st.info("Funcionalidad de contacto próximamente disponible.")
+
+    # Botón volver
+    st.markdown("---")
+    if st.button("← Volver al Inicio"):
+        st.session_state.seleccion = "🏠 Inicio"
+        st.rerun()
 
     render_footer()
 
@@ -970,8 +1438,23 @@ def render_mis_proyectos():
 def render_mapa_inmobiliario():
     st.header("🏠 Mapa Inmobiliario ARCHIRAPID")
 
-    # Obtener fincas
-    fincas = obtener_fincas_con_fallback()
+    # Obtener fincas - intentar backend primero, luego demo
+    try:
+        BACKEND_URL = "http://localhost:8000"
+        r = requests.get(f"{BACKEND_URL}/fincas", timeout=5)
+        if r.status_code == 200:
+            fincas = r.json()
+            if fincas:  # Si hay fincas del backend, usarlas
+                pass  # fincas ya está asignada
+            else:
+                # Si backend responde pero no hay fincas, usar demo
+                fincas = demo_fincas()
+        else:
+            # Si backend no responde, usar demo
+            fincas = demo_fincas()
+    except Exception:
+        # Si hay error de conexión, usar demo
+        fincas = demo_fincas()
 
     if not fincas:
         st.warning("No hay fincas disponibles para mostrar en el mapa.")
@@ -997,13 +1480,29 @@ def render_mapa_inmobiliario():
         # Color según estado
         color = 'green' if finca.get('estado') == 'disponible' else 'orange'
 
-        # Popup con información
+        # PVP para mostrar
+        pvp = finca.get('pvp')
+        pvp_str = f"€{pvp:,.0f}" if pvp else "Precio no especificado"
+
+        # Foto para miniatura
+        foto_url = finca.get('foto_url', [])
+        if foto_url:
+            img_src = get_browser_image_url(foto_url[0])
+        else:
+            img_src = get_browser_image_url(placeholder)
+
+        # Popup con información, miniatura y botón
         popup_html = f"""
-        <div style="width: 200px;">
-            <h4>{finca.get('direccion', 'Finca sin dirección')}</h4>
-            <p><strong>Superficie:</strong> {finca.get('superficie_m2', 0)} m²</p>
-            <p><strong>Máx. Construible:</strong> {finca.get('max_construible_m2', 0)} m²</p>
-            <p><strong>Estado:</strong> {finca.get('estado', 'N/A')}</p>
+        <div style="width: 200px; font-family: Arial, sans-serif;">
+            <h4 style="margin: 0 0 8px 0;">{finca.get('direccion', 'Finca sin dirección')}</h4>
+            <img src="{img_src}" width="120" height="80" style="border-radius: 4px; margin-bottom: 8px;"><br/>
+            <p style="margin: 4px 0;"><strong>Superficie:</strong> {finca.get('superficie_m2', 0)} m²</p>
+            <p style="margin: 4px 0;"><strong>PVP:</strong> {pvp_str}</p>
+            <a href="?modal=1&fid={finca.get('id')}" target="_self" style="text-decoration:none;">
+                <button style="background:#d9534f;color:#fff;border:none;padding:6px 10px;border-radius:4px;width:100%;cursor:pointer;">
+                    Ver detalles
+                </button>
+            </a>
         </div>
         """
 
@@ -1017,8 +1516,23 @@ def render_mapa_inmobiliario():
             popup=folium.Popup(popup_html, max_width=300)
         ).add_to(mapa)
 
-    # Mostrar mapa
-    st_folium(mapa, width=800, height=600)
+    # Mostrar mapa con captura de eventos
+    map_data = st_folium(mapa, width=800, height=600, returned_objects=["last_clicked"])
+
+    # Manejar clic en marcador para ir a ficha
+    if map_data and map_data.get("last_clicked"):
+        clicked_lat = map_data["last_clicked"]["lat"]
+        clicked_lng = map_data["last_clicked"]["lng"]
+
+        # Encontrar finca por coordenadas (aproximado)
+        for finca in fincas:
+            finca_lat = finca.get('ubicacion_geo', {}).get('lat', 0)
+            finca_lng = finca.get('ubicacion_geo', {}).get('lng', 0)
+            if abs(finca_lat - clicked_lat) < 0.001 and abs(finca_lng - clicked_lng) < 0.001:
+                st.session_state.finca_id = finca.get('id')
+                st.session_state.seleccion = "🏡 Ficha Finca"
+                st.rerun()
+                break
 
     # Estadísticas
     st.markdown("---")
@@ -1144,6 +1658,7 @@ def render_intranet_arquitectos():
     st.header("🏢 Intranet Arquitectos ARCHIRAPID")
 
     # Verificar si el usuario es arquitecto
+    email = st.session_state.get("email")
     if not email or "@" not in email:
         st.warning("Debes iniciar sesión con un email válido para acceder a la intranet.")
         return

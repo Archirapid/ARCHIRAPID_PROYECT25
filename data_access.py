@@ -381,6 +381,9 @@ def demo_fincas() -> List[Dict]:
             "direccion": "Calle Demo 123, Madrid",
             "superficie_m2": 500,
             "precio_estimado": 150000,
+            "pvp": 180000,
+            "ref_catastral": "1234567AB1234N0001AA",
+            "foto_url": ["/static/no-photo.png"],  # Usar placeholder local
             "retranqueos": {"front": 5, "side": 3, "back": 5},
             "created_at": datetime.now().isoformat()
         },
@@ -389,7 +392,21 @@ def demo_fincas() -> List[Dict]:
             "direccion": "Avenida Demo 456, Barcelona",
             "superficie_m2": 800,
             "precio_estimado": 250000,
+            "pvp": 280000,
+            "ref_catastral": "9876543CD5678M0002BB",
+            "foto_url": ["/static/no-photo.png"],  # Usar placeholder local
             "retranqueos": {"front": 6, "side": 4, "back": 6},
+            "created_at": datetime.now().isoformat()
+        },
+        {
+            "id": "demo_3",
+            "direccion": "Plaza Demo 789, Sevilla",
+            "superficie_m2": 600,
+            "precio_estimado": 200000,
+            "pvp": 220000,
+            "ref_catastral": "4567890EF9012O0003CC",
+            "foto_url": ["/static/no-photo.png"],  # Usar placeholder local
+            "retranqueos": {"front": 4, "side": 3, "back": 4},
             "created_at": datetime.now().isoformat()
         }
     ]

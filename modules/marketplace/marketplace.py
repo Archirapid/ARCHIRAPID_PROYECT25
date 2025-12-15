@@ -1,5 +1,6 @@
 import streamlit as st
 from modules.marketplace.utils import list_published_plots, save_upload, reserve_plot, list_projects, calculate_edificability
+from src.query_params import get_query_params
 from streamlit_folium import st_folium
 import folium
 import uuid
@@ -70,8 +71,9 @@ def extract_cadastral_data(plot):
     return cadastral_data
 
 def main():
-    # Handle URL params for plot selection
-    selected_from_url = st.query_params.get("selected_plot")
+    # Handle URL params for plot selection (use compatibility helper)
+    qp = get_query_params() or {}
+    selected_from_url = qp.get("selected_plot")
     if selected_from_url:
         if isinstance(selected_from_url, list):
             selected_from_url = selected_from_url[0]

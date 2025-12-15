@@ -340,6 +340,40 @@ def get_plot_by_id(pid: str) -> Optional[Dict]:
     # Gracias a row_factory podemos acceder por nombre
     return {k: row[k] for k in row.keys()}
 
+
+def get_all_provinces() -> list:
+    """Devuelve la lista de provincias disponibles en la tabla `plots`.
+    Retorna una lista de strings (puede estar vacía).
+    """
+    ensure_tables()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT province FROM plots WHERE province IS NOT NULL AND province<>'' ORDER BY province")
+        rows = cur.fetchall()
+        return [r[0] for r in rows if r[0]]
+    finally:
+        conn.close()
+
+
+def get_featured_projects(limit: int = 3) -> list:
+    """Devuelve proyectos destacados (por defecto los últimos `limit` publicados).
+    Cada proyecto es un dict con campos: id,title,area_m2,price,foto_principal,description
+    """
+    ensure_tables()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id,title,area_m2,price,foto_principal,description FROM projects ORDER BY created_at DESC LIMIT ?", (limit,))
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        out = []
+        for r in rows:
+            out.append({cols[i]: r[i] for i in range(len(cols))})
+        return out
+    finally:
+        conn.close()
+
 def counts() -> Dict[str,int]:
     ensure_tables(); conn = get_conn(); c = conn.cursor()
     out = {}

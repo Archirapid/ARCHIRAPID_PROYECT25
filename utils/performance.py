@@ -15,8 +15,10 @@ import json
 
 class LRUCache:
     """
-    Least Recently Used (LRU) cache implementation
-    Thread-safe cache with TTL support
+    Least Recently Used (LRU) cache implementation with TTL support
+    
+    Note: This implementation is NOT thread-safe. For multi-threaded environments,
+    consider using threading.Lock or a thread-safe alternative like cachetools.
     """
     
     def __init__(self, max_size: int = 100, ttl_seconds: int = 300):

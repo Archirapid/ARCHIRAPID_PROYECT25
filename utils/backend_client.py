@@ -105,7 +105,8 @@ class BackendClient:
         base_url: str = "http://localhost:8000",
         timeout: int = 10,
         max_retries: int = 3,
-        retry_delay: float = 1.0
+        retry_delay: float = 1.0,
+        allow_http_localhost: bool = True
     ):
         """
         Initialize backend client
@@ -115,10 +116,12 @@ class BackendClient:
             timeout: Request timeout in seconds
             max_retries: Maximum number of retry attempts
             retry_delay: Initial delay between retries (exponential backoff)
+            allow_http_localhost: Allow downgrading HTTPS to HTTP for localhost (default: True)
         """
-        # Ensure HTTP for localhost
-        if base_url.startswith("https://localhost"):
+        # Only downgrade HTTPS to HTTP for localhost if explicitly allowed
+        if allow_http_localhost and base_url.startswith("https://localhost"):
             base_url = base_url.replace("https://", "http://", 1)
+            logger.warning("Downgraded HTTPS to HTTP for localhost. Set allow_http_localhost=False to prevent this.")
         elif not base_url.startswith("http"):
             base_url = f"http://{base_url}"
         
@@ -198,10 +201,19 @@ class BackendClient:
             except requests.exceptions.HTTPError as e:
                 # Don't retry on 4xx errors (client errors)
                 if 400 <= e.response.status_code < 500:
+                    # Sanitize error message to avoid exposing sensitive information
+                    status_code = e.response.status_code
+                    error_map = {
+                        400: "Solicitud inválida",
+                        401: "No autorizado",
+                        403: "Acceso denegado",
+                        404: "Recurso no encontrado",
+                        422: "Datos no válidos"
+                    }
                     return {
                         "error": "client_error",
-                        "status_code": e.response.status_code,
-                        "message": str(e)
+                        "status_code": status_code,
+                        "message": error_map.get(status_code, "Error del cliente")
                     }
                 last_exception = e
                 logger.warning(f"HTTP error (attempt {attempt + 1}/{self.max_retries + 1}): {e}")

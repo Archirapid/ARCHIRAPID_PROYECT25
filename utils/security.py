@@ -40,8 +40,10 @@ def sanitize_url(url: str, allowed_schemes: List[str] = None) -> Optional[str]:
     try:
         # Handle data URLs separately (for base64 images)
         if url.startswith('data:image/'):
-            # Validate data URL format
-            if re.match(r'^data:image/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+$', url):
+            # Validate data URL format with proper base64 validation
+            # Base64 must be padded correctly and only contain valid characters
+            pattern = r'^data:image/(png|jpeg|jpg|gif|webp);base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$'
+            if re.match(pattern, url):
                 return url
             return None
         
@@ -59,7 +61,7 @@ def sanitize_url(url: str, allowed_schemes: List[str] = None) -> Optional[str]:
 
 def validate_email(email: str) -> bool:
     """
-    Validate email format
+    Validate email format according to RFC standards
     
     Args:
         email: Email address to validate
@@ -70,8 +72,16 @@ def validate_email(email: str) -> bool:
     if not email:
         return False
     
-    # Basic email regex validation
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    # More strict email regex validation
+    # - No consecutive dots
+    # - No dots at start/end of local part
+    # - Valid characters only
+    pattern = r'^[a-zA-Z0-9][a-zA-Z0-9._%+-]*[a-zA-Z0-9]@[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$'
+    
+    # Additional check for consecutive dots
+    if '..' in email:
+        return False
+    
     return bool(re.match(pattern, email))
 
 

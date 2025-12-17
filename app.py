@@ -52,6 +52,9 @@ if "selected_page" in st.session_state:
 if page == "Home":
     # HEADER
     with st.container():
+        # Ensure page identity visible for debugging
+        st.title("ARCHIRAPID")
+        st.error("🚀 TEST DE CONEXIÓN: SI LEES ESTO, EL ARCHIVO ES EL CORRECTO")
         try:
             from components.header import render_header
             cols = render_header()
@@ -180,6 +183,22 @@ if page == "Home":
         else:
             st.info("Mapa no disponible (módulos faltantes)")
 
+    # Verificación rápida: número de fincas en la base de datos central
+    try:
+        conn = _db.get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM plots")
+        plots_count = cur.fetchone()[0]
+        conn.close()
+        st.write("Número de fincas encontradas:", plots_count)
+        # Mostrar ruta absoluta usada por el lector de DB
+        try:
+            st.write("DB usada:", str(_db.DB_PATH))
+        except Exception:
+            pass
+    except Exception:
+        pass
+
     st.markdown("---")
 
     # PROYECTOS DESTACADOS
@@ -222,6 +241,23 @@ if page == "Home":
     cols = st.columns(3)
     for idx, p in enumerate(projects[:3]):
         with cols[idx]:
+            # Debug: mostrar contenido bruto del objeto proyecto en la UI
+            try:
+                st.write("Datos brutos del proyecto:", p)
+            except Exception:
+                pass
+            # Mapeo directo: extraer valores desde columnas del row (compatibilidad con dict row)
+            project = p
+            hab = project['habitaciones'] if 'habitaciones' in project else project.get('habitaciones', '—')
+            ban = project['banos'] if 'banos' in project else project.get('banos', '—')
+            m2_area = project['area_m2'] if 'area_m2' in project else project.get('m2_construidos', '—')
+            # Fallback: si `hab` está vacío o None, buscar en JSON
+            try:
+                if hab in (None, ''):
+                    _raw = json.loads(project.get('characteristics_json') or '{}')
+                    hab = _raw.get('habitaciones', hab)
+            except Exception:
+                pass
             # Parse safe JSON (normalize nested `characteristics` and `extras` to a flat dict)
             try:
                 raw = json.loads(p.get('characteristics_json') or '{}')
@@ -301,11 +337,12 @@ if page == "Home":
                 # Mostrar métricas en columnas
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    st.caption(f"🛏️ Habitaciones: {habitaciones}")
+                    st.caption(f"🛏️ Habitaciones: {hab if hab not in (None,'') else '—'}")
                     st.caption(f"🏢 Plantas: {plantas}")
                 with c2:
-                    st.caption(f"🛁 Baños: {banos}")
-                    st.caption(f"📐 Construidos: {data.get('m2_construidos') or area or '—'} m²")
+                    st.caption(f"🛁 Baños: {ban if ban not in (None,'') else '—'}")
+                    constructed = m2_area if m2_area not in (None,'') else (data.get('m2_construidos') or area or '—')
+                    st.caption(f"📐 Construidos: {constructed} m²")
                 with c3:
                     st.caption("🏊 Piscina: ✅" if piscina else "🏊 Piscina: —")
                     st.caption("🚗 Garaje: ✅" if garaje else "🚗 Garaje: —")

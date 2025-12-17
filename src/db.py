@@ -6,11 +6,15 @@ from pathlib import Path
 from typing import Dict, Optional, Iterator
 
 BASE_PATH = Path(__file__).parent.parent
-DB_PATH = BASE_PATH / 'data.db'
+# Use a fixed absolute database path to ensure all modules use the same DB file
+DB_PATH = Path(r"C:/ARCHIRAPID_PROYECT25/database.db")
 
 def get_conn():
-    """Devuelve conexión SQLite con row_factory habilitado para acceder por nombre de columna."""
-    conn = sqlite3.connect(DB_PATH)
+    """Devuelve conexión SQLite con row_factory habilitado para acceder por nombre de columna.
+
+    Usa `DB_PATH` absoluto para evitar confusión entre rutas relativas.
+    """
+    conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -44,6 +48,21 @@ def ensure_tables():
             locality TEXT, owner_name TEXT, owner_email TEXT,
             image_path TEXT, registry_note_path TEXT, created_at TEXT
         )""")
+        # Asegurar columna `province` en instalaciones antiguas y hacer COMMIT inmediato
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN province TEXT DEFAULT 'Madrid'")
+            try:
+                # Forzar commit inmediato para que índices posteriores no fallen
+                conn_obj = c.connection
+                conn_obj.commit()
+            except Exception:
+                pass
+        except sqlite3.OperationalError:
+            # Probablemente la columna ya existe
+            pass
+        except Exception:
+            pass
+
         # Migración segura: agregar columnas nuevas si no existen
         try:
             c.execute("ALTER TABLE plots ADD COLUMN address TEXT")
@@ -63,6 +82,19 @@ def ensure_tables():
             style TEXT, price REAL, file_path TEXT, description TEXT,
             created_at TEXT
         )""")
+        # Asegurar columna `characteristics_json` en la tabla projects (migración segura)
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN characteristics_json TEXT")
+            try:
+                conn_obj = c.connection
+                conn_obj.commit()
+            except Exception:
+                pass
+        except sqlite3.OperationalError:
+            # La columna probablemente ya existe
+            pass
+        except Exception:
+            pass
         c.execute("""CREATE TABLE IF NOT EXISTS payments (
             payment_id TEXT PRIMARY KEY,
             amount REAL, concept TEXT, buyer_name TEXT, buyer_email TEXT,
@@ -132,6 +164,11 @@ def ensure_tables():
         
         # Migración segura: agregar columnas nuevas a projects si no existen
         try:
+            c.execute("ALTER TABLE projects ADD COLUMN architect_name TEXT")
+        except Exception:
+            pass
+
+        try:
             c.execute("ALTER TABLE projects ADD COLUMN architect_id TEXT")
         except Exception:
             pass
@@ -196,14 +233,35 @@ def ensure_tables():
         except Exception:
             pass
         
-        # Índices para mejorar filtrado futuro
-        c.execute("CREATE INDEX IF NOT EXISTS idx_plots_province ON plots(province)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_projects_style ON projects(style)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_projects_architect ON projects(architect_id)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_subscriptions_architect ON subscriptions(architect_id)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_proposals_plot ON proposals(plot_id)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_proposals_architect ON proposals(architect_id)")
+        # Índices para mejorar filtrado futuro (creación defensiva)
+        try:
+            c.execute("CREATE INDEX IF NOT EXISTS idx_plots_province ON plots(province)")
+        except Exception:
+            pass
+        try:
+            c.execute("CREATE INDEX IF NOT EXISTS idx_projects_style ON projects(style)")
+        except Exception:
+            pass
+        try:
+            c.execute("CREATE INDEX IF NOT EXISTS idx_projects_architect ON projects(architect_id)")
+        except Exception:
+            pass
+        try:
+            c.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
+        except Exception:
+            pass
+        try:
+            c.execute("CREATE INDEX IF NOT EXISTS idx_subscriptions_architect ON subscriptions(architect_id)")
+        except Exception:
+            pass
+        try:
+            c.execute("CREATE INDEX IF NOT EXISTS idx_proposals_plot ON proposals(plot_id)")
+        except Exception:
+            pass
+        try:
+            c.execute("CREATE INDEX IF NOT EXISTS idx_proposals_architect ON proposals(architect_id)")
+        except Exception:
+            pass
         # Índice único para email de clientes (si hay duplicados previos fallará, lo capturamos)
         try:
             c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_email ON clients(email)")
@@ -237,6 +295,37 @@ def ensure_tables():
         c.execute("CREATE INDEX IF NOT EXISTS idx_additional_services_proposal ON additional_services(proposal_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_additional_services_status ON additional_services(status)")
 
+        # Compatibilidad con vistas y código legacy en español: crear tablas `proyectos` y `arquitectos`
+        # usadas por las vistas del portal de arquitectos (migración segura).
+        try:
+            c.execute("""CREATE TABLE IF NOT EXISTS arquitectos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT,
+                email TEXT UNIQUE,
+                telefono TEXT,
+                especialidad TEXT,
+                plan_id INTEGER,
+                created_at TEXT
+            )""")
+        except Exception:
+            pass
+
+        try:
+            c.execute("""CREATE TABLE IF NOT EXISTS proyectos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                arquitecto_id INTEGER,
+                titulo TEXT,
+                estilo TEXT,
+                m2_construidos REAL,
+                presupuesto_ejecucion REAL,
+                m2_parcela_minima REAL,
+                alturas INTEGER,
+                pdf_path TEXT,
+                created_at TEXT
+            )""")
+        except Exception:
+            pass
+
 def insert_plot(data: Dict):
     ensure_tables()
     with transaction() as c:
@@ -248,23 +337,49 @@ def insert_plot(data: Dict):
          data.get('image_path'), data.get('registry_note_path'), data['created_at'], data.get('address'), data.get('owner_phone')))
 
 def insert_project(data: Dict):
+    """Inserta o reemplaza un proyecto en la tabla `projects` de forma flexible.
+
+    La función detecta las columnas reales existentes en la tabla `projects`
+    mediante `PRAGMA table_info(projects)`, filtra el diccionario `data`
+    para quedarse solo con las claves que coinciden con columnas reales,
+    y construye dinámicamente la sentencia `INSERT OR REPLACE`.
+
+    Esto evita errores cuando el diccionario contiene claves que no existen
+    en esquemas antiguos o reducidos.
+    """
     ensure_tables()
     with transaction() as c:
-        # Insert or replace a project; architect_id is optional but supported so
-        # that project creation from UI flows is reliably linked to an architect.
-        c.execute("""INSERT OR REPLACE INTO projects (
-            id,title,architect_name,architect_id,area_m2,max_height,style,price,file_path,description,created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-        (
-            data['id'], data['title'], data.get('architect_name'), data.get('architect_id'),
-            data.get('area_m2'), data.get('max_height'), data.get('style'), data.get('price'),
-            data.get('file_path'), data.get('description'), data['created_at']
-        ))
+        # Obtener columnas reales de la tabla projects
+        c.execute("PRAGMA table_info(projects)")
+        info = c.fetchall()
+        real_cols = [row[1] for row in info] if info else []
 
-        # Record event for observability and tests
+        # Filtrar solo claves que existen como columnas
+        filtered = {k: v for k, v in data.items() if k in real_cols}
+
+        # Asegurar campos útiles por defecto si existen en la tabla
+        from datetime import datetime
+        if 'created_at' in real_cols and 'created_at' not in filtered:
+            filtered['created_at'] = datetime.utcnow().isoformat()
+
+        if 'id' in real_cols and 'id' not in filtered:
+            import uuid
+            filtered['id'] = f"p_{uuid.uuid4().hex}"
+
+        if not filtered:
+            # No hay columnas coincidentes; lanzar para que el llamador lo controle
+            raise ValueError('No hay columnas válidas para insertar en projects')
+
+        cols_sql = ','.join(filtered.keys())
+        placeholders = ','.join(['?'] * len(filtered))
+        values = tuple(filtered[k] for k in filtered.keys())
+
+        c.execute(f"INSERT OR REPLACE INTO projects ({cols_sql}) VALUES ({placeholders})", values)
+
+        # Registro observable
         try:
             from src.logger import log
-            log('project_created', project_id=data['id'], architect_id=data.get('architect_id'), title=data.get('title'))
+            log('project_created', project_id=filtered.get('id'), architect_id=filtered.get('architect_id'), title=filtered.get('title'))
         except Exception:
             pass
 
@@ -285,6 +400,56 @@ def get_all_plots():
         conn.close()
     return df
 
+
+def list_fincas_filtradas(provincia: Optional[str], min_surface: float, max_price: Optional[float]) -> list:
+    """Devuelve fincas (plots) que cumplen los filtros indicados.
+
+    - `provincia`: string (si es None o 'Todas' no filtra por provincia)
+    - `min_surface`: valor mínimo de superficie en m²
+    - `max_price`: precio máximo (si es None o <=0 se ignora)
+
+    Retorna lista de diccionarios.
+    """
+    ensure_tables()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        # Detect available column names in `plots` to build a compatible query
+        cur.execute("PRAGMA table_info(plots)")
+        cols_info = cur.fetchall()
+        available_cols = {row[1] for row in cols_info} if cols_info else set()
+
+        # Choose the area column from known candidates
+        area_candidates = ['surface_m2', 'm2', 'area_m2', 'surface']
+        area_col = next((c for c in area_candidates if c in available_cols), None)
+        if not area_col:
+            # fallback to first numeric-ish column if none known
+            area_col = 'm2'  # best-effort; query may still fail if truly absent
+
+        price_col = 'price' if 'price' in available_cols else None
+
+        sql = f"SELECT * FROM plots WHERE COALESCE({area_col}, 0) >= ?"
+        params = [min_surface]
+
+        if provincia and provincia not in ('', 'Todas'):
+            sql += " AND province = ?"
+            params.append(provincia)
+
+        if max_price is not None and float(max_price) > 0 and price_col:
+            sql += f" AND ({price_col} IS NOT NULL AND {price_col} <= ?)"
+            params.append(float(max_price))
+
+        sql += f" ORDER BY COALESCE({area_col}, 0) ASC"
+        cur.execute(sql, tuple(params))
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description] if cur.description else []
+        out = []
+        for r in rows:
+            out.append({cols[i]: r[i] for i in range(len(cols))})
+        return out
+    finally:
+        conn.close()
+
 def get_all_projects():
     ensure_tables(); conn = get_conn(); import pandas as pd
     try:
@@ -302,6 +467,114 @@ def insert_architect(data: Dict):
         ) VALUES (?,?,?,?,?,?,?)""", (
             data['id'], data['name'], data['email'], data.get('phone'), data.get('company'), data.get('nif'), data['created_at']
         ))
+
+
+def guardar_nuevo_arquitecto(nombre: str, email: str, telefono: str, especialidad: str, plan_id: int) -> bool:
+    """Guarda un nuevo arquitecto en la tabla `arquitectos`.
+
+    Devuelve True si la inserción fue exitosa, False en caso contrario (por ejemplo, email duplicado).
+    """
+    ensure_tables()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        # Asegurar existencia de la tabla `arquitectos` compatible con db_setup
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS arquitectos (
+            id INTEGER PRIMARY KEY,
+            nombre TEXT,
+            email TEXT UNIQUE,
+            telefono TEXT,
+            especialidad TEXT,
+            plan_id INTEGER
+        )
+        """)
+        cur.execute("INSERT INTO arquitectos (nombre,email,telefono,especialidad,plan_id) VALUES (?,?,?,?,?)",
+                    (nombre, email, telefono, especialidad, plan_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        # No propagamos error, devolvemos False para que la UI lo gestione
+        try:
+            print('guardar_nuevo_arquitecto error:', e)
+        except Exception:
+            pass
+        return False
+    finally:
+        conn.close()
+
+
+def obtener_todos_los_planes() -> list:
+    """Recupera todos los planes desde la tabla `planes`.
+
+    Retorna una lista de dicts con keys: `id`, `nombre_plan`, `precio_mensual`, `limite_proyectos`.
+    """
+    ensure_tables()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        # Asegurar existencia de la tabla `planes` (compatibilidad)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS planes (
+            id INTEGER PRIMARY KEY,
+            nombre_plan TEXT,
+            precio_mensual REAL,
+            limite_proyectos INTEGER
+        )
+        """)
+        conn.commit()
+        cur.execute("SELECT id,nombre_plan,precio_mensual,limite_proyectos FROM planes ORDER BY id")
+        rows = cur.fetchall()
+        # sqlite3.Row es mapeable a dict
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def obtener_datos_arquitecto(email: str):
+    """Recupera datos básicos de un arquitecto por su email.
+
+    Retorna un diccionario con keys: `id`, `nombre`, `plan_id` si se encuentra.
+    Si no existe, devuelve `None`.
+    """
+    ensure_tables()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        # Asegurar existencia de la tabla `arquitectos` (compatibilidad con otras partes del código)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS arquitectos (
+            id INTEGER PRIMARY KEY,
+            nombre TEXT,
+            email TEXT UNIQUE,
+            telefono TEXT,
+            especialidad TEXT,
+            plan_id INTEGER
+        )
+        """)
+        conn.commit()
+
+        cur.execute("SELECT id, nombre, plan_id FROM arquitectos WHERE LOWER(email)=LOWER(?) LIMIT 1", (email.strip(),))
+        row = cur.fetchone()
+        if not row:
+            return None
+        # row puede ser sqlite3.Row o tupla
+        try:
+            return {"id": row[0], "nombre": row[1], "plan_id": row[2]}
+        except Exception:
+            # Si es sqlite3.Row con keys
+            return {"id": row['id'], "nombre": row['nombre'], "plan_id": row.get('plan_id')}
+    except Exception as e:
+        try:
+            print('obtener_datos_arquitecto error:', e)
+        except Exception:
+            pass
+        return None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def update_project_architect_id(project_id: str, architect_id: str):
     """Actualiza el arquitecto asociado a un proyecto."""
@@ -336,6 +609,72 @@ def update_project_fields(project_id: str, fields: Dict):
     with transaction() as c:
         c.execute(sql, tuple(values))
 
+
+def guardar_nuevo_proyecto(arquitecto_id: int, titulo: str, estilo: str, m2_construidos: float,
+                          presupuesto_ejecucion: float, m2_parcela_minima: float, alturas: int, pdf_path: str) -> bool:
+    """Inserta un nuevo proyecto en la tabla `proyectos`.
+
+    Devuelve True si la inserción fue exitosa, False en caso de error.
+    """
+    ensure_tables()
+    try:
+        with transaction() as c:
+            c.execute("""INSERT INTO proyectos (
+                arquitecto_id, titulo, estilo, m2_construidos, presupuesto_ejecucion,
+                m2_parcela_minima, alturas, pdf_path
+            ) VALUES (?,?,?,?,?,?,?,?)""",
+                      (arquitecto_id, titulo, estilo, m2_construidos, presupuesto_ejecucion,
+                       m2_parcela_minima, alturas, pdf_path))
+        return True
+    except Exception as e:
+        try:
+            print('guardar_nuevo_proyecto error:', e)
+        except Exception:
+            pass
+        return False
+
+
+def verificar_limite_proyectos(arquitecto_id: int) -> bool:
+    """Verifica si el arquitecto con id `arquitecto_id` aún puede crear nuevos proyectos.
+
+    Lógica:
+      - Obtener `plan_id` desde la tabla `arquitectos`.
+      - Obtener `limite_proyectos` desde la tabla `planes` para ese plan.
+      - Contar proyectos en la tabla `proyectos` asociados a `arquitecto_id`.
+    Devuelve True si contador < limite, False si alcanzó o superó el límite.
+    """
+    ensure_tables()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        # Obtener plan del arquitecto
+        cur.execute("SELECT plan_id FROM arquitectos WHERE id = ?", (arquitecto_id,))
+        row = cur.fetchone()
+        if not row:
+            # Si no existe el arquitecto asumimos permitido (o gestionar upstream)
+            return True
+        plan_id = row['plan_id'] if isinstance(row, sqlite3.Row) and 'plan_id' in row.keys() else row[0]
+
+        # Obtener límite del plan
+        cur.execute("SELECT limite_proyectos FROM planes WHERE id = ?", (plan_id,))
+        p = cur.fetchone()
+        if not p:
+            # Si no existe el plan, no imponemos límite
+            return True
+        limite = p['limite_proyectos'] if isinstance(p, sqlite3.Row) and 'limite_proyectos' in p.keys() else p[0]
+
+        # Contar proyectos existentes para el arquitecto
+        cur.execute("SELECT COUNT(1) as cnt FROM proyectos WHERE arquitecto_id = ?", (arquitecto_id,))
+        cnt_row = cur.fetchone()
+        cnt = cnt_row['cnt'] if isinstance(cnt_row, sqlite3.Row) and 'cnt' in cnt_row.keys() else cnt_row[0]
+
+        try:
+            return int(cnt) < int(limite)
+        except Exception:
+            return True
+    finally:
+        conn.close()
+
 def get_plot_by_id(pid: str) -> Optional[Dict]:
     ensure_tables(); conn = get_conn(); c = conn.cursor(); c.execute('SELECT * FROM plots WHERE id=?', (pid,))
     row = c.fetchone(); conn.close()
@@ -368,7 +707,8 @@ def get_featured_projects(limit: int = 3) -> list:
     conn = get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT id,title,area_m2,price,foto_principal,description FROM projects ORDER BY created_at DESC LIMIT ?", (limit,))
+        # Return all available columns so the UI can access mirrored fields
+        cur.execute("SELECT * FROM projects ORDER BY created_at DESC LIMIT ?", (limit,))
         rows = cur.fetchall()
         cols = [d[0] for d in cur.description]
         out = []
@@ -539,3 +879,53 @@ def mark_additional_service_paid(service_id: str):
     ensure_tables()
     with transaction() as c:
         c.execute("UPDATE additional_services SET paid=1 WHERE id=?", (service_id,))
+
+
+def registrar_venta_proyecto(proyecto_id: int, cliente_email: str, tipo_compra: str, precio_base: float) -> float:
+    """Registra la venta de un proyecto, calcula la comisión (10%) y guarda la transacción.
+
+    Retorna la comision_archirapid calculada.
+    """
+    ensure_tables()
+    comision = float(precio_base) * 0.10
+    from datetime import datetime
+    fecha = datetime.utcnow().isoformat()
+    try:
+        with transaction() as c:
+            # Insertar transacción
+            c.execute("""INSERT INTO ventas_proyectos (
+                proyecto_id, cliente_email, tipo_compra, precio_venta, comision_archirapid, fecha
+            ) VALUES (?,?,?,?,?,?)""",
+                      (proyecto_id, cliente_email, tipo_compra, precio_base, comision, fecha))
+        return comision
+    except Exception as e:
+        try:
+            print('registrar_venta_proyecto error:', e)
+        except Exception:
+            pass
+        return 0.0
+
+
+def list_proyectos_compatibles(finca_surface_m2: float) -> list:
+    """Devuelve proyectos cuya área construida (`m2_construidos`) es <= 33% de la superficie de la finca.
+
+    Parámetros:
+      - finca_surface_m2: superficie total de la parcela en m²
+
+    Retorna una lista de dicts con los campos de la tabla `proyectos`.
+    """
+    ensure_tables()
+    max_built_area = (finca_surface_m2 or 0) * 0.33
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM proyectos WHERE m2_construidos <= ? ORDER BY m2_construidos ASC", (max_built_area,))
+        rows = cur.fetchall()
+        out = []
+        if rows:
+            cols = [d[0] for d in cur.description]
+            for r in rows:
+                out.append({cols[i]: r[i] for i in range(len(cols))})
+        return out
+    finally:
+        conn.close()

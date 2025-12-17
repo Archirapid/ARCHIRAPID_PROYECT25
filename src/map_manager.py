@@ -1,5 +1,6 @@
 import folium
 from streamlit_folium import st_folium
+import streamlit as st
 import os
 
 def mostrar_mapa_con_plano(lat=40.4168, lon=-3.7038, plano_path=None, zoom=15):
@@ -81,24 +82,51 @@ def mostrar_plots_on_map(province: str | None = None, query: str | None = None, 
         cur = conn.cursor()
         cur.execute(sql, tuple(params))
         rows = cur.fetchall()
-        # Determine map center
-        lats = [r['lat'] for r in rows]
-        lons = [r['lon'] for r in rows]
+
+        # Debugging traces: number of rows and each row's id/title/lat/lon
+        try:
+            st.write(f"DEBUG: plots returned: {len(rows)}")
+        except Exception:
+            print(f"DEBUG: plots returned: {len(rows)}")
+
+        for r in rows:
+            try:
+                st.write(f"DEBUG ROW: id={r['id']} | title={r['title']} | lat={r['lat']} | lon={r['lon']}")
+            except Exception:
+                try:
+                    print(f"DEBUG ROW: id={r['id']} | title={r['title']} | lat={r['lat']} | lon={r['lon']}")
+                except Exception:
+                    print(f"DEBUG ROW: (could not read row)")
+        # Determine map center as mean of returned coords
+        lats = [r['lat'] for r in rows if r['lat'] is not None]
+        lons = [r['lon'] for r in rows if r['lon'] is not None]
         if lats and lons:
             center_lat = sum(lats) / len(lats)
             center_lon = sum(lons) / len(lons)
-            zoom = 10
+            # country-level view suitable for Spain/Portugal
+            zoom = 6
         else:
             center_lat, center_lon = 40.4168, -3.7038
             zoom = 6
 
         m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, tiles='OpenStreetMap')
 
+        # Add more visible markers with red home icon and informative popup
         for r in rows:
             try:
-                popup = folium.Popup(f"<b>{r['title']}</b><br/>{r.get('locality','')}<br/>{r.get('m2','')} m² · €{r.get('price','—')}", max_width=260)
-                folium.Marker([r['lat'], r['lon']], popup=popup, tooltip=r['title']).add_to(m)
+                title = r['title'] or ''
+                locality = r['locality'] or ''
+                m2 = r['m2'] if r['m2'] is not None else ''
+                price = r['price'] if r['price'] is not None else '—'
+                # Add a link that sets ?selected_plot=<id> to allow the UI to show details
+                # Use target="_top" so the parent Streamlit window navigates (not the iframe)
+                details_link = f"<br/><a href='?selected_plot={r['id']}' target='_top'>Ver más detalles</a>"
+                popup_html = f"<b>{title}</b><br/>{locality}<br/>{m2} m² · €{price}{details_link}"
+                popup = folium.Popup(popup_html, max_width=300)
+                icon = folium.Icon(color="red", icon="home")
+                folium.Marker([r['lat'], r['lon']], popup=popup, tooltip=title, icon=icon).add_to(m)
             except Exception:
+                # keep iterating even if one marker fails
                 continue
 
         return st_folium(m, width=width, height=height)

@@ -1,7 +1,26 @@
 import streamlit as st
 
-st.set_page_config(page_title="ARCHIRAPID", layout="wide")
+import sqlite3
+import pandas as pd
+from src import db as _db
+
+# Page configuration: wide layout and sidebar expanded by default
+st.set_page_config(page_title="ARCHIRAPID", layout="wide", initial_sidebar_state="expanded")
+
+# Home will render header and project lists; audit code removed now that DB path is unified
+
 st.sidebar.title("ARCHIRAPID")
+
+# Central page registry — all routes point to `views/` or `modules/marketplace/` (NO pages/ entries)
+PAGES = {
+    "Home": ("modules.marketplace.marketplace", "main"),
+    "Propietario (Gemelo Digital)": ("modules.marketplace.gemelo_digital", "main"),
+    "Propietarios (Subir Fincas)": ("modules.marketplace.owners", "main"),
+    "Diseñador de Vivienda": ("modules.marketplace.disenador_vivienda", "main"),
+    "👤 Panel de Cliente": ("modules.marketplace.client_panel_fixed", "main"),
+    "Arquitectos (Marketplace)": ("modules.marketplace.marketplace_upload", None),
+    "Intranet": ("modules.marketplace.intranet", "main"),
+}
 
 # Detectar navegación automática desde session state (de owners.py)
 if "navigate_to_client_panel" in st.session_state:
@@ -15,18 +34,14 @@ if "navigate_to_client_panel" in st.session_state:
     st.rerun()  # Forzar recarga completa
 
 # Determinar página seleccionada
+page_keys = list(PAGES.keys())
 default_page = st.session_state.get("auto_select_page", "Home")
 selected_page = st.session_state.get("selected_page", default_page)
-page = st.sidebar.radio("Navegación", [
-    "Home",
-    "Propietario (Gemelo Digital)",
-    "Propietarios (Subir Fincas)",
-    "Diseñador de Vivienda",
-    "Inmobiliaria (Mapa)",
-    "👤 Panel de Cliente",
-    "Arquitectos (Marketplace)",
-    "Intranet"
-], index=["Home", "Propietario (Gemelo Digital)", "Propietarios (Subir Fincas)", "Diseñador de Vivienda", "Inmobiliaria (Mapa)", "👤 Panel de Cliente", "Arquitectos (Marketplace)", "Intranet"].index(selected_page) if selected_page in ["Home", "Propietario (Gemelo Digital)", "Propietarios (Subir Fincas)", "Diseñador de Vivienda", "Inmobiliaria (Mapa)", "👤 Panel de Cliente", "Arquitectos (Marketplace)", "Intranet"] else 0)
+try:
+    index = page_keys.index(selected_page) if selected_page in page_keys else 0
+except Exception:
+    index = 0
+page = st.sidebar.radio("Navegación", page_keys, index=index)
 
 # Limpiar estado de navegación automática
 if "auto_select_page" in st.session_state:
@@ -140,17 +155,61 @@ if page == "Home":
     province = st.selectbox("Provincia", options=["Todas"] + province_options, index=0)
     query = st.text_input("Localidad o dirección", value="")
 
-    # Mostrar mapa reutilizando helper que consulta la BBDD
+    # Mostrar mapa: usar marketplace.main() para Home (mapa + detalle)
     filter_province = None if province == "Todas" else province
-    if map_manager:
-        map_manager.mostrar_plots_on_map(province=filter_province, query=query)
-    else:
-        st.info("Mapa no disponible (módulo map_manager faltante)")
+    try:
+        from modules.marketplace import marketplace
+        # Comentada la llamada antigua a map_manager para usar la UI unificada
+        # if map_manager:
+        #     map_manager.mostrar_plots_on_map(
+        #         province=filter_province,
+        #         query=query,
+        #         width=1100,
+        #         height=650,
+        #     )
+        marketplace.main()
+    except Exception:
+        # Fallback a map_manager si marketplace no está disponible
+        if map_manager:
+            map_manager.mostrar_plots_on_map(
+                province=filter_province,
+                query=query,
+                width=1100,
+                height=650,
+            )
+        else:
+            st.info("Mapa no disponible (módulos faltantes)")
 
     st.markdown("---")
 
     # PROYECTOS DESTACADOS
     st.header("Proyectos destacados")
+    # Helper: obtener valor de proyecto prefiriendo columna y luego JSON
+    def _get_project_value(row: dict, data_json: dict, key: str):
+        """
+        Preferir valor en columna (row) y si no existe, buscar en data_json.
+        Maneja el caso especial de 'baños'/'banos'.
+        """
+        # Manejo especial para baños/banos
+        if key in ('baños', 'banos'):
+            # Preferir columna con tilde, luego sin tilde
+            for col in ('baños', 'banos'):
+                if row.get(col) not in (None, ''):
+                    return row.get(col)
+            # Luego JSON
+            if isinstance(data_json, dict):
+                for jkey in ('baños', 'banos'):
+                    if data_json.get(jkey) not in (None, ''):
+                        return data_json.get(jkey)
+            return None
+
+        # General: preferir columna, luego JSON
+        v = row.get(key)
+        if v not in (None, ''):
+            return v
+        if isinstance(data_json, dict) and data_json.get(key) not in (None, ''):
+            return data_json.get(key)
+        return None
     projects = []
     try:
         if db:
@@ -158,21 +217,132 @@ if page == "Home":
     except Exception:
         projects = []
 
+    # Proyectos Destacados — ficha técnica expandible y multimedia (mapeo robusto)
+    import json
     cols = st.columns(3)
-    for i in range(3):
-        with cols[i]:
-            if i < len(projects):
-                p = projects[i]
-                img = p.get('foto_principal') or "https://via.placeholder.com/320x240?text=No+Image"
-                try:
-                    st.image(img, use_column_width=True)
-                except Exception:
-                    st.image("https://via.placeholder.com/320x240?text=No+Image")
-                st.markdown(f"**{p.get('title','Sin título')}**")
-                st.markdown(f"m²: {p.get('area_m2','—')}")
-                st.markdown(f"Presupuesto: €{p.get('price','—')}")
+    for idx, p in enumerate(projects[:3]):
+        with cols[idx]:
+            # Parse safe JSON (normalize nested `characteristics` and `extras` to a flat dict)
+            try:
+                raw = json.loads(p.get('characteristics_json') or '{}')
+            except Exception:
+                raw = {}
+
+            # If the stored JSON uses a nested 'characteristics' object, prefer it
+            if isinstance(raw, dict) and isinstance(raw.get('characteristics'), dict):
+                ch = raw.get('characteristics')
             else:
-                st.info("Sin proyecto")
+                ch = raw if isinstance(raw, dict) else {}
+
+            # Merge 'extras' into top-level characteristics for compatibility
+            ch_flat = dict(ch) if isinstance(ch, dict) else {}
+            extras = ch_flat.pop('extras', None) or {}
+            if isinstance(extras, dict):
+                for k, v in extras.items():
+                    if k not in ch_flat:
+                        ch_flat[k] = v
+
+            # Normalize key variations (compatibility with older uploads)
+            if 'banos' in ch_flat and 'baños' not in ch_flat:
+                ch_flat['baños'] = ch_flat['banos']
+            if 'baños' in ch_flat and 'banos' not in ch_flat:
+                ch_flat['banos'] = ch_flat['baños']
+
+            # Prefer explicit top-level image/model paths from raw if present
+            if isinstance(raw, dict):
+                if raw.get('imagenes') and not ch_flat.get('imagenes'):
+                    ch_flat['imagenes'] = raw.get('imagenes')
+                if raw.get('modelo_3d_path') and not ch_flat.get('modelo_3d_path'):
+                    ch_flat['modelo_3d_path'] = raw.get('modelo_3d_path')
+
+            data = ch_flat
+            files = raw.get('files') or {}
+
+            # Imagen superior: usar únicamente las columnas/rutas exactas presentes en la tabla de auditoría
+            img = (
+                p.get('foto_principal')
+                or p.get('imagenes')
+                or p.get('imagenes_path')
+                or data.get('imagenes')
+                or "https://via.placeholder.com/640x360?text=No+Image"
+            )
+            try:
+                st.image(img, use_column_width=True)
+            except Exception:
+                st.image("https://via.placeholder.com/640x360?text=No+Image")
+
+            # Título y precio destacados
+            title = p.get('title') or p.get('titulo') or 'Sin título'
+            price = p.get('price') if p.get('price') not in (None, '') else p.get('precio') or None
+            area = p.get('area_m2') if p.get('area_m2') not in (None, '') else p.get('area') or p.get('total_m2') or '—'
+
+            st.markdown(f"**{title}**")
+            if price is not None:
+                try:
+                    st.markdown(f"**Precio:** 🔸 €{float(price):,.0f}")
+                except Exception:
+                    st.markdown(f"**Precio:** 🔸 {price}")
+            else:
+                st.markdown("**Precio:** —")
+
+            st.markdown(f"**Superficie:** {area} m²")
+
+            # Expander principal (único)
+            with st.expander("🔍 Ver Ficha Técnica y Multimedia"):
+                # Mapeo estricto: usar exactamente las claves que aparecen en la tabla de auditoría.
+                # Permitimos tanto 'baños' (con tilde) como 'banos' (sin tilde) por compatibilidad, pero
+                # NO buscamos sinónimos en inglés u otros nombres.
+                habitaciones = _get_project_value(p, data, 'habitaciones') or '—'
+                banos = _get_project_value(p, data, 'baños') or '—'
+                plantas = _get_project_value(p, data, 'plantas') or '—'
+                piscina = _get_project_value(p, data, 'piscina') or False
+                garaje = _get_project_value(p, data, 'garaje') or False
+
+                # Mostrar métricas en columnas
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.caption(f"🛏️ Habitaciones: {habitaciones}")
+                    st.caption(f"🏢 Plantas: {plantas}")
+                with c2:
+                    st.caption(f"🛁 Baños: {banos}")
+                    st.caption(f"📐 Construidos: {data.get('m2_construidos') or area or '—'} m²")
+                with c3:
+                    st.caption("🏊 Piscina: ✅" if piscina else "🏊 Piscina: —")
+                    st.caption("🚗 Garaje: ✅" if garaje else "🚗 Garaje: —")
+
+                st.markdown("---")
+                # Multimedia: mostrar mini-galería si hay imágenes (no exponer rutas sensibles)
+                image_preview = None
+                # Preferir ruta exacta en la tabla de auditoría
+                if 'imagenes' in data and data.get('imagenes'):
+                    image_preview = data.get('imagenes')
+                elif p.get('imagenes_path'):
+                    image_preview = p.get('imagenes_path')
+
+                if image_preview:
+                    try:
+                        st.image(image_preview, width=300)
+                    except Exception:
+                        pass
+
+                # Botones de interacción (simulados). Mostrar botón 3D si existe modelo_3d en data top-level o files.
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button("Simular Realidad Virtual (RV)", key=f"rv_{p.get('id')}"):
+                        st.info("Iniciando simulación RV (simulada)...")
+                with col_b:
+                    modelo_3d = None
+                    # Usar únicamente la columna/clave exacta para el modelo 3D
+                    if 'modelo_3d_path' in data and data.get('modelo_3d_path'):
+                        modelo_3d = data.get('modelo_3d_path')
+                    elif p.get('modelo_3d_path'):
+                        modelo_3d = p.get('modelo_3d_path')
+
+                    if modelo_3d:
+                        if st.button("🌐 Abrir Visor 3D", key=f"load3d_{p.get('id')}"):
+                            st.info("Abriendo Visor 3D (simulado). No se expone la ruta real.")
+                    else:
+                        st.caption("Modelo 3D: —")
 elif page == "Propietario (Gemelo Digital)":
     with st.container():
         # Flujo principal: Propietario sube finca → IA genera plan
@@ -191,11 +361,7 @@ elif page == "Diseñador de Vivienda":
         from modules.marketplace import disenador_vivienda
         disenador_vivienda.main()
 
-elif page == "Inmobiliaria (Mapa)":
-    with st.container():
-        # Flujo terciario: Cliente explora fincas y proyectos
-        from modules.marketplace import marketplace
-        marketplace.main()
+# "Inmobiliaria (Mapa)" route removed — Home now uses `marketplace.main()` directly.
 
 elif page == "👤 Panel de Cliente":
     with st.container():
@@ -205,41 +371,9 @@ elif page == "👤 Panel de Cliente":
 
 elif page == "Arquitectos (Marketplace)":
     with st.container():
-        # Arquitectos suben proyectos al marketplace
+        # Use the new main() entrypoint which handles auth, plans and upload flow
         from modules.marketplace import marketplace_upload
-        st.title("👷 Marketplace Arquitectos")
-
-        # Submenú para arquitectos
-        sub_page = st.radio("Acciones", ["Subir Proyecto", "Mis Proyectos", "Explorar Mercado"],
-                           horizontal=True, key="arquitectos_submenu")
-
-        if sub_page == "Subir Proyecto":
-            # Simular arquitecto ID (en producción vendría de login)
-            arquitecto_id = st.session_state.get('arquitecto_id', 1)
-
-            proyecto = marketplace_upload.upload_proyecto_form(arquitecto_id)
-            if proyecto:
-                st.success("✅ Proyecto subido exitosamente!")
-
-        elif sub_page == "Mis Proyectos":
-            arquitecto_id = st.session_state.get('arquitecto_id', 1)
-            proyectos = marketplace_upload.proyectos_por_arquitecto(arquitecto_id)
-
-            if proyectos:
-                for proyecto in proyectos:
-                    marketplace_upload.mostrar_proyecto_arquitecto(proyecto)
-                    st.divider()
-            else:
-                st.info("No tienes proyectos subidos aún")
-
-        elif sub_page == "Explorar Mercado":
-            proyectos = marketplace_upload.explorar_proyectos_arquitectos()
-
-            st.subheader(f"📚 Catálogo de Proyectos ({len(proyectos)} disponibles)")
-
-            for proyecto in proyectos:
-                marketplace_upload.mostrar_proyecto_arquitecto(proyecto)
-                st.divider()
+        marketplace_upload.main()
 
 elif page == "Intranet":
     with st.container():

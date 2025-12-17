@@ -1,5 +1,6 @@
 import streamlit as st
 from modules.marketplace.utils import list_published_plots, save_upload, reserve_plot, list_projects, calculate_edificability
+from src import db
 from streamlit_folium import st_folium
 import folium
 import uuid
@@ -7,6 +8,16 @@ import base64
 import os
 import json
 from pathlib import Path
+
+# Helper to read query params (compatible con varias versiones de Streamlit)
+def get_query_params():
+    try:
+        return st.experimental_get_query_params()
+    except Exception:
+        try:
+            return st.query_params
+        except Exception:
+            return {}
 
 # Map plot ids to images
 PLOT_IMAGES = {
@@ -70,13 +81,17 @@ def extract_cadastral_data(plot):
     return cadastral_data
 
 def main():
-    # Handle URL params for plot selection
-    selected_from_url = st.query_params.get("selected_plot")
-    if selected_from_url:
-        if isinstance(selected_from_url, list):
-            selected_from_url = selected_from_url[0]
-        st.session_state["selected_plot"] = selected_from_url
-    selected_plot_local = st.session_state.get("selected_plot")
+    # Leer selected_plot desde la URL
+    params = get_query_params() or {}
+    selected_plot_local = None
+    if params.get("selected_plot"):
+        selected_plot_local = params["selected_plot"][0] if isinstance(params["selected_plot"], list) else params["selected_plot"]
+
+    # Debug: report selected_plot value
+    try:
+        st.write("DEBUG main() selected_plot:", selected_plot_local)
+    except Exception:
+        pass
     st.title("ARCHIRAPID — Marketplace de Fincas y Proyectos")
 
     st.sidebar.header("Filtros")
@@ -84,14 +99,23 @@ def main():
     max_m = st.sidebar.number_input("Max m²", value=100000)
     q = st.sidebar.text_input("Buscar (provincia, título)")
 
-    plots_all = list_published_plots()
-    # simple filters - pero mantener todas para detalles
-    plots_filtered = [p for p in plots_all if (p["surface_m2"] is None or (p["surface_m2"]>=min_m and p["surface_m2"]<=max_m))]
-    if q:
-        plots_filtered = [p for p in plots_filtered if q.lower() in (p.get("title","")+" "+str(p.get("cadastral_ref",""))).lower()]
+    # Filtros de búsqueda encima del mapa (formulario)
+    st.markdown("### Filtros de Búsqueda")
+    with st.form("filtros_busqueda", clear_on_submit=False):
+        provincia_sel = st.selectbox("Provincia / Comunidad", options=["Todas", "Madrid", "Barcelona", "Sevilla", "Lisboa"], index=0)
+        min_surface_sel = st.slider("Superficie Mínima (m²)", min_value=0, max_value=5000, value=0, step=10)
+        max_price_sel = st.slider("Presupuesto Máximo (€)", min_value=0, max_value=2_000_000, value=200_000, step=500)
+        aplicar = st.form_submit_button("Aplicar filtros")
 
-    # Usar plots_filtered para mostrar en mapa y miniaturas, pero plots_all para detalles
-    plots = plots_filtered
+    prov_param = None if provincia_sel in (None, "", "Todas") else provincia_sel
+    plots_all = db.list_fincas_filtradas(prov_param, float(min_surface_sel), float(max_price_sel))
+
+    # Aplicar búsqueda libre 'q' si existe
+    if q:
+        plots_all = [p for p in plots_all if q.lower() in (p.get("title","")+" "+str(p.get("cadastral_ref",""))).lower()]
+
+    # Usar plots_all para mostrar en mapa y miniaturas
+    plots = plots_all
 
     left,right = st.columns([1,2])
     with left:
@@ -217,50 +241,58 @@ def main():
                         
                         st.markdown("---")
 
-                        # Proyectos compatibles
-                        edificabilidad = calculate_edificability(cadastral_data.get('surface_m2', p.get('surface_m2', 0)))
-                        projects_all_list = list_projects()
-                        # Eliminar duplicados por ID
-                        unique_projects = []
-                        seen_ids = set()
-                        for proj in projects_all_list:
-                            if proj['id'] not in seen_ids:
-                                unique_projects.append(proj)
-                                seen_ids.add(proj['id'])
-                        compatible_projects = [proj for proj in unique_projects if proj['area_m2'] <= edificabilidad]
+                        # Proyectos compatibles (Design Matchmaker - Edificabilidad 33%)
+                        try:
+                            from src import db as _db
+                            surface = cadastral_data.get('surface_m2', p.get('surface_m2', 0)) or 0
+                            compatible_projects = _db.list_proyectos_compatibles(surface)
+                        except Exception as e:
+                            compatible_projects = []
+                            st.warning(f"Error cargando proyectos compatibles: {e}")
 
-                        st.subheader("🔍 Proyectos Arquitectónicos Compatibles")
+                        st.subheader("🔍 Proyectos Arquitectónicos Compatibles (Edificabilidad 33%)")
+                        max_built = int((cadastral_data.get('surface_m2', p.get('surface_m2', 0)) or 0) * 0.33)
                         if compatible_projects:
-                            st.success(f"Edificabilidad máxima: {edificabilidad:.0f} m² (33% de superficie)")
-                            for proj in compatible_projects[:5]:
-                                with st.expander(f"🏗️ {proj['title']} - {proj['area_m2']} m² - €{proj['price']}"):
-                                    st.write(f"**📝 Descripción:** {proj['description']}")
-                                    st.write(f"**👷 Arquitecto:** {proj['architect_name']}")
-                                    if proj['company']:
-                                        st.write(f"**🏢 Empresa:** {proj['company']}")
+                            st.info(f"Edificabilidad máxima: {max_built:.0f} m² (33% de superficie)")
+                            if st.button("Ver Proyectos", key=f"ver_proyectos_{p['id']}"):
+                                st.session_state[f"show_compatible_{p['id']}"] = True
+                            if st.session_state.get(f"show_compatible_{p['id']}", False):
+                                for proj in compatible_projects:
+                                    with st.expander(f"🏗️ {proj.get('titulo', 'Sin título')} — {proj.get('m2_construidos', 'N/A')} m² — €{proj.get('presupuesto_ejecucion', 'N/A')}"):
+                                        st.markdown(f"**Estilo:** {proj.get('estilo', 'N/A')}")
+                                        st.markdown(f"**M² construidos:** {proj.get('m2_construidos', 'N/A')}")
+                                        st.markdown(f"**Presupuesto estimado:** €{proj.get('presupuesto_ejecucion', 'N/A')}")
+                                        pdf = proj.get('pdf_path')
+                                        if pdf and os.path.exists(pdf):
+                                            try:
+                                                with open(pdf, 'rb') as fh:
+                                                    b64 = base64.b64encode(fh.read()).decode()
+                                                    href = f"data:application/pdf;base64,{b64}"
+                                                    st.markdown(f"[Descargar PDF del proyecto]({href})")
+                                            except Exception:
+                                                st.write("PDF no disponible para descarga")
 
-                                    # Botones de acción
-                                    col_res, col_comp = st.columns(2)
-                                    with col_res:
-                                        if st.button(f"📋 Reservar 10%", key=f"reserve_10_{proj['id']}_{p['id']}", use_container_width=True):
-                                            amount = (p.get("price") or 0) * 0.10
-                                            rid = reserve_plot(p['id'], "Cliente Demo", "cliente@demo.com", amount, kind="reservation")
-                                            st.success(f"✅ Reserva simulada: {rid} — {amount}€")
-                                            st.session_state["show_client_form"] = True
-                                            st.session_state["transaction_type"] = "reservation"
-                                            st.session_state["transaction_id"] = rid
-                                            st.rerun()
-                                    with col_comp:
-                                        if st.button(f"💰 Comprar (100%)", key=f"purchase_100_{proj['id']}_{p['id']}", use_container_width=True):
-                                            amount = p.get("price") or 0
-                                            rid = reserve_plot(p['id'], "Cliente Demo", "cliente@demo.com", amount, kind="purchase")
-                                            st.success(f"✅ Compra simulada: {rid} — {amount}€")
-                                            st.session_state["show_client_form"] = True
-                                            st.session_state["transaction_type"] = "purchase"
-                                            st.session_state["transaction_id"] = rid
-                                            st.rerun()
+                                        # Compra del proyecto (paquete ZIP) — pedir email comprador
+                                        buyer_email = st.text_input("Email comprador (para facturación)", key=f"buy_email_{proj.get('id')}")
+                                        if st.button("Comprar Proyecto (Paquete ZIP)", key=f"buy_proj_{proj.get('id')}"):
+                                            if not buyer_email or '@' not in buyer_email:
+                                                st.error('Introduce un email válido para completar la compra')
+                                            else:
+                                                precio_base = float(proj.get('presupuesto_ejecucion') or proj.get('m2_construidos') or 0)
+                                                try:
+                                                    comision = db.registrar_venta_proyecto(proj.get('id'), buyer_email, 'Paquete ZIP', precio_base)
+                                                except Exception:
+                                                    comision = 0.0
+
+                                                try:
+                                                    from export_ops import generar_paquete_descarga
+                                                    paquete = generar_paquete_descarga(proj.get('titulo', proj.get('nombre', 'proyecto')))
+                                                    st.download_button('Descargar paquete ZIP', data=paquete, file_name=f"{proj.get('titulo', proj.get('nombre', 'proyecto'))}.zip", mime='application/zip')
+                                                    st.success(f'Compra registrada. Comisión Archirapid: €{comision:.2f}')
+                                                except Exception as e:
+                                                    st.error(f'Error generando paquete de descarga: {e}')
                         else:
-                            st.info("No hay proyectos compatibles para esta finca.")
+                            st.info("No hay proyectos que encajen con la edificabilidad de esta finca.")
 
                         # Información adicional
                         if st.button("📊 Mostrar Información Adicional", key=f"info_{p['id']}", help="Ver datos técnicos completos"):
@@ -391,26 +423,29 @@ def main():
 
     # Proyectos Arquitectónicos
     st.markdown("---")
-    st.header("🏗️ Proyectos Arquitectónicos Disponibles")
-    projects = list_projects()
-    if projects:
-        for proj in projects:
-            # Botón visual con thumbnail
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                fotos = proj['files'].get('fotos', [])
-                thumbnail = f"uploads/{os.path.basename(fotos[0])}" if fotos else "assets/fincas/image1.jpg"
-                st.image(thumbnail, width=100, caption="")
-                if st.button("Ver Proyecto", key=f"view_{proj['id']}"):
-                    st.session_state.selected_proj = proj['id']
-            with col2:
-                st.subheader(f"{proj['title']}")
-                st.write(f"**Arquitecto:** {proj['architect_name']} ({proj['company'] or 'Independiente'})")
-                st.write(f"**Precio:** €{proj['price']} | **Área:** {proj['area_m2']} m²")
-                st.write(f"**Descripción:** {proj['description'][:100]}...")
-            
-    else:
-        st.info("No hay proyectos arquitectónicos disponibles aún. ¡Sé el primero en subir uno!")
+    # Temporarily disabled: list_projects() currently raises DB error (no such column: p.characteristics_json)
+    # Wrapping the entire projects block in `if False` until DB schema is fixed.
+    if False:
+        st.header("🏗️ Proyectos Arquitectónicos Disponibles")
+        projects = list_projects()
+        if projects:
+            for proj in projects:
+                # Botón visual con thumbnail
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    fotos = proj['files'].get('fotos', [])
+                    thumbnail = f"uploads/{os.path.basename(fotos[0])}" if fotos else "assets/fincas/image1.jpg"
+                    st.image(thumbnail, width=100, caption="")
+                    if st.button("Ver Proyecto", key=f"view_{proj['id']}"):
+                        st.session_state.selected_proj = proj['id']
+                with col2:
+                    st.subheader(f"{proj['title']}")
+                    st.write(f"**Arquitecto:** {proj['architect_name']} ({proj['company'] or 'Independiente'})")
+                    st.write(f"**Precio:** €{proj['price']} | **Área:** {proj['area_m2']} m²")
+                    st.write(f"**Descripción:** {proj['description'][:100]}...")
+                
+        else:
+            st.info("No hay proyectos arquitectónicos disponibles aún. ¡Sé el primero en subir uno!")
 
     # Mostrar detalles del proyecto seleccionado
     selected_proj_id = st.session_state.get('selected_proj')
@@ -616,27 +651,31 @@ def main():
         st.session_state["selected_plot"] = pid  # sync
         st.markdown("---")
         st.subheader("Detalle finca")
-        p = next((x for x in plots if x["id"]==pid), None)
+        p = next((x for x in plots_all if x["id"]==pid), None)
         if p:
-            img_path = get_plot_image_path(p)
-            st.image(img_path, width=400)
-            st.write(f"**Título:** {p['title']}")
-            st.write(f"**Superficie:** {p.get('surface_m2')} m²")
-            st.write(f"**Precio:** €{p.get('price')}")
-            st.write(f"**Referencia catastral:** {p.get('cadastral_ref', 'N/A')}")
-            
-            # Additional actions
-            st.subheader("🔧 Acciones Disponibles")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button("📊 Extraer Datos Catastrales", key=f"extract_{pid}"):
-                    st.info("Funcionalidad de extracción catastral - Implementada en módulo separado")
-            with col2:
-                if st.button("🔍 Examinar Edificabilidad", key=f"edificability_{pid}"):
-                    st.info("Análisis de edificabilidad disponible en Design Assistant")
-            with col3:
-                if st.button("📋 Generar Informe", key=f"report_{pid}"):
-                    st.info("Generando informe detallado...")
+            try:
+                st.write("DEBUG main() mostrando detalle de:", p.get('id'))
+                img_path = get_plot_image_path(p)
+                st.image(img_path, width=400)
+                st.write(f"**Título:** {p['title']}")
+                st.write(f"**Superficie:** {p.get('surface_m2')} m²")
+                st.write(f"**Precio:** €{p.get('price')}")
+                st.write(f"**Referencia catastral:** {p.get('cadastral_ref', 'N/A')}")
+
+                # Additional actions
+                st.subheader("🔧 Acciones Disponibles")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    if st.button("📊 Extraer Datos Catastrales", key=f"extract_{pid}"):
+                        st.info("Funcionalidad de extracción catastral - Implementada en módulo separado")
+                with col2:
+                    if st.button("🔍 Examinar Edificabilidad", key=f"edificability_{pid}"):
+                        st.info("Análisis de edificabilidad disponible en Design Assistant")
+                with col3:
+                    if st.button("📋 Generar Informe", key=f"report_{pid}"):
+                        st.info("Generando informe detallado...")
+            except Exception as e:
+                st.error(f"ERROR en show_plot_details: {e}")
             
             st.subheader("💰 Opciones de Compra")
             if st.button("Reservar 10%", key=f"reserve_10_detail_{pid}"):

@@ -118,15 +118,13 @@ def mostrar_plots_on_map(province: str | None = None, query: str | None = None, 
                 locality = r['locality'] or ''
                 m2 = r['m2'] if r['m2'] is not None else ''
                 price = r['price'] if r['price'] is not None else '—'
-                # Add a link that sets ?selected_plot=<id> to allow the UI to show details
-                # Use target="_top" so the parent Streamlit window navigates (not the iframe)
-                details_link = f"<br/><a href='?selected_plot={r['id']}' target='_top'>Ver más detalles</a>"
+                # Enlace a más detalles (de momento que al menos se vea)
+                details_link = f"<br/><a href='http://localhost:8501/?selected_plot={r['id']}' target='_blank'>Ver más detalles</a>"
                 popup_html = f"<b>{title}</b><br/>{locality}<br/>{m2} m² · €{price}{details_link}"
                 popup = folium.Popup(popup_html, max_width=300)
-                icon = folium.Icon(color="red", icon="home")
+                icon = folium.Icon(color='red', icon='home')
                 folium.Marker([r['lat'], r['lon']], popup=popup, tooltip=title, icon=icon).add_to(m)
             except Exception:
-                # keep iterating even if one marker fails
                 continue
 
         return st_folium(m, width=width, height=height)

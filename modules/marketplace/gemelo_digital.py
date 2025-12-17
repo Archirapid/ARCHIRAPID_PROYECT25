@@ -269,6 +269,35 @@ Tarea:
         return f"Error al consultar IA: {str(e)}. Verifica configuración de API."
 
 
+def analizar_impacto_ambiental(m2_construidos: float, estilo: str) -> dict:
+    """Simula un análisis de eficiencia y emisiones para un proyecto.
+
+    - Si el estilo es 'Moderno' o 'Sostenible' (variante insensible a mayúsculas),
+      la eficiencia se considera alta ('A').
+    - Si el estilo es 'Rústica Tradicional' o similares, se considera 'C'.
+    - En otros casos se asigna 'B'.
+
+    Retorna un dict con claves: 'eficiencia_energetica' y 'emisiones_co2_kg'.
+    """
+    estilo_norm = (estilo or '').strip().lower()
+    if estilo_norm in ('moderno', 'moderna', 'sostenible', 'eco', 'sustainable'):
+        eficiencia = 'A'
+    elif estilo_norm in ('rustica tradicional', 'rústica tradicional', 'rustico', 'rústico'):
+        eficiencia = 'C'
+    else:
+        eficiencia = 'B'
+
+    try:
+        emisiones = 500 + float(m2_construidos)
+    except Exception:
+        emisiones = 500.0
+
+    return {
+        'eficiencia_energetica': eficiencia,
+        'emisiones_co2_kg': emisiones
+    }
+
+
 def main():
     """Interfaz principal del Gemelo Digital"""
     st.title("🏠 Gemelo Digital Inteligente")

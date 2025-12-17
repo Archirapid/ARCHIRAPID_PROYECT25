@@ -52,9 +52,7 @@ if "selected_page" in st.session_state:
 if page == "Home":
     # HEADER
     with st.container():
-        # Ensure page identity visible for debugging
-        st.title("ARCHIRAPID")
-        st.error("🚀 TEST DE CONEXIÓN: SI LEES ESTO, EL ARCHIVO ES EL CORRECTO")
+        # header rendered above (single invocation)
         try:
             from components.header import render_header
             cols = render_header()
@@ -183,21 +181,7 @@ if page == "Home":
         else:
             st.info("Mapa no disponible (módulos faltantes)")
 
-    # Verificación rápida: número de fincas en la base de datos central
-    try:
-        conn = _db.get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM plots")
-        plots_count = cur.fetchone()[0]
-        conn.close()
-        st.write("Número de fincas encontradas:", plots_count)
-        # Mostrar ruta absoluta usada por el lector de DB
-        try:
-            st.write("DB usada:", str(_db.DB_PATH))
-        except Exception:
-            pass
-    except Exception:
-        pass
+    # (Removed quick DB counts for a cleaner Home presentation)
 
     st.markdown("---")
 
@@ -241,23 +225,6 @@ if page == "Home":
     cols = st.columns(3)
     for idx, p in enumerate(projects[:3]):
         with cols[idx]:
-            # Debug: mostrar contenido bruto del objeto proyecto en la UI
-            try:
-                st.write("Datos brutos del proyecto:", p)
-            except Exception:
-                pass
-            # Mapeo directo: extraer valores desde columnas del row (compatibilidad con dict row)
-            project = p
-            hab = project['habitaciones'] if 'habitaciones' in project else project.get('habitaciones', '—')
-            ban = project['banos'] if 'banos' in project else project.get('banos', '—')
-            m2_area = project['area_m2'] if 'area_m2' in project else project.get('m2_construidos', '—')
-            # Fallback: si `hab` está vacío o None, buscar en JSON
-            try:
-                if hab in (None, ''):
-                    _raw = json.loads(project.get('characteristics_json') or '{}')
-                    hab = _raw.get('habitaciones', hab)
-            except Exception:
-                pass
             # Parse safe JSON (normalize nested `characteristics` and `extras` to a flat dict)
             try:
                 raw = json.loads(p.get('characteristics_json') or '{}')
@@ -315,7 +282,8 @@ if page == "Home":
             st.markdown(f"**{title}**")
             if price is not None:
                 try:
-                    st.markdown(f"**Precio:** 🔸 €{float(price):,.0f}")
+                    price_num = float(price)
+                    st.markdown(f"**Precio:** 🔸 €{format(price_num, ',.0f')}")
                 except Exception:
                     st.markdown(f"**Precio:** 🔸 {price}")
             else:
@@ -326,22 +294,21 @@ if page == "Home":
             # Expander principal (único)
             with st.expander("🔍 Ver Ficha Técnica y Multimedia"):
                 # Mapeo estricto: usar exactamente las claves que aparecen en la tabla de auditoría.
-                # Permitimos tanto 'baños' (con tilde) como 'banos' (sin tilde) por compatibilidad, pero
-                # NO buscamos sinónimos en inglés u otros nombres.
                 habitaciones = _get_project_value(p, data, 'habitaciones') or '—'
                 banos = _get_project_value(p, data, 'baños') or '—'
                 plantas = _get_project_value(p, data, 'plantas') or '—'
                 piscina = _get_project_value(p, data, 'piscina') or False
                 garaje = _get_project_value(p, data, 'garaje') or False
+                m2_area = _get_project_value(p, data, 'm2_area') or _get_project_value(p, data, 'm2_construidos') or area or '—'
 
-                # Mostrar métricas en columnas
+                # Mostrar métricas en columnas (usar las variables exactas solicitadas)
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    st.caption(f"🛏️ Habitaciones: {hab if hab not in (None,'') else '—'}")
-                    st.caption(f"🏢 Plantas: {plantas}")
+                    st.caption(f"🛏️ Habitaciones: {habitaciones if habitaciones not in (None,'') else '—'}")
+                    st.caption(f"🏢 Plantas: {plantas if plantas not in (None,'') else '—'}")
                 with c2:
-                    st.caption(f"🛁 Baños: {ban if ban not in (None,'') else '—'}")
-                    constructed = m2_area if m2_area not in (None,'') else (data.get('m2_construidos') or area or '—')
+                    st.caption(f"🛁 Baños: {banos if banos not in (None,'') else '—'}")
+                    constructed = m2_area if m2_area not in (None,'') else '—'
                     st.caption(f"📐 Construidos: {constructed} m²")
                 with c3:
                     st.caption("🏊 Piscina: ✅" if piscina else "🏊 Piscina: —")

@@ -87,9 +87,20 @@ def create_plot_record(plot):
 
 def list_published_plots():
     conn = db_conn(); c=conn.cursor()
-    c.execute("SELECT id,title,cadastral_ref,surface_m2,buildable_m2,price,lat,lon,status,photo_paths,registry_note_path FROM plots WHERE status='published'")
+    # Traer todas las filas de plots (sin filtrar por status)
+    c.execute("SELECT id,title,cadastral_ref,surface_m2,buildable_m2,price,lat,lon,status,photo_paths,registry_note_path FROM plots")
     rows = c.fetchall(); conn.close()
     cols = ["id","title","cadastral_ref","surface_m2","buildable_m2","price","lat","lon","status","photo_paths","registry_note_path"]
+    # Depuración: indicar cuántas filas devuelve (usar st.write en UI cuando sea posible)
+    try:
+        try:
+            import streamlit as st
+            st.write(f"DEBUG list_published_plots: {len(rows)} filas")
+        except Exception:
+            # fallback a print en entorno no interactivo
+            print(f"DEBUG list_published_plots: {len(rows)} filas")
+    except Exception:
+        pass
     return [dict(zip(cols,r)) for r in rows]
 
 def list_projects():

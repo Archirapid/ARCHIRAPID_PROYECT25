@@ -344,36 +344,37 @@ if page == "Home":
                 # Botones de interacción (simulados). Mostrar botón 3D si existe modelo_3d en data top-level o files.
                 col_a, col_b = st.columns(2)
                 with col_a:
-                    if st.button("Simular Realidad Virtual (RV)", key=f"rv_{p.get('id')}"):
-                        st.info("Iniciando simulación RV (simulada)...")
+                    if st.button("🥽 Experiencia RV", key=f"rv_{p.get('id')}"):
+                        st.info("Iniciando simulación RV (simulada).")
                 with col_b:
-                    # Descargar Memoria Técnica / PDF si existe
-                    pdf_candidate = None
-                    for k in ('memoria_pdf', 'planos_pdf', 'memoria', 'memoria_tecnica', 'pdf'):
+                    # Demo preview for 3D: show preview button only if model file exists
+                    modelo_3d = None
+                    for k in ('modelo_3d_path', 'modelo_3d_glb', 'modelo_3d'):
                         if k in data and data.get(k):
-                            pdf_candidate = data.get(k)
+                            modelo_3d = data.get(k)
                             break
                         if p.get(k):
-                            pdf_candidate = p.get(k)
+                            modelo_3d = p.get(k)
                             break
 
-                    pdf_checked = None
-                    if pdf_candidate and isinstance(pdf_candidate, str) and pdf_candidate.strip():
+                    modelo_3d_checked = None
+                    if modelo_3d and isinstance(modelo_3d, str) and modelo_3d.strip():
                         root = Path(r"C:/ARCHIRAPID_PROYECT25")
-                        pth = Path(pdf_candidate)
+                        pth = Path(modelo_3d)
                         if not pth.is_absolute():
-                            pdf_checked = str((root / pdf_candidate).resolve())
+                            modelo_3d_checked = str((root / modelo_3d).resolve())
                         else:
-                            pdf_checked = str(pth)
+                            modelo_3d_checked = str(pth)
 
-                    if pdf_checked and Path(pdf_checked).exists():
-                        try:
-                            with open(pdf_checked, 'rb') as fpdf:
-                                st.download_button("Descargar Nota Catastral", data=fpdf, file_name=Path(pdf_checked).name, mime='application/pdf', key=f"dlpdf_{p.get('id')}")
-                        except Exception:
-                            st.caption("Memoria Técnica: —")
+                    if modelo_3d_checked and Path(modelo_3d_checked).exists():
+                        if st.button("👁️ Vista Previa 3D", key=f"preview3d_{p.get('id')}"):
+                            st.info("Cargando visor... (demo)")
                     else:
-                        st.caption("Memoria Técnica: —")
+                        st.caption("Vista Previa 3D: —")
+
+                # Purchase CTA: block direct downloads — users must acquire the project
+                if st.button("🛒 Adquirir Proyecto Completo (Memoria + 3D + Planos)", key=f"buy_{p.get('id')}"):
+                    st.warning("Pasarela de pago en mantenimiento. Contacte con Archirapid para adquirir este diseño.")
 elif page == "Propietario (Gemelo Digital)":
     with st.container():
         # Flujo principal: Propietario sube finca → IA genera plan

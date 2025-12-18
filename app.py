@@ -3,6 +3,10 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import os
+import threading
+import http.server
+import socketserver
+import functools
 from pathlib import Path
 from src import db as _db
 
@@ -52,6 +56,24 @@ if "selected_page" in st.session_state:
     del st.session_state["selected_page"]
 
 if page == "Home":
+    # Start a simple static server to expose `uploads/` on localhost for secure viewing
+    def _start_static_server(root_dir: Path, port: int = 8765):
+        if st.session_state.get("static_server_started"):
+            return st.session_state.get("static_server_port")
+        try:
+            Handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(root_dir))
+            httpd = socketserver.ThreadingTCPServer(("127.0.0.1", port), Handler)
+        except Exception:
+            return None
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        st.session_state["static_server_started"] = True
+        st.session_state["static_server_port"] = port
+        st.session_state["static_server_obj"] = httpd
+        return port
+
+    STATIC_ROOT = Path(r"C:/ARCHIRAPID_PROYECT25")
+    STATIC_PORT = _start_static_server(STATIC_ROOT, port=8765)
     # HEADER
     with st.container():
         # header rendered above (single invocation)
@@ -366,15 +388,111 @@ if page == "Home":
                         else:
                             modelo_3d_checked = str(pth)
 
-                    if modelo_3d_checked and Path(modelo_3d_checked).exists():
+                    show3d_key = f"show_3d_{p.get('id')}"
+                    model_url = None
+                    if STATIC_PORT and modelo_3d_checked and Path(modelo_3d_checked).exists():
+                        try:
+                            rel = Path(modelo_3d_checked).relative_to(STATIC_ROOT).as_posix()
+                            model_url = f"http://127.0.0.1:{STATIC_PORT}/{rel}"
+                        except Exception:
+                            model_url = None
+
+                    if model_url:
                         if st.button("👁️ Vista Previa 3D", key=f"preview3d_{p.get('id')}"):
-                            st.info("Cargando visor... (demo)")
+                            st.session_state[show3d_key] = True
                     else:
                         st.caption("Vista Previa 3D: —")
 
-                # Purchase CTA: block direct downloads — users must acquire the project
-                if st.button("🛒 Adquirir Proyecto Completo (Memoria + 3D + Planos)", key=f"buy_{p.get('id')}"):
-                    st.warning("Pasarela de pago en mantenimiento. Contacte con Archirapid para adquirir este diseño.")
+                                # Purchase CTA: block direct downloads — users must acquire the project
+                                if st.button("🛒 Adquirir Proyecto Completo (Memoria + 3D + Planos)", key=f"buy_{p.get('id')}"):
+                                        st.warning("Pasarela de pago en mantenimiento. Contacte con Archirapid para adquirir este diseño.")
+
+                                # Render preview expanders if requested
+                                # 3D viewer
+                                if st.session_state.get(f"show_3d_{p.get('id')}"):
+                                        with st.expander("👁️ Vista Previa 3D", expanded=True):
+                                                if model_url:
+                                                        # Three.js OBJ viewer embebido
+                                                        three_html = f"""
+<!doctype html>
+<html>
+    <head>
+        <meta charset=\"utf-8\" />
+        <style>body {{ margin: 0; overflow: hidden; }}</style>
+    </head>
+    <body>
+        <div id=\"container\"></div>
+        <script src=\"https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js\"></script>
+        <script src=\"https://threejs.org/examples/js/loaders/OBJLoader.js\"></script>
+        <script src=\"https://threejs.org/examples/js/controls/OrbitControls.js\"></script>
+        <script>
+            const container = document.getElementById('container');
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.5, 3);
+            const renderer = new THREE.WebGLRenderer({antialias:true});
+            renderer.setSize(window.innerWidth, 600);
+            container.appendChild(renderer.domElement);
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(5,10,7.5);
+            scene.add(light);
+            const ambient = new THREE.AmbientLight(0x404040);
+            scene.add(ambient);
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.target.set(0,1,0);
+            controls.update();
+            const loader = new THREE.OBJLoader();
+            loader.load('{model_url}', function(object){
+                // center and scale
+                let box = new THREE.Box3().setFromObject(object);
+                let size = box.getSize(new THREE.Vector3());
+                const maxAxis = Math.max(size.x, size.y, size.z);
+                object.scale.multiplyScalar(1.0 / maxAxis);
+                box = new THREE.Box3().setFromObject(object);
+                const center = box.getCenter(new THREE.Vector3());
+                object.position.sub(center);
+                scene.add(object);
+            }, function(xhr){
+                // progress
+            }, function(err){
+                const info = document.createElement('div');
+                info.style.padding='20px';
+                info.innerText = 'Generando previsualización 3D segura...';
+                document.body.appendChild(info);
+            });
+            function animate(){requestAnimationFrame(animate); renderer.render(scene,camera);} animate();
+        </script>
+    </body>
+</html>
+"""
+                                                        st.components.v1.html(three_html, height=620)
+                                                else:
+                                                        st.info("Visor 3D no disponible para este proyecto.")
+
+                                # RV viewer
+                                showrv_key = f"show_rv_{p.get('id')}"
+                                if st.session_state.get(showrv_key):
+                                        with st.expander("🥽 Experiencia RV", expanded=True):
+                                                # Attempt to show 360 image via A-Frame sky
+                                                img_url = None
+                                                try:
+                                                        if image_preview:
+                                                                # resolve to static URL if possible
+                                                                if STATIC_PORT:
+                                                                        rel_img = Path(image_preview).relative_to(STATIC_ROOT).as_posix()
+                                                                        img_url = f"http://127.0.0.1:{STATIC_PORT}/{rel_img}"
+                                                except Exception:
+                                                        img_url = None
+                                                if img_url:
+                                                        rv_html = f"""
+<script src=\"https://aframe.io/releases/1.2.0/aframe.min.js\"></script>
+<a-scene embedded style=\"width:100%;height:600px;\">
+    <a-sky src=\"{img_url}\"></a-sky>
+</a-scene>
+"""
+                                                        st.components.v1.html(rv_html, height=620)
+                                                else:
+                                                        st.info("Visor RV no disponible para este proyecto.")
 elif page == "Propietario (Gemelo Digital)":
     with st.container():
         # Flujo principal: Propietario sube finca → IA genera plan

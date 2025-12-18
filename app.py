@@ -369,7 +369,7 @@ if page == "Home":
                     if pdf_checked and Path(pdf_checked).exists():
                         try:
                             with open(pdf_checked, 'rb') as fpdf:
-                                st.download_button("📄 Descargar Memoria Técnica", data=fpdf, file_name=Path(pdf_checked).name, mime='application/pdf', key=f"dlpdf_{p.get('id')}")
+                                st.download_button("Descargar Nota Catastral", data=fpdf, file_name=Path(pdf_checked).name, mime='application/pdf', key=f"dlpdf_{p.get('id')}")
                         except Exception:
                             st.caption("Memoria Técnica: —")
                     else:

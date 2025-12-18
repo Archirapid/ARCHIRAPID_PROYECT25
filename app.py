@@ -2,6 +2,8 @@ import streamlit as st
 
 import sqlite3
 import pandas as pd
+import os
+from pathlib import Path
 from src import db as _db
 
 # Page configuration: wide layout and sidebar expanded by default
@@ -297,7 +299,17 @@ if page == "Home":
                 habitaciones = _get_project_value(p, data, 'habitaciones') or '—'
                 banos = _get_project_value(p, data, 'baños') or '—'
                 plantas = _get_project_value(p, data, 'plantas') or '—'
-                piscina = _get_project_value(p, data, 'piscina') or False
+                piscina_raw = _get_project_value(p, data, 'piscina') or False
+                # Normalize piscina: accept 1/True/'1'/'true'/'si'
+                piscina = False
+                try:
+                    if isinstance(piscina_raw, str):
+                        piscina = piscina_raw.strip().lower() in ('1', 'true', 'si', 'yes', 'y')
+                    else:
+                        piscina = bool(int(piscina_raw)) if isinstance(piscina_raw, (int, float)) else bool(piscina_raw)
+                except Exception:
+                    piscina = bool(piscina_raw)
+
                 garaje = _get_project_value(p, data, 'garaje') or False
                 m2_area = _get_project_value(p, data, 'm2_area') or _get_project_value(p, data, 'm2_construidos') or area or '—'
 
@@ -335,18 +347,33 @@ if page == "Home":
                     if st.button("Simular Realidad Virtual (RV)", key=f"rv_{p.get('id')}"):
                         st.info("Iniciando simulación RV (simulada)...")
                 with col_b:
-                    modelo_3d = None
-                    # Usar únicamente la columna/clave exacta para el modelo 3D
-                    if 'modelo_3d_path' in data and data.get('modelo_3d_path'):
-                        modelo_3d = data.get('modelo_3d_path')
-                    elif p.get('modelo_3d_path'):
-                        modelo_3d = p.get('modelo_3d_path')
+                    # Descargar Memoria Técnica / PDF si existe
+                    pdf_candidate = None
+                    for k in ('memoria_pdf', 'planos_pdf', 'memoria', 'memoria_tecnica', 'pdf'):
+                        if k in data and data.get(k):
+                            pdf_candidate = data.get(k)
+                            break
+                        if p.get(k):
+                            pdf_candidate = p.get(k)
+                            break
 
-                    if modelo_3d:
-                        if st.button("🌐 Abrir Visor 3D", key=f"load3d_{p.get('id')}"):
-                            st.info("Abriendo Visor 3D (simulado). No se expone la ruta real.")
+                    pdf_checked = None
+                    if pdf_candidate and isinstance(pdf_candidate, str) and pdf_candidate.strip():
+                        root = Path(r"C:/ARCHIRAPID_PROYECT25")
+                        pth = Path(pdf_candidate)
+                        if not pth.is_absolute():
+                            pdf_checked = str((root / pdf_candidate).resolve())
+                        else:
+                            pdf_checked = str(pth)
+
+                    if pdf_checked and Path(pdf_checked).exists():
+                        try:
+                            with open(pdf_checked, 'rb') as fpdf:
+                                st.download_button("📄 Descargar Memoria Técnica", data=fpdf, file_name=Path(pdf_checked).name, mime='application/pdf', key=f"dlpdf_{p.get('id')}")
+                        except Exception:
+                            st.caption("Memoria Técnica: —")
                     else:
-                        st.caption("Modelo 3D: —")
+                        st.caption("Memoria Técnica: —")
 elif page == "Propietario (Gemelo Digital)":
     with st.container():
         # Flujo principal: Propietario sube finca → IA genera plan

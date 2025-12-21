@@ -557,6 +557,34 @@ def main():
                             st.download_button(f"Descargar Archivo RV ({rv_path})", data=open(f"uploads/{rv_path}", 'rb'), file_name=rv_path, key=f"dl_rv_{proj['id']}")
                         else:
                             st.info("No hay experiencia RV disponible para este proyecto.")
+
+                    # --- Bloque 'Me gusta / Lo quiero' (aditivo, seguro) ---
+                    st.markdown("---")
+                    st.markdown("### ❤️ ¿Te gusta este proyecto?")
+
+                    email = st.session_state.get("email", "")
+                    proyecto_id = proj.get('id')
+                    proyecto_titulo = proj.get('title') or proj.get('titulo', 'Proyecto sin título')
+
+                    if not email:
+                        st.info("Para guardar este proyecto en tu espacio de cliente, introduce tu email:")
+                        email_input = st.text_input("Tu email", key=f"email_interes_proyecto_{proyecto_id}")
+
+                        if st.button("✅ Guardar este proyecto y continuar", key=f"btn_guardar_proyecto_email_{proyecto_id}"):
+                            if email_input:
+                                st.session_state["email"] = email_input
+                                st.session_state["interes_proyecto_id"] = proyecto_id
+                                st.session_state["interes_proyecto_titulo"] = proyecto_titulo
+                                st.success("Proyecto guardado. Nuestro equipo comercial podrá contactarte si lo deseas.")
+                                st.experimental_rerun()
+                            else:
+                                st.warning("Por favor, introduce un email válido.")
+                    else:
+                        st.success(f"Estás navegando como: {email}")
+                        if st.button("💾 Me gusta este proyecto (guardarlo)", key=f"btn_me_gusta_proyecto_{proyecto_id}"):
+                            st.session_state["interes_proyecto_id"] = proyecto_id
+                            st.session_state["interes_proyecto_titulo"] = proyecto_titulo
+                            st.success("✅ Hemos guardado tu interés por este proyecto.")
                 
                     with tab_datos:
                         st.subheader("Información Detallada del Proyecto")

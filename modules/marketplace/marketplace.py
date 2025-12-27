@@ -1,7 +1,7 @@
 import streamlit as st
 from modules.marketplace.utils import list_published_plots, save_upload, reserve_plot, list_projects, calculate_edificability
 from src import db
-from streamlit_folium import st_folium
+import streamlit as st
 import folium
 import uuid
 import base64
@@ -87,11 +87,12 @@ def main():
     if params.get("selected_plot"):
         selected_plot_local = params["selected_plot"][0] if isinstance(params["selected_plot"], list) else params["selected_plot"]
 
-    # Debug: report selected_plot value
-    try:
-        st.write("DEBUG main() selected_plot:", selected_plot_local)
-    except Exception:
-        pass
+    # Si hay una finca seleccionada, mostrar página de detalles y salir
+    if selected_plot_local:
+        from modules.marketplace.plot_detail import show_plot_detail_page
+        show_plot_detail_page(selected_plot_local)
+        return
+    
     st.title("ARCHIRAPID — Marketplace de Fincas y Proyectos")
 
     st.sidebar.header("Filtros")
@@ -131,26 +132,54 @@ def main():
                     st.image(img_path, width=120, caption=f"{p['title'][:15]}...")
 
     with right:
-        m = folium.Map(location=[40.1,-4.0], zoom_start=6, tiles="CartoDB positron")
-        for p in plots:
-            lat = p['lat'] or (40.1 + hash(p['id']) % 10 * 0.01)
-            lon = p['lon'] or (-4.0 + hash(p['id']) % 10 * 0.01)
-            img_path = get_plot_image_path(p)
-            img_base64 = get_image_base64(img_path)
-            icon = folium.Icon(color='red', icon='map-marker', prefix='fa')
-            popup_html = f"""
-            <div style='width:220px'>
-                <h4>{p['title']}</h4>
-                <img src='{img_base64}' width='200' style='margin-bottom:10px;'>
-                <div>{p.get('surface_m2')} m² · €{p.get('price')}</div>
-                <button onclick="window.location.href = window.location.pathname + '?selected_plot={p['id']}'" style='display:block; margin-top:10px; padding:5px; background:#4CAF50; color:white; border:none; border-radius:3px; text-align:center; width:100%; cursor:pointer;'>Ver detalles aquí</button>
-            </div>
-            """
-            marker = folium.Marker([lat,lon], icon=icon, popup=popup_html)
-            marker.add_to(m)
-            # Asignar ID al marker para identificación
-            marker._id = p['id']
-        map_data = st_folium(m, width=700, height=600)
+        st.header("🗺️ Mapa de Fincas")
+        # Filtrar solo plots con coordenadas válidas
+        plots_with_coords = [p for p in plots if p.get('lat') is not None and p.get('lon') is not None]
+        
+        if not plots_with_coords:
+            st.info("📍 No hay fincas con coordenadas disponibles para mostrar en el mapa. Las fincas aparecerán aquí una vez que se publiquen con ubicación válida.")
+        else:
+            # Calcular centro del mapa basado en las coordenadas disponibles
+            lats = [float(p['lat']) for p in plots_with_coords]
+            lons = [float(p['lon']) for p in plots_with_coords]
+            center_lat = sum(lats) / len(lats) if lats else 40.1
+            center_lon = sum(lons) / len(lons) if lons else -4.0
+            zoom_level = 6 if len(plots_with_coords) > 1 else 12
+            
+            m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level, tiles="CartoDB positron")
+            
+            for p in plots_with_coords:
+                lat = float(p['lat'])
+                lon = float(p['lon'])
+                img_path = get_plot_image_path(p)
+                img_base64 = get_image_base64(img_path)
+                icon = folium.Icon(color='red', icon='home', prefix='fa')
+                
+                # Obtener superficie (puede ser surface_m2 o m2)
+                superficie = p.get('surface_m2') or p.get('m2') or 0
+                precio = p.get('price') or 0
+                
+                popup_html = f"""
+                <div style='width:220px'>
+                    <h4>{p.get('title', 'Sin título')}</h4>
+                    <img src='{img_base64}' width='200' style='margin-bottom:10px; border-radius:5px;'>
+                    <div style='font-weight:bold; margin-bottom:5px;'>{superficie} m² · €{precio:,.0f}</div>
+                    <button onclick="window.location.href = window.location.pathname + '?selected_plot={p['id']}'" style='display:block; margin-top:10px; padding:5px; background:#4CAF50; color:white; border:none; border-radius:3px; text-align:center; width:100%; cursor:pointer;'>Ver más detalles</button>
+                </div>
+                """
+                marker = folium.Marker([lat, lon], icon=icon, popup=folium.Popup(popup_html, max_width=250))
+                marker.add_to(m)
+                marker._id = p['id']
+            
+            # Renderizar el mapa solo si se creó correctamente
+            try:
+                st.components.v1.html(m._repr_html_(), height=600)
+            except Exception as e:
+                st.error(f"No fue posible renderizar el mapa interactivo: {str(e)}")
+                # Fallback: mostrar coordenadas como texto
+                st.write("**Fincas encontradas:**")
+                for p in plots_with_coords:
+                    st.write(f"- {p.get('title', 'Sin título')}: {p.get('lat')}, {p.get('lon')}")
 
         # NO detectar clics aquí - usar solo el botón del popup que cambia URL
 
@@ -673,44 +702,8 @@ def main():
                         
                         st.caption("Nota: Esta es una simulación para el MVP. El proceso real incluirá contratos legales y pagos seguros.")
 
-    # details & reserve
+    # Mostrar página de detalles si hay una finca seleccionada
     if selected_plot_local:
-        pid = selected_plot_local
-        st.session_state["selected_plot"] = pid  # sync
-        st.markdown("---")
-        st.subheader("Detalle finca")
-        p = next((x for x in plots_all if x["id"]==pid), None)
-        if p:
-            try:
-                st.write("DEBUG main() mostrando detalle de:", p.get('id'))
-                img_path = get_plot_image_path(p)
-                st.image(img_path, width=400)
-                st.write(f"**Título:** {p['title']}")
-                st.write(f"**Superficie:** {p.get('surface_m2')} m²")
-                st.write(f"**Precio:** €{p.get('price')}")
-                st.write(f"**Referencia catastral:** {p.get('cadastral_ref', 'N/A')}")
-
-                # Additional actions
-                st.subheader("🔧 Acciones Disponibles")
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    if st.button("📊 Extraer Datos Catastrales", key=f"extract_{pid}"):
-                        st.info("Funcionalidad de extracción catastral - Implementada en módulo separado")
-                with col2:
-                    if st.button("🔍 Examinar Edificabilidad", key=f"edificability_{pid}"):
-                        st.info("Análisis de edificabilidad disponible en Design Assistant")
-                with col3:
-                    if st.button("📋 Generar Informe", key=f"report_{pid}"):
-                        st.info("Generando informe detallado...")
-            except Exception as e:
-                st.error(f"ERROR en show_plot_details: {e}")
-            
-            st.subheader("💰 Opciones de Compra")
-            if st.button("Reservar 10%", key=f"reserve_10_detail_{pid}"):
-                amount = (p.get("price") or 0) * 0.10
-                rid = reserve_plot(pid, "Demo buyer", "demo@example.com", amount, kind="reservation")
-                st.success(f"Reserva simulada: {rid} — {amount}€")
-            if st.button("Comprar (100%)", key=f"purchase_100_detail_{pid}"):
-                amount = (p.get("price") or 0)
-                rid = reserve_plot(pid, "Demo buyer", "demo@example.com", amount, kind="purchase")
-                st.success(f"Compra simulada: {rid} — {amount}€")
+        from modules.marketplace.plot_detail import show_plot_detail_page
+        show_plot_detail_page(selected_plot_local)
+        return  # No mostrar el mapa si estamos viendo detalles

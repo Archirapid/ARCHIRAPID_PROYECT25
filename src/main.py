@@ -3,7 +3,6 @@ Views for showing plot details and handling plot registration.
 """
 import streamlit as st
 import folium
-from streamlit_folium import st_folium
 import uuid
 from datetime import datetime
 from src.db import insert_plot, get_all_plots, get_plot_by_id
@@ -65,10 +64,22 @@ def show_plot_form():
             owner_name = st.text_input("Nombre del propietario", key="plot_owner_name")
             owner_email = st.text_input("Email del propietario", key="plot_owner_email")
             
-        # Mapa para seleccionar ubicación
-        st.subheader("Selecciona la ubicación en el mapa")
-        m = folium.Map(location=[40.4168, -3.7038], zoom_start=6)
-        output = st_folium(m, height=400, width=700)
+        # Campos de coordenadas
+        st.subheader("Coordenadas de ubicación")
+        col_lat, col_lon = st.columns(2)
+        with col_lat:
+            lat = st.number_input("Latitud", value=40.4168, format="%.6f", key="plot_lat")
+        with col_lon:
+            lon = st.number_input("Longitud", value=-3.7038, format="%.6f", key="plot_lon")
+        
+        # Mapa de referencia (solo visualización)
+        st.subheader("Mapa de referencia")
+        m = folium.Map(location=[lat, lon], zoom_start=10)
+        folium.Marker([lat, lon], popup="Ubicación seleccionada").add_to(m)
+        try:
+            st.components.v1.html(m._repr_html_(), height=400)
+        except Exception:
+            st.error("No fue posible renderizar el mapa interactivo.")
         
         # Campos para imágenes
         st.subheader("Archivos")
@@ -81,7 +92,7 @@ def show_plot_form():
             try:
                 # Validar datos obligatorios
                 if not all([title, description, m2, height, price, type, province, 
-                           owner_name, owner_email, output]):
+                           owner_name, owner_email, lat, lon]):
                     st.error("Por favor completa todos los campos obligatorios")
                     return
                 
@@ -105,8 +116,8 @@ def show_plot_form():
                     'id': uuid.uuid4().hex,
                     'title': title,
                     'description': description,
-                    'lat': output['last_clicked']['lat'],
-                    'lon': output['last_clicked']['lng'], 
+                    'lat': float(lat),
+                    'lon': float(lon), 
                     'm2': int(m2),
                     'height': float(height),
                     'price': float(price),
@@ -170,7 +181,10 @@ def show_plots():
         ).add_to(m)
     
     # Mostrar mapa
-    st_folium(m, height=500, width=700)
+    try:
+        st.components.v1.html(m._repr_html_(), height=500)
+    except Exception:
+        st.error("No fue posible renderizar el mapa interactivo.")
     
     # Mostrar listado
     st.subheader("Listado de Fincas")
@@ -225,7 +239,10 @@ def show_plot_detail(plot_id):
     # Mapa individual
     m = folium.Map(location=[plot['lat'], plot['lon']], zoom_start=15)
     folium.Marker([plot['lat'], plot['lon']], popup=plot['title']).add_to(m)
-    st_folium(m, height=400, width=700)
+    try:
+        st.components.v1.html(m._repr_html_(), height=400)
+    except Exception:
+        st.error("No fue posible renderizar el mapa interactivo.")
     
     # Proyectos compatibles
     st.subheader("Proyectos Arquitectónicos Compatibles")

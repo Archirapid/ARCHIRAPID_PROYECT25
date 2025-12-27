@@ -6,7 +6,7 @@ from datetime import datetime
 
 BASE = Path.cwd()
 UPLOADS = BASE / "uploads"
-DB_PATH = BASE / "archirapid.db"
+DB_PATH = BASE / "database.db"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 
 def save_upload(uploaded_file, prefix="file"):
@@ -28,88 +28,60 @@ def db_conn():
 
 def insert_user(user):
     conn = db_conn(); c=conn.cursor()
-    c.execute("INSERT INTO users (id,name,email,role,company,created_at) VALUES (?,?,?,?,?,?)",
-              (user["id"], user["name"], user["email"], user["role"], user.get("company",""), datetime.utcnow().isoformat()))
+    # Support for architects table
+    if user.get("role") == "architect":
+        c.execute("SELECT id FROM architects WHERE email=?", (user['email'],))
+        if not c.fetchone():
+            c.execute("INSERT INTO architects (id,name,email,company,created_at) VALUES (?,?,?,?,?)",
+                      (user["id"], user["name"], user["email"], user.get("company",""), datetime.utcnow().isoformat()))
+    elif user.get("role") == "owner":
+        # Create owners table if not exists with phone and address fields
+        c.execute("""CREATE TABLE IF NOT EXISTS owners (
+            id TEXT PRIMARY KEY, 
+            name TEXT, 
+            email TEXT UNIQUE, 
+            phone TEXT,
+            address TEXT,
+            created_at TEXT
+        )""")
+        c.execute("SELECT id FROM owners WHERE email=?", (user['email'],))
+        if not c.fetchone():
+            c.execute("INSERT INTO owners (id,name,email,phone,address,created_at) VALUES (?,?,?,?,?,?)",
+                      (user["id"], user["name"], user["email"], user.get("phone",""), user.get("address",""), datetime.utcnow().isoformat()))
     conn.commit(); conn.close()
 
 def get_user_by_email(email):
     conn = db_conn(); c=conn.cursor()
-    c.execute("SELECT * FROM users WHERE email=?", (email,))
+    # Check architects table
+    c.execute("SELECT id, name, email, company FROM architects WHERE email=?", (email,))
+    row = c.fetchone()
+    if row:
+        conn.close()
+        return {"id": row[0], "name": row[1], "email": row[2], "company": row[3], "role": "architect"}
+    # Check owners table with phone and address
+    c.execute("""CREATE TABLE IF NOT EXISTS owners (
+        id TEXT PRIMARY KEY, 
+        name TEXT, 
+        email TEXT UNIQUE, 
+        phone TEXT,
+        address TEXT,
+        created_at TEXT
+    )""")
+    c.execute("SELECT id, name, email, phone, address FROM owners WHERE email=?", (email,))
     row = c.fetchone()
     conn.close()
-    return row
-
-def create_plot_record(plot):
-    from datetime import datetime
-    from src import db
-
-    data = {
-        "id": plot.get("id"),
-        "title": plot.get("title"),
-        "description": plot.get("description", "") or plot.get("title"),
-        "lat": plot.get("lat"),
-        "lon": plot.get("lon"),
-        "m2": plot.get("surface_m2") or plot.get("m2"),
-        "height": plot.get("height") or plot.get("max_height") or None,
-        "price": plot.get("price"),
-        "type": plot.get("finca_type") or plot.get("type"),
-        "province": plot.get("province"),
-        "locality": plot.get("locality"),
-        "owner_name": plot.get("owner_name") or plot.get("owner"),
-        "owner_email": plot.get("owner_email"),
-        "owner_phone": plot.get("owner_phone"),
-        "image_path": None,
-        "registry_note_path": plot.get("registry_note_path"),
-        "address": plot.get("owner_address") or plot.get("address") or plot.get("plot_address"),
-        "created_at": datetime.utcnow().isoformat(),
-        "photo_paths": None,
-    }
-
-    # Normalize photo_paths and set image_path to first photo if available
-    photo_paths = plot.get("photo_paths")
-    if isinstance(photo_paths, list):
-        data["photo_paths"] = ";".join(photo_paths)
-        data["image_path"] = photo_paths[0] if len(photo_paths) > 0 else None
-    elif isinstance(photo_paths, str):
-        data["photo_paths"] = photo_paths
-        parts = [p for p in photo_paths.split(";") if p.strip()]
-        data["image_path"] = parts[0] if parts else (plot.get("image_path") or None)
-    else:
-        # fallback to any single image field present
-        data["photo_paths"] = None
-        data["image_path"] = plot.get("image_path") or plot.get("photo")
-
-    # Ensure owner_email/name fallback from top-level plot fields if needed
-    if not data["owner_email"]:
-        data["owner_email"] = plot.get("email") or plot.get("owner_email_address")
-
-    db.insert_plot(data)
-
-def list_published_plots():
-    conn = db_conn(); c=conn.cursor()
-    # Traer todas las filas de plots (sin filtrar por status)
-    c.execute("SELECT id,title,cadastral_ref,surface_m2,buildable_m2,price,lat,lon,status,photo_paths,registry_note_path FROM plots")
-    rows = c.fetchall(); conn.close()
-    cols = ["id","title","cadastral_ref","surface_m2","buildable_m2","price","lat","lon","status","photo_paths","registry_note_path"]
-    # Depuración: indicar cuántas filas devuelve (usar st.write en UI cuando sea posible)
-    try:
-        try:
-            import streamlit as st
-            st.write(f"DEBUG list_published_plots: {len(rows)} filas")
-        except Exception:
-            # fallback a print en entorno no interactivo
-            print(f"DEBUG list_published_plots: {len(rows)} filas")
-    except Exception:
-        pass
-    return [dict(zip(cols,r)) for r in rows]
+    if row:
+        return {"id": row[0], "name": row[1], "email": row[2], "phone": row[3], "address": row[4], "role": "owner"}
+    return None
 
 def list_projects():
     conn = db_conn(); c=conn.cursor()
+    # Join with architects table instead of users
     c.execute("""
         SELECT p.id, p.title, p.description, p.area_m2, p.price, p.files_json, p.characteristics_json, p.plot_id, p.created_at,
-               u.name as architect_name, u.company
+               a.name as architect_name, a.company
         FROM projects p
-        LEFT JOIN users u ON p.architect_id = u.id
+        LEFT JOIN architects a ON p.architect_id = a.id
         ORDER BY p.created_at DESC
     """)
     rows = c.fetchall(); conn.close()
@@ -119,6 +91,81 @@ def list_projects():
         proj['files'] = json.loads(proj['files_json']) if proj['files_json'] else {}
         proj['characteristics'] = json.loads(proj['characteristics_json']) if proj['characteristics_json'] else {}
     return projects
+
+def create_plot_record(plot):
+    from datetime import datetime
+    from src import db
+
+    data = {
+        "id": plot.get("id"),
+        "title": plot.get("title"),
+        "description": plot.get("description", "") or plot.get("title", ""),
+        "lat": plot.get("lat"),  # CRÍTICO: debe estar presente
+        "lon": plot.get("lon"),  # CRÍTICO: debe estar presente
+        "m2": plot.get("surface_m2") or plot.get("m2") or 0,
+        "height": plot.get("height") or plot.get("max_height") or None,
+        "price": plot.get("price") or 0.0,
+        "type": plot.get("finca_type") or plot.get("type") or "Urbano",
+        "province": plot.get("province") or "",
+        "locality": plot.get("locality") or "",
+        "owner_name": plot.get("owner_name") or plot.get("owner") or "",
+        "owner_email": plot.get("owner_email") or "",
+        "owner_phone": plot.get("owner_phone") or "",
+        "image_path": None,
+        "registry_note_path": plot.get("registry_note_path") or None,
+        "address": plot.get("owner_address") or plot.get("address") or plot.get("plot_address") or "",
+        "created_at": plot.get("created_at") or datetime.utcnow().isoformat(),
+        "photo_paths": None,
+        "catastral_ref": plot.get("catastral_ref") or None,
+        "services": plot.get("services") or None,
+        "status": plot.get("status") or "published",
+    }
+
+    # Normalize photo_paths and set image_path to first photo if available
+    photo_paths = plot.get("photo_paths")
+    if isinstance(photo_paths, list):
+        data["photo_paths"] = json.dumps(photo_paths) if photo_paths else None
+        data["image_path"] = photo_paths[0] if len(photo_paths) > 0 else None
+    elif isinstance(photo_paths, str):
+        # Si es JSON string, dejarlo como está; si es delimitado por ;, convertirlo a JSON
+        try:
+            json.loads(photo_paths)  # Verificar si ya es JSON válido
+            data["photo_paths"] = photo_paths
+        except (json.JSONDecodeError, TypeError):
+            # Si no es JSON, asumir que es delimitado por ;
+            parts = [p.strip() for p in photo_paths.split(";") if p.strip()]
+            data["photo_paths"] = json.dumps(parts) if parts else None
+            data["image_path"] = parts[0] if parts else (plot.get("image_path") or None)
+    else:
+        # fallback to any single image field present
+        data["photo_paths"] = None
+        data["image_path"] = plot.get("image_path") or plot.get("photo")
+
+    # Ensure owner_email/name fallback from top-level plot fields if needed
+    if not data["owner_email"]:
+        data["owner_email"] = plot.get("email") or plot.get("owner_email_address")
+    
+    # Validar que lat y lon estén presentes (crítico para el mapa)
+    if data["lat"] is None or data["lon"] is None:
+        raise ValueError(f"Las coordenadas (lat, lon) son obligatorias. lat={data['lat']}, lon={data['lon']}")
+
+    db.insert_plot(data)
+
+def list_published_plots():
+    conn = db_conn(); c=conn.cursor()
+    # Traer todas las filas de plots con coordenadas (lat/lon son críticos para el mapa)
+    # Usar m2 como alias de surface_m2 para compatibilidad
+    c.execute("SELECT id,title,m2 as surface_m2,price,lat,lon,registry_note_path FROM plots WHERE lat IS NOT NULL AND lon IS NOT NULL")
+    rows = c.fetchall(); conn.close()
+    cols = ["id","title","surface_m2","price","lat","lon","registry_note_path"]
+    result = []
+    for r in rows:
+        plot_dict = dict(zip(cols, r))
+        # Asegurar que surface_m2 tenga un valor (usar m2 como fallback)
+        if not plot_dict.get('surface_m2') and plot_dict.get('m2'):
+            plot_dict['surface_m2'] = plot_dict['m2']
+        result.append(plot_dict)
+    return result
 
 def reserve_plot(plot_id, buyer_name, buyer_email, amount, kind="reservation"):
     conn = db_conn(); c=conn.cursor()
@@ -134,23 +181,23 @@ def reserve_plot(plot_id, buyer_name, buyer_email, amount, kind="reservation"):
     return rid
 
 def get_client_proposals(client_email):
-    """Obtener propuestas recibidas por un cliente (owner) con JOIN completo"""
+    """Obtener propuestas recibidas por un cliente (owner) usando owner_email en plots"""
     conn = db_conn(); c = conn.cursor()
+    # Fix: Join architects table, use owner_email from plots
     c.execute("""
         SELECT 
             pr.id, pr.proposal_text, pr.estimated_budget, pr.deadline_days, pr.sketch_image_path, 
             pr.status, pr.created_at, pr.responded_at, pr.delivery_format, pr.delivery_price, 
             pr.supervision_fee, pr.visa_fee, pr.total_cliente, pr.commission, pr.project_id,
             pl.title as plot_title, pl.surface_m2 as plot_surface, pl.price as plot_price,
-            ar.user_id as architect_user_id,
-            u.name as architect_name, u.company as architect_company,
+            a.id as architect_user_id,
+            a.name as architect_name, a.company as architect_company,
             pj.title as project_title, pj.description as project_description, pj.area_m2 as project_area, pj.price as project_price
         FROM proposals pr
         JOIN plots pl ON pr.plot_id = pl.id
-        JOIN users u ON pr.architect_id = u.id  -- arquitecto user
-        LEFT JOIN architects ar ON ar.user_id = pr.architect_id  -- architect details
+        JOIN architects a ON pr.architect_id = a.id
         LEFT JOIN projects pj ON pr.project_id = pj.id
-        WHERE pl.owner_id = (SELECT id FROM users WHERE email = ? AND role = 'owner')
+        WHERE pl.owner_email = ?
         ORDER BY pr.created_at DESC
     """, (client_email,))
     rows = c.fetchall(); conn.close()

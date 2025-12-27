@@ -7,7 +7,7 @@ from typing import Dict, Optional, Iterator
 
 BASE_PATH = Path(__file__).parent.parent
 # Use a fixed absolute database path to ensure all modules use the same DB file
-DB_PATH = Path(r"C:/ARCHIRAPID_PROYECT25/database.db")
+DB_PATH = BASE_PATH / "database.db"
 
 def get_conn():
     """Devuelve conexión SQLite con row_factory habilitado para acceder por nombre de columna.
@@ -74,6 +74,48 @@ def ensure_tables():
             pass  # Columna ya existe
         try:
             c.execute("ALTER TABLE plots ADD COLUMN photo_paths TEXT")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN catastral_ref TEXT")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN services TEXT")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN status TEXT DEFAULT 'published'")
+        except Exception:
+            pass  # Columna ya existe
+        # CRÍTICO: Agregar columnas lat y lon si no existen
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN lat REAL")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN lon REAL")
+        except Exception:
+            pass  # Columna ya existe
+        # Agregar otras columnas que puedan faltar
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN height REAL")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN locality TEXT")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN owner_name TEXT")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN image_path TEXT")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN registry_note_path TEXT")
         except Exception:
             pass  # Columna ya existe
         c.execute("""CREATE TABLE IF NOT EXISTS projects (
@@ -330,11 +372,13 @@ def insert_plot(data: Dict):
     ensure_tables()
     with transaction() as c:
         c.execute("""INSERT OR REPLACE INTO plots (
-            id,title,description,lat,lon,m2,height,price,type,province,locality,owner_name,owner_email,image_path,registry_note_path,created_at,address,owner_phone
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (data['id'], data['title'], data['description'], data['lat'], data['lon'], data['m2'], data['height'],
-         data['price'], data['type'], data['province'], data['locality'], data['owner_name'], data['owner_email'],
-         data.get('image_path'), data.get('registry_note_path'), data['created_at'], data.get('address'), data.get('owner_phone')))
+            id,title,description,lat,lon,m2,height,price,type,province,locality,owner_name,owner_email,
+            image_path,registry_note_path,created_at,address,owner_phone,photo_paths,catastral_ref,services,status
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (data['id'], data['title'], data['description'], data['lat'], data['lon'], data['m2'], data.get('height'),
+         data['price'], data['type'], data.get('province'), data.get('locality'), data['owner_name'], data['owner_email'],
+         data.get('image_path'), data.get('registry_note_path'), data['created_at'], data.get('address'), data.get('owner_phone'),
+         data.get('photo_paths'), data.get('catastral_ref'), data.get('services'), data.get('status', 'published')))
 
 def insert_project(data: Dict):
     """Inserta o reemplaza un proyecto en la tabla `projects` de forma flexible.
@@ -398,6 +442,19 @@ def get_all_plots():
         df = pd.read_sql_query('SELECT * FROM plots', conn)
     finally:
         conn.close()
+    return df
+
+def get_plots_by_owner(email: str):
+    ensure_tables()
+    conn = get_conn()
+    import pandas as pd
+    try:
+        # Usamos parameter binding para seguridad
+        df = pd.read_sql_query('SELECT * FROM plots WHERE owner_email = ?', conn, params=(email,))
+    finally:
+        conn.close()
+    return df
+
     return df
 
 
@@ -683,23 +740,6 @@ def get_plot_by_id(pid: str) -> Optional[Dict]:
     # Gracias a row_factory podemos acceder por nombre
     return {k: row[k] for k in row.keys()}
 
-
-def get_all_provinces() -> list:
-    """Devuelve la lista de provincias disponibles en la tabla `plots`.
-    Retorna una lista de strings (puede estar vacía).
-    """
-    ensure_tables()
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT DISTINCT province FROM plots WHERE province IS NOT NULL AND province<>'' ORDER BY province")
-        rows = cur.fetchall()
-        return [r[0] for r in rows if r[0]]
-    finally:
-        conn.close()
-
-
-def get_featured_projects(limit: int = 3) -> list:
     """Devuelve proyectos destacados (por defecto los últimos `limit` publicados).
     Cada proyecto es un dict con campos: id,title,area_m2,price,foto_principal,description
     """
@@ -780,6 +820,33 @@ def update_proposal_status(proposal_id: str, new_status: str):
         except Exception:
             # Si no existe responded_at, degradar sin timestamp
             c.execute("UPDATE proposals SET status=? WHERE id=?", (new_status, proposal_id))
+
+def get_proposals_for_owner(owner_email: str):
+    """Obtiene todas las propuestas recibidas por un propietario."""
+    ensure_tables()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 
+                pr.id, pr.message, pr.price, pr.status, pr.created_at,
+                pl.id as plot_id, pl.title as plot_title,
+                a.id as architect_id, a.name as architect_name, a.company as architect_company,
+                pj.id as project_id, pj.title as project_title
+            FROM proposals pr
+            JOIN plots pl ON pr.plot_id = pl.id
+            JOIN architects a ON pr.architect_id = a.id
+            LEFT JOIN projects pj ON pr.project_id = pj.id
+            WHERE pl.owner_email = ?
+            ORDER BY pr.created_at DESC
+        """, (owner_email,))
+        rows = cur.fetchall()
+        # Convert to list of dicts
+        cols = [d[0] for d in cur.description]
+        return [{cols[i]: row[i] for i in range(len(cols))} for row in rows]
+    finally:
+        conn.close()
+
 
 # Cache ligera en memoria para counts (TTL segundos)
 _COUNTS_CACHE: Dict[str,int] | None = None

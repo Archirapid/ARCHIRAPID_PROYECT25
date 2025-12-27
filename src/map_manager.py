@@ -1,6 +1,6 @@
 import folium
-from streamlit_folium import st_folium
 import streamlit as st
+import streamlit.components.v1 as components
 import os
 
 def mostrar_mapa_con_plano(lat=40.4168, lon=-3.7038, plano_path=None, zoom=15):
@@ -49,8 +49,11 @@ def mostrar_mapa_con_plano(lat=40.4168, lon=-3.7038, plano_path=None, zoom=15):
         except Exception as e:
             print(f"Error superponiendo plano: {e}")
 
-    # Mostrar en Streamlit
-    return st_folium(m, width=700, height=500)
+    # Mostrar en Streamlit: render HTML directamente para evitar problemas con el componente
+    try:
+        components.html(m._repr_html_(), height=500)
+    except Exception:
+        return None
 
 
 def mostrar_plots_on_map(province: str | None = None, query: str | None = None, width: int = 700, height: int = 500):
@@ -83,20 +86,7 @@ def mostrar_plots_on_map(province: str | None = None, query: str | None = None, 
         cur.execute(sql, tuple(params))
         rows = cur.fetchall()
 
-        # Debugging traces: number of rows and each row's id/title/lat/lon
-        try:
-            st.write(f"DEBUG: plots returned: {len(rows)}")
-        except Exception:
-            print(f"DEBUG: plots returned: {len(rows)}")
-
-        for r in rows:
-            try:
-                st.write(f"DEBUG ROW: id={r['id']} | title={r['title']} | lat={r['lat']} | lon={r['lon']}")
-            except Exception:
-                try:
-                    print(f"DEBUG ROW: id={r['id']} | title={r['title']} | lat={r['lat']} | lon={r['lon']}")
-                except Exception:
-                    print(f"DEBUG ROW: (could not read row)")
+        # Removed debug traces to avoid noisy output in Streamlit
         # Determine map center as mean of returned coords
         lats = [r['lat'] for r in rows if r['lat'] is not None]
         lons = [r['lon'] for r in rows if r['lon'] is not None]
@@ -127,6 +117,14 @@ def mostrar_plots_on_map(province: str | None = None, query: str | None = None, 
             except Exception:
                 continue
 
-        return st_folium(m, width=width, height=height)
+        try:
+            return components.html(m._repr_html_(), height=height)
+        except Exception:
+            return None
     finally:
         conn.close()
+    # Fallback return (safety): attempt to render if not already returned
+    try:
+        return components.html(m._repr_html_(), height=height)
+    except Exception:
+        return None

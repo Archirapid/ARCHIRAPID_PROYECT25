@@ -1,56 +1,59 @@
-# modules/marketplace/catastro_api.py
-
-# 🚨 STUB MVP: simulación de API Catastro
-# Sustituir por API real de Catastro en producción
-
-def fetch_by_address(direccion: str, municipio: str = "Madrid") -> dict:
-    """
-    Simula obtención de datos catastrales por dirección.
-    Devuelve datos fijos para demostración.
-    """
-    return {
-        "superficie_m2": 10500,
-        "ref_catastral": "1234567VK4513S0001AB",
-        "ubicacion_geo": {
-            "lat": 40.45,
-            "lng": -3.80,
-            "municipio": municipio,
-            "direccion_completa": f"{direccion}, {municipio}"
-        },
-        "nota_catastral_raw": {
-            "fuente": "simulado_mvp",
-            "superficie_registral": 10500,
-            "uso_principal": "Residencial unifamiliar",
-            "valor_catastral_estimado": 8400000,
-            "fecha_consulta": "2025-12-07",
-            "notas": "Datos simulados para demostración MVP"
-        },
-        "estado": "activo",
-        "tipo": "urbana"
-    }
+import requests
+import xml.etree.ElementTree as ET
 
 def fetch_by_ref_catastral(ref_catastral: str) -> dict:
     """
-    Simula obtención de datos catastrales por referencia catastral.
-    Devuelve datos fijos para demostración.
+    Obtiene datos reales del Catastro usando la referencia catastral (OVCCoordenadas).
     """
-    return {
-        "superficie_m2": 10500,
-        "ref_catastral": ref_catastral,
-        "ubicacion_geo": {
-            "lat": 40.45,
-            "lng": -3.80,
-            "municipio": "Madrid",
-            "direccion_completa": f"Dirección simulada para {ref_catastral}"
-        },
-        "nota_catastral_raw": {
-            "fuente": "simulado_mvp",
-            "superficie_registral": 10500,
-            "uso_principal": "Residencial unifamiliar",
-            "valor_catastral_estimado": 8400000,
-            "fecha_consulta": "2025-12-07",
-            "notas": f"Datos simulados para ref: {ref_catastral}"
-        },
-        "estado": "activo",
-        "tipo": "urbana"
+    ref1 = ref_catastral[:14]
+    ref2 = ref_catastral[14:] if len(ref_catastral) > 14 else ""
+    
+    url = "http://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/OVCCoordenadas.asmx/Consulta_CPMRC"
+    params = {
+        "Provincia": "",
+        "Municipio": "",
+        "SRS": "EPSG:4326", # WGS84
+        "RC": f"{ref1}{ref2}"
     }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            root = ET.fromstring(response.content)
+            # Namespace map logic can be tricky with ElementTree, usually we can find by tag name
+            # XML Structure: <consulta_coordenadas> <coordenadas> <coord> <geo> <lat> <lon>
+            
+            # Simple parsing (ignoring namespaces or using wildcard)
+            lat_node = root.find(".//lat")
+            lon_node = root.find(".//lon")
+            address_node = root.find(".//ldt") # Lo-calizacion De-limitada T-exto
+            
+            if lat_node is not None and lon_node is not None:
+                return {
+                    "superficie_m2": 0, # OVCC no devuelve superficie en este endpoint ligero, requeriría scrapping o WMS
+                    "ref_catastral": ref_catastral,
+                    "ubicacion_geo": {
+                        "lat": float(lat_node.text),
+                        "lng": float(lon_node.text),
+                        "municipio": "Detectado",
+                        "direccion_completa": address_node.text if address_node is not None else "Dirección Catastral"
+                    },
+                    "nota_catastral_raw": {"fuente": "Sede Electrónica Catastro (OVCC)"},
+                    "estado": "validado_oficial"
+                }
+    except Exception as e:
+        print(f"Catastro API Error: {e}")
+        
+    # Fallback si falla la real (para que no rompa la demo)
+    return {
+        "superficie_m2": 0,
+        "ref_catastral": ref_catastral,
+        "ubicacion_geo": None,
+        "estado": "error_api"
+    }
+
+def fetch_by_address(direccion: str, municipio: str = "Madrid") -> dict:
+    """
+    Busca referencia por dirección (calle/numero) - Más complejo, Stubeado por ahora.
+    """
+    return None

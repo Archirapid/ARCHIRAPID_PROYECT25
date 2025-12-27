@@ -58,56 +58,49 @@ def run_script(script_name, description):
         return False
 
 def main():
-    print("🚀 ArchiRapid - Pipeline de Extracción Catastral")
+    print("🚀 ArchiRapid - Pipeline de Extracción Catastral (AI-Enhanced)")
     print("="*60)
     
     # Verificar que existe Catastro.pdf
     pdf_path = Path("Catastro.pdf")
+    OUTDIR = Path("catastro_output")
+    
     if not pdf_path.exists():
         print(f"❌ ERROR: No se encuentra 'Catastro.pdf'")
         print(f"   Coloca tu PDF catastral en: {pdf_path.absolute()}")
         print(f"\n💡 TIP: Puedes generar un PDF de prueba ejecutando:")
         print(f"   python create_test_pdf.py")
         sys.exit(1)
-    
+        
     print(f"✅ PDF encontrado: {pdf_path.absolute()}")
     
-    # Ejecutar pipeline
+    # Ejecutar pipeline con AI Extractor
     start_time = time.time()
-    failed = []
     
-    for script, description in SCRIPTS:
-        if not run_script(script, description):
-            failed.append(script)
-            break  # Detener si algún script falla
-    
-    elapsed = time.time() - start_time
-    
-    # Resumen final
-    print(f"\n{'='*60}")
-    if not failed:
-        print("✅ PIPELINE COMPLETADO EXITOSAMENTE")
-        print(f"⏱️  Tiempo total: {elapsed:.2f} segundos")
-        print(f"\n📂 Resultados guardados en: catastro_output/")
-        print("\n📊 Archivos generados:")
-        output_dir = Path("catastro_output")
-        if output_dir.exists():
-            for file in sorted(output_dir.iterdir()):
-                if file.is_file():
-                    size_kb = file.stat().st_size / 1024
-                    print(f"   - {file.name} ({size_kb:.1f} KB)")
+    try:
+        # Import dinámicamente el extractor de IA, que será implementado en el paso 5
+        from .ai_extractor import extract_and_save
         
-        print("\n🎯 Archivos principales:")
-        print("   - edificability.json → Superficie y edificabilidad calculada")
-        print("   - plot_polygon.geojson → Polígono del lindero")
-        print("   - contours_visualization.png → Visualización de contornos")
+        report = extract_and_save(pdf_path, OUTDIR)
+        elapsed = time.time() - start_time
         
-    else:
-        print("❌ PIPELINE FALLÓ")
-        print(f"   Scripts fallidos: {', '.join(failed)}")
-        print(f"   Revisa los mensajes de error arriba.")
+    except ImportError:
+        print("❌ ERROR: Módulo 'ai_extractor' no disponible o no implementado.")
+        print("   Por favor, implementa 'archirapid_extract/ai_extractor.py' antes de ejecutar el pipeline principal.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ PIPELINE FALLÓ durante la ejecución de AI: {e}")
         sys.exit(1)
     
+    # Resumen final (adaptado al nuevo output)
+    print(f"\n{'='*60}")
+    print("✅ PIPELINE COMPLETADO EXITOSAMENTE (AI)")
+    print(f"⏱️  Tiempo total: {elapsed:.2f} segundos")
+    print(f"\n📂 Resultados guardados en: {OUTDIR.absolute()}")
+    print("\n🎯 Archivos principales:")
+    print("   - edificability.json → Superficie y edificabilidad calculada (actualizada desde AI report)")
+    print("   - ai_report.json → Resultado consolidado del modelo 1.5 Flash")
+        
     print("="*60)
 
 if __name__ == "__main__":

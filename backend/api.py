@@ -6,7 +6,22 @@ Endpoints REST para integración con frontend
 
 from flask import Flask, request, jsonify
 import logging
-from services.planGenerator import generar_plano
+import sys
+from pathlib import Path
+
+# Agregar el directorio raíz al path para imports absolutos
+_backend_dir = Path(__file__).parent
+_project_root = _backend_dir.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+# Import del servicio de generación de planos
+try:
+    from backend.services.planGenerator import generar_plano
+except ImportError:
+    # Fallback si se ejecuta desde el directorio backend
+    sys.path.insert(0, str(_backend_dir.parent))
+    from backend.services.planGenerator import generar_plano
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)

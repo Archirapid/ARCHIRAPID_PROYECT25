@@ -127,15 +127,15 @@ def main():
         st.stop()
 
 def show_buyer_panel(client_email):
-    """Panel para compradores con transacciones"""
-    st.subheader("📋 Mis Transacciones")
+    """Panel para compradores con transacciones - MEJORADO"""
+    st.subheader("🏡 Mis Fincas Adquiridas")
     
     # Obtener transacciones del cliente
     conn = db_conn()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT r.id, r.plot_id, r.buyer_name, r.amount, r.kind, r.created_at, 
-               p.title, p.surface_m2, p.price, p.photo_paths
+               p.title, p.m2, p.surface_m2, p.price, p.photo_paths, p.address, p.province, p.catastral_ref
         FROM reservations r
         LEFT JOIN plots p ON r.plot_id = p.id
         WHERE r.buyer_email = ?
@@ -146,40 +146,103 @@ def show_buyer_panel(client_email):
     conn.close()
     
     if not transactions:
-        st.warning("No tienes transacciones registradas")
+        st.warning("📭 No tienes fincas adquiridas aún. Explora el mapa para encontrar tu finca ideal.")
+        if st.button("🗺️ Ir al Mapa de Fincas", type="primary"):
+            st.session_state['role'] = None
+            st.rerun()
         return
     
-    # Mostrar resumen de transacciones
+    # Mostrar resumen de transacciones MEJORADO
     for trans in transactions:
-        trans_id, plot_id, buyer_name, amount, kind, created_at, plot_title, surface_m2, price, photo_paths = trans
+        trans_id, plot_id, buyer_name, amount, kind, created_at, plot_title, m2, surface_m2, price, photo_paths, address, province, catastral_ref = trans
         
-        with st.expander(f"🏠 {plot_title} - {kind.upper()}", expanded=True):
-            col1, col2 = st.columns([1, 2])
+        superficie = surface_m2 or m2 or 0
+        
+        # Tarjeta mejorada
+        st.markdown("---")
+        col_img, col_info, col_actions = st.columns([1, 2, 1])
+        
+        with col_img:
+            # Mostrar imagen de la finca
+            img_path = "assets/fincas/image1.jpg"
+            if photo_paths:
+                try:
+                    paths = json.loads(photo_paths) if isinstance(photo_paths, str) else photo_paths
+                    if paths and isinstance(paths, list) and len(paths) > 0:
+                        img_path = f"uploads/{paths[0]}"
+                        if not os.path.exists(img_path):
+                            img_path = "assets/fincas/image1.jpg"
+                except:
+                    pass
+            st.image(img_path, use_container_width=True)
+        
+        with col_info:
+            st.markdown(f"### 🏠 {plot_title or 'Finca sin título'}")
             
-            with col1:
-                # Mostrar imagen de la finca
-                if photo_paths:
-                    try:
-                        paths = json.loads(photo_paths)
-                        if paths and isinstance(paths, list):
-                            img_path = f"uploads/{paths[0]}"
-                            if os.path.exists(img_path):
-                                st.image(img_path, width=200)
-                    except:
-                        st.image("assets/fincas/image1.jpg", width=200)
-                else:
-                    st.image("assets/fincas/image1.jpg", width=200)
+            tipo_transaccion = "✅ COMPRADA" if kind == "purchase" else "🔒 RESERVADA (10%)"
+            st.markdown(f"**Estado:** {tipo_transaccion}")
             
-            with col2:
-                st.markdown(f"**📋 ID Transacción:** `{trans_id}`")
-                st.markdown(f"**🏠 Finca:** {plot_title}")
-                st.markdown(f"**📏 Superficie:** {surface_m2} m²")
-                st.markdown(f"**💰 Precio Total:** €{price}")
-                st.markdown(f"**💵 Cantidad Pagada:** €{amount}")
-                st.markdown(f"**📅 Fecha:** {created_at}")
-                st.markdown(f"**✅ Tipo:** {kind.upper()}")
+            col_met1, col_met2, col_met3 = st.columns(3)
+            with col_met1:
+                st.metric("Superficie", f"{superficie} m²")
+            with col_met2:
+                st.metric("Precio Total", f"€{price or 0:,.0f}")
+            with col_met3:
+                st.metric("Pagado", f"€{amount:,.0f}")
+            
+            st.markdown(f"**📍 Ubicación:** {address or province or 'No especificada'}")
+            if catastral_ref:
+                st.markdown(f"**📋 Ref. Catastral:** `{catastral_ref}`")
+            st.markdown(f"**📅 Fecha:** {created_at}")
+            st.markdown(f"**🆔 ID Transacción:** `{trans_id}`")
+        
+        with col_actions:
+            st.markdown("### 📋 Estado")
+            
+            if kind == "purchase":
+                st.success("✅ Compra completada")
+                st.info("📧 Te hemos enviado toda la documentación por email")
+            else:
+                st.warning("🔒 Reserva activa")
+                pendiente = (price or 0) - amount
+                st.info(f"💰 Pendiente: €{pendiente:,.0f}")
+            
+            st.markdown("---")
+            st.markdown("### 💬 Comunicación")
+            
+            # Mensajes del equipo
+            st.info("💼 **Mensaje del equipo:**\n\nTu finca está lista para notario. Contacta con nuestro equipo comercial para continuar.")
+            
+            # Opciones de contacto
+            col_whatsapp, col_email = st.columns(2)
+            with col_whatsapp:
+                st.markdown("📱 **WhatsApp:**\n[Contactar](https://wa.me/34600123456?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20finca)")
+            with col_email:
+                st.markdown("📧 **Email:**\ncomercial@archirapid.com")
+            
+            # Descargar documentación
+            if st.button("📄 Ver Documentación", key=f"docs_{trans_id}", use_container_width=True):
+                st.info("📄 Documentación disponible:\n- Nota Simple Registral\n- Informe Catastral\n- Contrato de Compra-Venta")
     
-    show_common_actions()  # Acciones comunes para compradores
+    st.markdown("---")
+    
+    # Acciones comunes
+    st.subheader("🎯 ¿Qué deseas hacer ahora?")
+    col_action1, col_action2, col_action3 = st.columns(3)
+    
+    with col_action1:
+        if st.button("🗺️ Buscar más Fincas", key="btn_more_plots", use_container_width=True):
+            st.session_state['role'] = None
+            st.rerun()
+    
+    with col_action2:
+        if st.button("🎨 Diseñar Vivienda", key="btn_design", use_container_width=True):
+            st.session_state['current_page'] = 'disenador_ia'
+            st.rerun()
+    
+    with col_action3:
+        if st.button("📐 Ver Proyectos", key="btn_projects", use_container_width=True):
+            st.info("📐 Proyectos arquitectónicos compatibles con tus fincas")
 
 def show_owner_panel_v2(client_email):
     """Panel para propietarios con fincas"""

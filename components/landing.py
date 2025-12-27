@@ -1,0 +1,249 @@
+import streamlit as st
+
+st.markdown("""
+<style>
+.role-container {
+    background: linear-gradient(135deg, #e8f1ff 0%, #f5faff 100%);
+    padding: 50px 20px;
+    border-radius: 16px;
+    margin-top: 20px;
+}
+
+.role-card {
+    background: white;
+    border-radius: 14px;
+    padding: 30px 20px;
+    text-align: center;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.role-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+}
+
+.card-icon {
+    font-size: 48px;
+    margin-bottom: 15px;
+}
+
+.card-title {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: #003366;
+    margin-bottom: 10px;
+}
+
+.card-text {
+    font-size: 0.95em;
+    color: #444;
+    margin-bottom: 20px;
+}
+
+.role-btn > button {
+    background-color: #0b5cff !important;
+    color: white !important;
+    border-radius: 8px !important;
+    padding: 10px 16px !important;
+    font-weight: 600 !important;
+    border: none !important;
+}
+
+.role-btn > button:hover {
+    background-color: #0846c3 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+def render_landing():
+    # Logo pequeño en lugar del header grande
+    col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
+    with col_logo2:
+        try:
+            st.image("assets/branding/logo.png", width=200)
+        except:
+            st.markdown("### 🏗️ ARCHIRAPID")
+    
+    st.markdown("---")
+    
+    st.markdown('<div class="role-container">', unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("""
+        <div class="role-card">
+            <div class="card-icon">🏗️</div>
+            <div class="card-title">Tengo un Terreno</div>
+            <div class="card-text">
+                Publica tu finca y recibe propuestas reales de arquitectos.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="role-btn">', unsafe_allow_html=True)
+        if st.button("Acceso Propietarios", key="btn_prop", use_container_width=True):
+            st.session_state['role'] = 'propietario'
+            st.session_state['current_page'] = 'dashboard_propietario'
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div class="role-card">
+            <div class="card-icon">📐</div>
+            <div class="card-title">Soy Arquitecto</div>
+            <div class="card-text">
+                Sube tus proyectos ejecutables y conecta con clientes reales.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="role-btn">', unsafe_allow_html=True)
+        if st.button("Acceso Arquitectos", key="btn_arq", use_container_width=True):
+            st.session_state['role'] = 'arquitecto'
+            st.session_state['current_page'] = 'dashboard_arquitecto'
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("""
+        <div class="role-card">
+            <div class="card-icon">🏡</div>
+            <div class="card-title">Busco Casa</div>
+            <div class="card-text">
+                Explora fincas, proyectos compatibles o diseña tu casa con IA.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="role-btn">', unsafe_allow_html=True)
+        if st.button("Acceso Clientes", key="btn_cli", use_container_width=True):
+            st.session_state['role'] = 'cliente'
+            st.session_state['current_page'] = 'marketplace_main'
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+    
+    # Sección principal: Mapa y Buscador
+    st.subheader("🗺️ Explora Fincas Disponibles en España y Portugal")
+    
+    # Buscador integrado
+    from src import db
+    
+    col_search1, col_search2, col_search3 = st.columns([2, 1, 1])
+    with col_search1:
+        search_query = st.text_input("🔍 Buscar por dirección, provincia o referencia catastral", 
+                                     placeholder="Ej: Madrid, Barcelona, Camilo Jose Cela...",
+                                     key="home_search")
+    with col_search2:
+        provincia_filter = st.selectbox("Provincia", 
+                                       ["Todas", "Madrid", "Barcelona", "Valencia", "Sevilla", "Málaga", "Lisboa", "Porto"],
+                                       key="home_province")
+    with col_search3:
+        min_price = st.number_input("Precio min (€)", min_value=0, value=0, step=10000, key="home_min_price")
+        max_price = st.number_input("Precio max (€)", min_value=0, value=500000, step=10000, key="home_max_price")
+    
+    try:
+        from modules.marketplace.utils import list_published_plots
+        import folium
+        import streamlit.components.v1 as components
+        
+        # Obtener fincas con coordenadas
+        db.ensure_tables()
+        plots = list_published_plots()
+        plots_with_coords = [p for p in plots if p.get('lat') is not None and p.get('lon') is not None]
+        
+        # Aplicar filtros
+        if provincia_filter and provincia_filter != "Todas":
+            plots_with_coords = [p for p in plots_with_coords 
+                                if p.get('province', '').lower() == provincia_filter.lower()]
+        
+        if search_query:
+            plots_with_coords = [p for p in plots_with_coords 
+                                if search_query.lower() in (p.get('title', '') + ' ' + 
+                                                           p.get('address', '') + ' ' + 
+                                                           str(p.get('catastral_ref', ''))).lower()]
+        
+        if min_price > 0 or max_price > 0:
+            filtered_plots = []
+            for p in plots_with_coords:
+                price = p.get('price', 0) or 0
+                if (min_price <= price <= max_price) or (min_price > 0 and price >= min_price) or (max_price > 0 and price <= max_price):
+                    filtered_plots.append(p)
+            plots_with_coords = filtered_plots
+        
+        if plots_with_coords:
+            # Centrar mapa en España/Portugal
+            # Centro aproximado entre España y Portugal
+            center_lat = 40.0  # Centro de la Península Ibérica
+            center_lon = -4.0
+            zoom_level = 5  # Vista que cubre España y Portugal
+            
+            # Si hay fincas, calcular centro basado en ellas
+            if len(plots_with_coords) > 0:
+                lats = [float(p['lat']) for p in plots_with_coords]
+                lons = [float(p['lon']) for p in plots_with_coords]
+                center_lat = sum(lats) / len(lats)
+                center_lon = sum(lons) / len(lons)
+                zoom_level = 6 if len(plots_with_coords) > 1 else 10
+            
+            # Crear mapa (MÁS ALTO)
+            m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level, tiles="CartoDB positron")
+            
+            # Agregar marcadores
+            for p in plots_with_coords:
+                lat = float(p['lat'])
+                lon = float(p['lon'])
+                superficie = p.get('surface_m2') or p.get('m2') or 0
+                precio = p.get('price') or 0
+                
+                popup_html = f"""
+                <div style='width:220px'>
+                    <h4 style='margin:5px 0;'>{p.get('title', 'Finca')}</h4>
+                    <p style='font-weight:bold; font-size:14px; margin:5px 0;'>{superficie} m² · €{precio:,.0f}</p>
+                    <button onclick="window.location.href = window.location.pathname + '?role=cliente&selected_plot={p['id']}'" 
+                            style='display:block; margin-top:10px; padding:8px; background:#4CAF50; color:white; border:none; border-radius:5px; text-align:center; width:100%; cursor:pointer; font-weight:bold;'>
+                        Ver más detalles
+                    </button>
+                </div>
+                """
+                icon = folium.Icon(color='red', icon='home', prefix='fa')
+                marker = folium.Marker([lat, lon], icon=icon, popup=folium.Popup(popup_html, max_width=250))
+                marker.add_to(m)
+            
+            # Renderizar mapa MÁS ALTO (700px en lugar de 450px)
+            components.html(m._repr_html_(), height=700)
+            st.success(f"📍 {len(plots_with_coords)} finca{'s' if len(plots_with_coords) != 1 else ''} encontrada{'s' if len(plots_with_coords) != 1 else ''}")
+        else:
+            # Mapa sin marcadores centrado en España/Portugal
+            m = folium.Map(location=[40.0, -4.0], zoom_start=5, tiles="CartoDB positron")
+            components.html(m._repr_html_(), height=700)
+            st.info("📍 No se encontraron fincas con los filtros seleccionados. Intenta cambiar los criterios de búsqueda.")
+    except Exception as e:
+        # Log exception details for debugging to a file and show fallback map
+        try:
+            import traceback
+            Path('tmp').mkdir(exist_ok=True)
+            with open('tmp/map_error.txt', 'w', encoding='utf-8') as f:
+                f.write('Exception in components/landing.py map render:\n')
+                traceback.print_exc(file=f)
+        except Exception:
+            pass
+        # Fallback simple map
+        import folium
+        import streamlit.components.v1 as components
+        m = folium.Map(location=[40.0, -4.0], zoom_start=5, tiles="CartoDB positron")
+        components.html(m._repr_html_(), height=700)
+        st.warning("⚠️ Error cargando el mapa. Por favor, recarga la página.")
+
+    st.markdown("---")
+    
+    # Footer con acceso corporativo sutil
+    col_foot1, col_foot2, col_foot3 = st.columns([3, 1, 1])
+    with col_foot3:
+        if st.button("🔐 Admin", type="secondary", use_container_width=True):
+            st.session_state['role'] = 'admin'
+            st.rerun()
+

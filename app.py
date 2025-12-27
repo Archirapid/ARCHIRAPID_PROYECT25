@@ -336,8 +336,12 @@ if page == "Home":
                                 st.session_state['selected_page'] = "Intranet"
                                 st.experimental_rerun()
 
-    # Top-level title and visible version banner for verification
-    st.title("ARCHIRAPID")
+    if 'role' not in st.session_state:
+        from components.landing import render_landing
+        render_landing()
+    else:
+        # Top-level title and visible version banner for verification
+        st.title("ARCHIRAPID")
     try:
         st.warning(f"Versión de la App: 1.0.3 - 3D Integrado - {pd.Timestamp.now()}")
     except Exception:

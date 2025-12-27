@@ -1,99 +1,152 @@
-# modules/marketplace/ai_engine.py
-import requests
+import google.generativeai as genai
+import streamlit as st
 import os
 import json
+import PIL.Image
+import io
 
-def ai_process(prompt, model="llama3.1"):
-    """
-    Motor IA centralizado para ARCHIRAPID.
-    Cambiado a OpenRouter para rendimiento en MVP.
-    Ollama desactivado: para activar, cambia a ask_ollama(prompt, model).
-    """
-    return get_ai_response(prompt)
+# Configuración inicial
+# Intentamos leer de st.secrets, luego variable de entorno
+try:
+    API_KEY = st.secrets["general"]["GOOGLE_API_KEY"]
+except Exception:
+    API_KEY = os.getenv("GOOGLE_API_KEY")
 
-def get_ai_response(prompt: str) -> str:
-    """
-    Capa de abstracción para respuestas de IA.
-    Proveedor por defecto: OpenRouter (modelo: mistral) - Más rápido que Ollama local.
+if API_KEY:
+    genai.configure(api_key=API_KEY)
+else:
+    print("WARNING: GOOGLE_API_KEY no encontrada.")
+
+def get_gemini_model():
+    """Devuelve instancia del modelo configurado."""
+    # Using gemini-2.5-flash - latest model with good free tier limits
+    return genai.GenerativeModel('models/gemini-2.5-flash')
+
+def generate_text(prompt: str) -> str:
+    """Genera respuesta de texto usando Gemini 1.5 Flash."""
+    if not API_KEY:
+        return "Error: API Key de Google no configurada."
     
-    Ollama local: Instalado pero desactivado en este MVP por rendimiento.
-    Para activar Ollama: Cambia la llamada en ai_process() a ask_ollama(prompt).
-    
-    Hugging Face API: Opcional, agregar como alternativa.
-    Para cambiar proveedor: Modifica esta función.
-    """
-    # API Key de OpenRouter (setea OPENROUTER_API_KEY en entorno)
-    # Para configurar en Windows: setx OPENROUTER_API_KEY "tu_clave_aqui"
-    # Para configurar en PowerShell: $env:OPENROUTER_API_KEY = "tu_clave_aqui"
-    # Reinicia la terminal después de configurar
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        return "Error: OPENROUTER_API_KEY no configurada. Setea la variable de entorno."
-    
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    data = {
-        "model": "mistralai/mistral-7b-instruct:free",
-        "messages": [{"role": "user", "content": prompt}]
-    }
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=10)
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        model = get_gemini_model()
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
-        return f"Error en IA: {str(e)}. Verifica API key o conexión."
+        return f"Error en IA: {str(e)}"
 
-
-def plan_vivienda(superficie_finca: int, habitaciones: int, garage: bool) -> dict:
+def generate_from_image(prompt: str, image_bytes: bytes) -> str:
     """
-    Genera un plan de vivienda en JSON usando IA.
-    - Calcula automáticamente m2 construibles (33% de la finca).
-    - Solicita a la IA un JSON estructurado con habitaciones y m².
-    - Devuelve un dict parseado listo para usar en visualización 3D.
-
-    Args:
-        superficie_finca: Superficie total de la finca en m²
-        habitaciones: Número de habitaciones deseadas
-        garage: Si incluye garage
-
-    Returns:
-        dict: Plan estructurado con habitaciones, garage y total_m2, o dict con error
+    Analiza una imagen (o PDF convertido) usando Gemini Vision.
     """
-    m2_construccion = int(superficie_finca * 0.33)
+    if not API_KEY:
+         return "Error: API Key no configurada."
+    
+    try:
+        model = get_gemini_model()
+        # Convert bytes to PIL Image
+        idx = 0
+        try:
+             img = PIL.Image.open(io.BytesIO(image_bytes))
+        except Exception:
+             return "Error: Formato de imagen no soportado o corrupto."
 
+        response = model.generate_content([prompt, img])
+        return response.text
+    except Exception as e:
+        return f"Error en Visión IA: {str(e)}"
+
+def generate_from_pdf(prompt: str, pdf_bytes: bytes) -> str:
+    """
+    Analiza un PDF convirtiéndolo a imágenes y usando Gemini Vision.
+    Procesa todas las páginas del PDF y combina la información extraída.
+    """
+    if not API_KEY:
+        return "Error: API Key no configurada."
+    
+    try:
+        from pdf2image import convert_from_bytes
+        import tempfile
+        
+        # Convert PDF to images (all pages)
+        images = convert_from_bytes(pdf_bytes, dpi=200)
+        
+        if not images:
+            return "Error: No se pudieron extraer imágenes del PDF."
+        
+        model = get_gemini_model()
+        
+        # If multiple pages, analyze all and combine
+        if len(images) > 1:
+            # Analyze all pages together for better context
+            content_parts = [prompt]
+            for idx, img in enumerate(images[:5]):  # Limit to first 5 pages to avoid token limits
+                content_parts.append(f"Página {idx+1}:")
+                content_parts.append(img)
+            
+            response = model.generate_content(content_parts)
+            return response.text
+        else:
+            # Single page - direct analysis
+            response = model.generate_content([prompt, images[0]])
+            return response.text
+            
+    except ImportError:
+        return "Error: pdf2image no está instalado. Instala con: pip install pdf2image"
+    except Exception as e:
+        return f"Error procesando PDF: {str(e)}"
+
+# Alias para compatibilidad con módulos antiguos (gemelo_digital)
+get_ai_response = generate_text
+
+def plan_vivienda(superficie_finca: int, habitaciones: int, garage: bool = False) -> dict:
+    """Genera distribución en JSON usando Gemini."""
+    model = get_gemini_model()
     prompt = f"""
-    Cliente con finca de {superficie_finca} m².
-    Construcción permitida: {m2_construccion} m².
-    Desea {habitaciones} habitaciones y garage: {"sí" if garage else "no"}.
-
-    Genera un JSON estructurado con:
-    - Lista de habitaciones (nombre y m²).
-    - Garage si aplica (m²).
-    - Total_m2 construido.
-
-    IMPORTANTE: Responde ÚNICAMENTE con JSON válido, sin texto adicional.
-
-    Ejemplo de salida:
+    Actúa como arquitecto experto. Para una finca de {superficie_finca} m² (edificabilidad max 33% = {int(superficie_finca*0.33)} m²),
+    diseña una casa con {habitaciones} habitaciones. Garage incluido: {"Sí" if garage else "No"}.
+    
+    Responde ÚNICAMENTE con un JSON válido (sin markdown ```json) con esta estructura:
     {{
-      "habitaciones": [
-        {{"nombre": "Dormitorio principal", "m2": 15}},
-        {{"nombre": "Dormitorio secundario", "m2": 12}},
-        {{"nombre": "Salón", "m2": 25}},
-        {{"nombre": "Cocina", "m2": 10}}
-      ],
-      "garage": {{"m2": 20}},
-      "total_m2": 82
+        "habitaciones": [{{"nombre": "Salón", "m2": 25, "dim": "5x5"}}, ...],
+        "garage": {{"m2": 20}} (solo si se pidió),
+        "total_m2": 100,
+        "descripcion": "Breve descripción del concepto arquitectónico."
     }}
     """
-
-    respuesta = get_ai_response(prompt)
-
     try:
-        plan_json = json.loads(respuesta)
-        # Validación básica del JSON
-        if "habitaciones" not in plan_json or "total_m2" not in plan_json:
-            return {"error": "JSON incompleto - faltan campos requeridos", "raw": respuesta}
-        return plan_json
-    except json.JSONDecodeError:
-        # Si la IA devuelve texto no válido, devolvemos un dict con error
-        return {"error": "Respuesta IA no es JSON válido", "raw": respuesta}
+        resp = model.generate_content(prompt)
+        text = resp.text.replace("```json", "").replace("```", "").strip()
+        return json.loads(text)
+    except Exception as e:
+        return {"error": str(e)}
+
+def generate_sketch_svg(rooms_data: list, total_m2: int) -> str:
+    """
+    Pide a Gemini que genere un código SVG simple que represente la distribución en planta.
+    """
+    model = get_gemini_model()
+    rooms_str = json.dumps(rooms_data)
+    prompt = f"""
+    Genera un código SVG válido de un plano de planta arquitectónico esquemático (floor plan).
+    Datos de estancias: {rooms_str}.
+    Superficie total: {total_m2} m².
+    
+    Requisitos:
+    - Vista superior 2D.
+    - Usa rectángulos simples.
+    - Etiqueta cada habitación con texto SVG.
+    - Estilo moderno, líneas negras, fondo blanco o gris claro.
+    - Tamaño viewBox="0 0 500 500" o similar, ajustado.
+    - Responde ÚNICAMENTE con el código <svg>...</svg>, nada más.
+    """
+    try:
+        resp = model.generate_content(prompt)
+        svg_code = resp.text
+        # Extraer solo el bloque svg si hay texto alrededor
+        if "<svg" in svg_code:
+            start = svg_code.find("<svg")
+            end = svg_code.find("</svg>") + 6
+            svg_code = svg_code[start:end]
+        return svg_code
+    except Exception as e:
+        return f"<svg><text>Error generando plano: {e}</text></svg>"

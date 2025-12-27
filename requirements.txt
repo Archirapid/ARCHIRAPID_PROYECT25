@@ -21,6 +21,7 @@ opencv-python==4.12.0.88
 PyMuPDF==1.26.6
 pypdfium2==5.0.0
 pdfminer.six==20251107
+pdf2image==1.17.0
 
 # OCR
 pytesseract==0.3.13
@@ -35,6 +36,12 @@ trimesh==4.5.1
 
 # HTTP requests
 requests==2.32.5
+
+# Backend API
+flask==3.0.3
+
+# AI and ML
+google-generativeai==0.8.3
 
 # Date and time
 python-dateutil==2.9.0.post0

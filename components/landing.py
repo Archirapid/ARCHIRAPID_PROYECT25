@@ -1,6 +1,7 @@
 import streamlit as st
 
-st.markdown("""
+def render_landing():
+    st.markdown("""
 <style>
 .role-container {
     background: linear-gradient(135deg, #e8f1ff 0%, #f5faff 100%);
@@ -55,17 +56,6 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
-
-def render_landing():
-    # Logo pequeño en lugar del header grande
-    col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
-    with col_logo2:
-        try:
-            st.image("assets/branding/logo.png", width=200)
-        except:
-            st.markdown("### 🏗️ ARCHIRAPID")
-    
-    st.markdown("---")
     
     st.markdown('<div class="role-container">', unsafe_allow_html=True)
 

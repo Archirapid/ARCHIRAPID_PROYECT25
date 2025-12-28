@@ -9,6 +9,7 @@ import functools
 import time
 from pathlib import Path
 from src import db as _db
+from modules.marketplace import marketplace
 @st.cache_resource
 def three_html_for(url_3d: str, project_id: str = "") -> str:
     three_html = """
@@ -340,47 +341,19 @@ if page == "Home":
         from components.landing import render_landing
         render_landing()
     else:
-        # Top-level title and visible version banner for verification
-        st.title("ARCHIRAPID")
-    try:
-        st.warning(f"Versión de la App: 1.0.3 - 3D Integrado - {pd.Timestamp.now()}")
-    except Exception:
-        # Fallback in case pd.Timestamp isn't available for some reason
-        st.warning("Versión de la App: 1.0.3 - 3D Integrado")
+        # Marketplace completo con título incluido
+        pass
 
     # (Botón de prueba RV global eliminado por petición del usuario)
 
     st.markdown("---")
 
-    # BUSCADOR + MAPA
-    st.header("Buscar Fincas")
-    try:
-        from src import db
-        from src import map_manager
-    except Exception:
-        st.error("Error cargando módulos de base de datos o mapa")
-        db = None
-        map_manager = None
-
-    province_options = []
-    if db:
-        try:
-            province_options = db.get_all_provinces()
-        except Exception:
-            province_options = []
-
-    province = st.selectbox("Provincia", options=["Todas"] + province_options, index=0)
-    query = st.text_input("Localidad o dirección", value="")
-
-    filter_province = None if province == "Todas" else province
+    # Marketplace completo
     try:
         from modules.marketplace import marketplace
         marketplace.main()
-    except Exception:
-        if map_manager:
-            map_manager.mostrar_plots_on_map(province=filter_province, query=query, width=1100, height=650)
-        else:
-            st.info("Mapa no disponible (módulos faltantes)")
+    except Exception as e:
+        st.error(f"Error cargando marketplace: {e}")
 
     st.markdown("---")
     st.header("Proyectos destacados")

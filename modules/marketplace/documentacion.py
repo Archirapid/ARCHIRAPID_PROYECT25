@@ -1,6 +1,7 @@
 # modules/marketplace/documentacion.py
 
 from .ai_engine import get_ai_response
+import json
 
 def generar_memoria_constructiva(plan_json, superficie_finca):
     """

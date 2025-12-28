@@ -1,6 +1,6 @@
 import sqlite3
 
-conn = sqlite3.connect('D:/ARCHIRAPID_PROYECT25/data.db')
+conn = sqlite3.connect('C:/ARCHIRAPID_PROYECT25/data.db')
 cursor = conn.cursor()
 
 # List tables

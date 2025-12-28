@@ -1,560 +1,1975 @@
-import streamlit as st
-import sqlite3
-import pandas as pd
-import os
-import threading
-import http.server
-import socketserver
-import functools
-import time
-from pathlib import Path
-from src import db as _db
-from modules.marketplace import marketplace
-@st.cache_resource
-def three_html_for(url_3d: str, project_id: str = "") -> str:
-    three_html = """
-<!doctype html>
-<html>
-    <head>
-        <meta charset="utf-8" />
-        <style>body { margin: 0; overflow: hidden; background: #f0f0f0; }</style>
-    </head>
-    <body>
-        <div id="container" style="width:100%;height:600px;"></div>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/OBJLoader.js"></script>
-        <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
-        <script>
-            (function(){
-                const container = document.getElementById('container');
-                const scene = new THREE.Scene();
-                scene.background = new THREE.Color(0xf0f0f0);
-                
-                const camera = new THREE.PerspectiveCamera(45, window.innerWidth / 600, 0.1, 20000);
-                const renderer = new THREE.WebGLRenderer({antialias:true});
-                renderer.setSize(window.innerWidth, 600);
-                container.appendChild(renderer.domElement);
-
-                const controls = new THREE.OrbitControls(camera, renderer.domElement);
-                const ambient = new THREE.AmbientLight(0xffffff, 0.7); // Luz ambiental suave
-                scene.add(ambient);
-
-                const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8); // Luz de cielo y suelo
-                hemiLight.position.set(0, 20, 0);
-                scene.add(hemiLight);
-
-                const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-                dirLight.position.set(100, 100, 50);
-                scene.add(dirLight);
-
-                const loader = new THREE.OBJLoader();
-                loader.load('""" + url_3d + """', function(obj){
-                    // Escalado leve del modelo para hacerlo más visible (factor 1.5)
-                    if(obj && obj.scale){ obj.scale.multiplyScalar(1.5); }
-                    const box = new THREE.Box3().setFromObject(obj);
-                    const center = box.getCenter(new THREE.Vector3());
-                    const size = box.getSize(new THREE.Vector3());
-                    obj.position.sub(center);
-
-                    // Ajuste de cámara: 1.5 para que se vea más grande
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    const cameraZ = maxDim / 2 / Math.tan(Math.PI * camera.fov / 360) * 1.5;
-                    camera.position.set(cameraZ, cameraZ, cameraZ);
-                    camera.lookAt(0,0,0);
-
-                    obj.traverse(function(child){
-                        if(child.isMesh){
-                            // Material Gris con bordes visibles para que no sea "todo blanco"
-                            child.material = new THREE.MeshStandardMaterial({
-                                color: 0xdddddd,
-                                side: THREE.DoubleSide
-                            });
-                            const edges = new THREE.EdgesGeometry(child.geometry);
-                            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x888888 }));
-                            child.add(line);
-                        }
-                    });
-                    scene.add(obj);
-                });
-
-                function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
-                animate();
-                window.onresize = function(){ renderer.setSize(window.innerWidth, 600); };
-            })();
-        </script>
-    </body>
-</html>
+#!/usr/bin/env python3
 """
-    return three_html
+Panel Cliente Integrado ARCHIRAPID
+IA Avanzada + Precios en Vivo + Exportación Profesional
+"""
 
-# Page configuration and navigation
-# Ensure wide layout so projects don't overlap
-st.set_page_config(layout='wide')
-PAGES = {
-    "Home": ("modules.marketplace.marketplace", "main"),
-    "Propietario (Gemelo Digital)": ("modules.marketplace.gemelo_digital", "main"),
-    "Propietarios (Subir Fincas)": ("modules.marketplace.owners", "main"),
-    "Diseñador de Vivienda": ("modules.marketplace.disenador_vivienda", "main"),
-    "Arquitectos (Marketplace)": ("modules.marketplace.marketplace_upload", None),
-    "Intranet": ("modules.marketplace.intranet", "main"),
-}
+import streamlit as st
+import json
+import os
+import html
+from datetime import datetime
+import time
+import requests
+from urllib.parse import quote as url_quote
+from geopy.geocoders import Nominatim
+from streamlit.components.v1 import html as components_html
 
+# ==========================================
+# COMPONENTES LOCALES
+# ==========================================
 
-# Helper: start a simple static server for local assets (with CORS)
-def _start_static_server(root_dir: Path, port: int = 8765):
-    # If already started, return existing port
-    if st.session_state.get("static_server_started"):
-        return st.session_state.get("static_server_port")
-    try:
-        class CORSRequestHandler(http.server.SimpleHTTPRequestHandler):
-            def end_headers(self):
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-                self.send_header('Access-Control-Allow-Headers', '*')
-                super().end_headers()
-            def do_OPTIONS(self):
-                self.send_response(200, "OK")
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-                self.send_header('Access-Control-Allow-Headers', '*')
-                self.end_headers()
+def render_header():
+    """Header con logo de ARCHIRAPID"""
+    col1, col2 = st.columns([1, 3])
 
-        Handler = functools.partial(CORSRequestHandler, directory=str(root_dir))
-        httpd = socketserver.ThreadingTCPServer(("127.0.0.1", port), Handler)
-    except Exception:
-        return None
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-    thread.start()
-    st.session_state["static_server_started"] = True
-    st.session_state["static_server_port"] = port
-    st.session_state["static_server_obj"] = httpd
-    return port
-
-
-def render_portal_cliente_proyecto():
-    st.header("📂 Portal de Cliente — Proyecto Seleccionado")
-
-    proyecto = st.session_state.get("proyecto_seleccionado")
-    interes_id = st.session_state.get("interes_proyecto_id")
-    interes_titulo = st.session_state.get("interes_proyecto_titulo")
-    email = st.session_state.get("email", "")
-    rol = st.session_state.get("rol", "cliente")  # futuro: cliente / propietario / arquitecto / admin
-
-    if not proyecto and not interes_id:
-        st.warning("No hay ningún proyecto seleccionado para mostrar en el portal de cliente.")
-        return
-
-    st.markdown("### 🏡 Información del Proyecto")
-
-    if proyecto:
-        st.write(f"**Título:** {proyecto.get('title', 'N/D')}")
-        st.write(f"**💰 Precio:** {proyecto.get('price', 'N/D')} €")
-        st.write(f"**📐 Superficie:** {proyecto.get('m2_construidos', 'N/D')} m²")
-        st.write(f"**🛏️ Habitaciones:** {proyecto.get('habitaciones', 'N/D')}")
-        st.write(f"**🛁 Baños:** {proyecto.get('banos', 'N/D')}")
-        st.write(f"**🏠 Plantas:** {proyecto.get('plantas', 'N/D')}")
-    else:
-        st.warning("No hay proyecto seleccionado.")
-
-    st.markdown("---")
-
-    # VISUALIZACIONES (pestañas: 3D / VR / Fotos)
-    st.markdown("### 🏗️ Visualizaciones del Proyecto")
-
-    tab_3d, tab_vr, tab_fotos = st.tabs(["🎥 3D", "🥽 VR", "🖼️ Fotos / Planos"])
-
-    # --- Pestaña 3D ---
-    with tab_3d:
-        st.markdown("#### 🎥 Visor 3D del Proyecto")
-
-        if proyecto:
-            # Usamos GLB siempre que exista
-            glb_path = proyecto.get("modelo_3d_glb")
-
-            if glb_path:
-                rel_path = str(glb_path).replace("\\", "/").lstrip("/")
-                # Obtener STATIC_URL si está definido, si no usar fallback
-                STATIC_URL = globals().get('STATIC_URL', 'http://127.0.0.1:8765/')
-                model_url = f"{STATIC_URL}{rel_path}".replace(" ", "%20")
-
-                try:
-                    html_final = three_html_for(model_url, str(proyecto.get("id")))
-                    st.components.v1.html(html_final, height=700, scrolling=False)
-                except Exception as e:
-                    st.error(f"Error cargando visor 3D: {e}")
-            else:
-                st.info("Este proyecto no tiene modelo GLB. Próximamente convertiremos OBJ a GLB automáticamente.")
-        else:
-            st.warning("No hay proyecto seleccionado en el portal.")
-
-    # --- Pestaña VR ---
-    with tab_vr:
-        st.markdown("#### 🥽 Visor de Realidad Virtual")
-
-        model_glb = None
-        if proyecto and proyecto.get("modelo_3d_glb"):
-            model_glb = proyecto.get("modelo_3d_glb")
-
-        if model_glb:
-            rel = str(model_glb).replace("\\", "/").lstrip("/")
-            glb_url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel}".replace(" ", "%20")
-            viewer_url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}static/vr_viewer.html?model={glb_url}"
-
-            st.markdown(
-                f'<a href="{viewer_url}" target="_blank">'
-                f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
-                f"Abrir experiencia RV en nueva pestaña"
-                f"</button></a>",
-                unsafe_allow_html=True,
-            )
-            st.caption("Se abrirá el visor RV en una nueva pestaña. Requiere navegador con WebXR o modo Desktop para previsualizar.")
-        else:
-            st.info("Este proyecto todavía no tiene modelo VR asociado. Usaremos el modelo 3D como base en futuras versiones.")
-
-    # --- Pestaña Fotos / Planos ---
-    with tab_fotos:
-        st.markdown("#### 🖼️ Galería de Fotos y Planos")
-
-        # Foto principal
-        foto = proyecto.get("foto_principal")
-        if foto:
-            rel = foto.replace("\\", "/").lstrip("/")
-            url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel}"
-            st.image(url, use_column_width=True)
-
-        # Imagen adicional dentro de characteristics_json
-        try:
-            import json
-            chars = json.loads(proyecto.get("characteristics_json", "{}"))
-            img2 = chars.get("imagenes")
-            # Evitar duplicados
-            if img2 and img2 == foto:
-                img2 = None
-            if img2:
-                rel2 = img2.replace("\\", "/").lstrip("/")
-                url2 = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel2}"
-                st.image(url2, use_column_width=True)
-        except:
-            pass
-
-    st.markdown("---")
-    st.markdown("### 🛒 Acciones del Cliente")
-    col1, col2 = st.columns(2)
     with col1:
-        if st.button("🛒 COMPRAR ESTE PROYECTO (simulado)", key="btn_comprar_proyecto_portal"):
-            st.success("Simulando compra. Nuestro equipo comercial se pondrá en contacto contigo.")
-    with col2:
-        if st.button("📞 QUIERO QUE ME LLAMEN", key="btn_llamar_proyecto_portal"):
-            st.success("Hemos registrado tu interés para que te llame el equipo comercial.")
+        # Logo de ARCHIRAPID
+        logo_path = "assets/branding/logo.png"
+        if os.path.exists(logo_path):
+            st.image(logo_path, width=200)
+        else:
+            st.title("🏗️ ARCHIRAPID")
 
-    st.caption(f"Portal vinculado al email: {email or 'No registrado'}")
+    with col2:
+        st.markdown("### IA Avanzada + Precios en Vivo + Exportación Profesional")
+        st.markdown("*Diseña tu casa ideal con inteligencia artificial*")
 
     st.markdown("---")
-    st.markdown("### 🔧 Módulos Profesionales (Futuro)")
-    st.info("Estos módulos estarán disponibles en futuras versiones para monetización:")
-    st.write("- 🎨 Decoradores (packs de interiorismo)")
-    st.write("- 🏗️ Constructores (presupuestos automáticos)")
-    st.write("- 🧱 Prefabricadas (catálogo integrado)")
-    st.write("- 🛡️ Aseguradoras (pólizas vinculadas)")
-    st.write("- 🧰 Materiales de construcción (marketplace)")
-    st.write("- 🧑‍💼 Arquitectos (gestión avanzada)")
-    st.write("- 🧑‍💼 Propietarios (seguimiento de obra)")
 
+def render_footer():
+    """Footer con información de contacto y copyright"""
+    st.divider()
+    st.caption("© 2025 ARCHIRAPID — Todos los derechos reservados. No se permite la copia o reproducción sin autorización expresa.")
+    st.caption("📧 moskovia@me.com | 📱 +34 623 172 704 | 📍 Madrid (Spain)")
 
-# Navigation state handling (restore `page` variable)
-page_keys = list(PAGES.keys())
-default_page = st.session_state.get("auto_select_page", "Home")
-selected_page = st.session_state.get("selected_page", default_page)
-try:
-    index = page_keys.index(selected_page) if selected_page in page_keys else 0
-except Exception:
-    index = 0
-page = st.sidebar.radio("Navegación", page_keys, index=index)
+# ==========================================
+# IMPORTS DEL SISTEMA INTEGRADO
+# ==========================================
 
-# Inicializar vista_actual si no existe (no altera comportamiento por defecto)
-if "vista_actual" not in st.session_state:
-    st.session_state["vista_actual"] = None
+from design_ops import parametric_engine, calculate_live_price
+from export_ops import generate_professional_export, get_export_options
+from data_access import (
+    obtener_fincas_con_fallback, obtener_proyectos_con_fallback,
+    crear_proyecto, actualizar_proyecto, exportar_proyecto,
+    mostrar_estado_conexion, inicializar_conexion,
+    demo_fincas
+)
 
-# Añadir botón aditivo en el sidebar para abrir el Portal Cliente (no conectado por defecto)
-if st.sidebar.button("📂 Portal Cliente"):
-    st.session_state["vista_actual"] = "portal_cliente"
+# ==========================================
+# CONFIGURACIÓN DE LA APP
+# ==========================================
 
-# Si el usuario ha seleccionado explícitamente el Portal Cliente, mostrarlo y detener el flujo
-if st.session_state.get("vista_actual") == "portal_cliente":
+st.set_page_config(
+    page_title="ARCHIRAPID - IA + Precios en Vivo",
+    layout="wide",
+    page_icon="🏗️"
+)
+
+# ==========================================
+# FUNCIONES AUXILIARES PARA FINCAS
+# ==========================================
+
+def load_fincas():
+    """Carga fincas desde backend o demo con manejo robusto de errores"""
     try:
-        render_portal_cliente_proyecto()
-    except Exception as _e:
-        st.error("Error mostrando el Portal Cliente: " + str(_e))
-    st.stop()
+        BACKEND_URL = "http://localhost:8000"
+        r = requests.get(f"{BACKEND_URL}/fincas", timeout=5)
+        if r.status_code == 200:
+            fincas = r.json()
+            if not fincas:  # Si backend responde pero no hay fincas, usar demo
+                fincas = demo_fincas()
+        else:
+            fincas = demo_fincas()
+    except requests.exceptions.ConnectionError:
+        # Backend no está disponible
+        st.warning("❌ **Backend no disponible**: El servidor FastAPI no está ejecutándose en http://localhost:8000")
+        st.info("💡 **Solución**: Ejecute `uvicorn main:app --host 0.0.0.0 --port 8000` en la carpeta backend")
+        st.info("🔄 **Modo demo activado**: Usando datos de ejemplo para demostración")
+        fincas = demo_fincas()
+    except Exception as e:
+        st.error(f"❌ Error inesperado al cargar fincas: {str(e)}")
+        fincas = demo_fincas()
+    return fincas
+
+def normalize_id(fid):
+    """Normaliza ID: acepta str/int y evita None"""
+    try:
+        return int(fid)
+    except Exception:
+        return fid  # si viene string ya usable
+
+def get_finca_by_id(fincas, fid):
+    if fid is None: return None
+    fid_str = str(fid)
+    for f in fincas:
+        if str(f.get("id")) == fid_str:
+            return f
+    return None
+
+def get_thumb(finca, placeholder="https://via.placeholder.com/320x240?text=No+Photo"):
+    """Return a usable image URL for Streamlit. If the finca has no valid
+    image (or uses the local '/static/no-photo.png' placeholder), return
+    the external placeholder URL to avoid Streamlit trying to open a
+    non-existent local file.
+    """
+    val = finca.get("foto_url")
+    if not val:
+        return placeholder
+
+    # If it's a list, prefer the first valid entry
+    if isinstance(val, list):
+        first = val[0] if len(val) > 0 else None
+        if not first or first == "/static/no-photo.png":
+            return placeholder
+        return first
+
+    # If it's a string
+    if isinstance(val, str):
+        if val == "/static/no-photo.png":
+            return placeholder
+        return val
+
+    return placeholder
+
+# Placeholder para imágenes
+placeholder = "https://via.placeholder.com/320x240?text=No+Photo"
+
+# Función para convertir URLs relativas a absolutas para Streamlit
+def get_image_url(relative_path):
+    """Convierte URL relativa a URL absoluta accesible por Streamlit"""
+    if relative_path.startswith("/static/"):
+        # Para desarrollo local, usar ruta absoluta del sistema de archivos
+        import os
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        full_path = os.path.join(base_dir, relative_path.lstrip("/"))
+        return full_path
+    return relative_path
+
+# Función para obtener URL del navegador (para popups)
+def get_browser_image_url(relative_path):
+    """Convierte URL relativa a URL accesible desde el navegador"""
+    if relative_path.startswith("/static/"):
+        # Usar data URLs para imágenes pequeñas (base64 encoded)
+        import os
+        import base64
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        full_path = os.path.join(base_dir, relative_path.lstrip("/"))
+
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, "rb") as f:
+                    image_data = f.read()
+                    encoded = base64.b64encode(image_data).decode()
+                    ext = os.path.splitext(full_path)[1].lower()
+                    mime_type = "image/png" if ext == ".png" else "image/jpeg"
+                    return f"data:{mime_type};base64,{encoded}"
+            except:
+                pass
+
+        # Fallback a placeholder externo (evita recursión si no existe el archivo)
+        return placeholder
+
+    return relative_path
 
 
-
-# Only handle Home here; other pages delegate to modules
-if page == "Home":
-    STATIC_ROOT = Path(r"C:/ARCHIRAPID_PROYECT25")
-    STATIC_PORT = _start_static_server(STATIC_ROOT, port=8765)
-    # URL base del servidor estático (definida temprano para usar en el header de diagnóstico)
-    if STATIC_PORT:
-        STATIC_URL = f"http://127.0.0.1:{STATIC_PORT}/"
-    else:
-        STATIC_URL = "http://127.0.0.1:8765/"
-
-    # Header
-    with st.container():
-        try:
-            from components.header import render_header
-            cols = render_header()
-            access_col = cols[2]
-        except Exception:
-            cols = st.columns([1, 4, 1])
-            with cols[0]:
-                try:
-                    st.image("assets/branding/logo.png", width=140)
-                except Exception:
-                    st.markdown("# 🏗️ ARCHIRAPID")
-            with cols[1]:
-                st.markdown("### IA Avanzada + Precios en Vivo + Exportación Profesional")
-            access_col = cols[2]
-
-        with access_col:
-            if st.button("ACCESO"):
-                if hasattr(st, 'modal'):
-                    with st.modal("Acceso"):
-                        login_val = st.text_input("Email o Clave", key="login_input")
-                        if st.button("Entrar", key="login_submit"):
-                            val = st.session_state.get("login_input", "")
-                            if val == "admin123":
-                                st.success("Acceso admin aceptado")
-                                st.session_state['selected_page'] = "Intranet"
-                                st.experimental_rerun()
-                else:
-                    with st.expander("Acceso"):
-                        login_val = st.text_input("Email o Clave", key="login_input_no_modal")
-                        if st.button("Entrar", key="login_submit_no_modal"):
-                            val = st.session_state.get("login_input_no_modal", "")
-                            if val == "admin123":
-                                st.success("Acceso admin aceptado")
-                                st.session_state['selected_page'] = "Intranet"
-                                st.experimental_rerun()
-
-    if 'role' not in st.session_state:
-        from components.landing import render_landing
-        render_landing()
-    else:
-        # Marketplace completo con título incluido
+def inject_history_replace():
+    """Inject a small client-side script to remove query params from the URL (history.replaceState).
+    This helps avoid leaving query parameters or iframe navigation remnants after closing modals.
+    """
+    try:
+        import streamlit.components.v1 as components
+        script = """
+        <script>
+        (function(){
+            try {
+                if (window.history && window.history.replaceState) {
+                    const base = window.location.protocol + '//' + window.location.host + window.location.pathname;
+                    window.history.replaceState({}, document.title, base);
+                }
+            } catch(e) {
+                /* ignore */
+            }
+        })();
+        </script>
+        """
+        # height 0 ensures minimal footprint
+        components.html(script, height=0)
+    except Exception:
         pass
 
-    # (Botón de prueba RV global eliminado por petición del usuario)
 
-    st.markdown("---")
-
-    # Marketplace completo
+def inject_postmessage_listener():
+    """Inyecta un listener en la página principal que escucha mensajes postMessage
+    desde iframes/ componentes (como el mapa) y navega a `?modal=1&fid=...` cuando
+    recibe un mensaje con `{type: 'open_modal', fid: <id>}`.
+    Esto evita depender de `target=_top` o `window.top.location` desde iframes.
+    """
     try:
-        from modules.marketplace import marketplace
-        marketplace.main()
-    except Exception as e:
-        st.error(f"Error cargando marketplace: {e}")
-
-    st.markdown("---")
-    st.header("Proyectos destacados")
-
-    # 1. Obtención de datos
-    projects = []
-    try:
-        if db:
-            projects = db.get_featured_projects(limit=3)
+        import streamlit.components.v1 as components
+        script = """
+        <script>
+        (function(){
+            if (window.__archirapid_postmessage_installed) return;
+            window.__archirapid_postmessage_installed = true;
+            window.addEventListener('message', function(e){
+                try {
+                    var data = e.data || {};
+                    if (typeof data === 'string') {
+                        try { data = JSON.parse(data); } catch(_) { return; }
+                    }
+                    if (data && data.type === 'open_modal' && data.fid) {
+                        const base = window.location.protocol + '//' + window.location.host + window.location.pathname;
+                        const newUrl = base + '?modal=1&fid=' + encodeURIComponent(data.fid);
+                        // Use replace to avoid adding history entries if desired
+                        window.location.href = newUrl;
+                    }
+                } catch(err) { /* ignore */ }
+            }, false);
+        })();
+        </script>
+        """
+        components.html(script, height=0)
     except Exception:
-        projects = []
+        pass
 
-    import json
-    # Creamos las columnas para las fichas
-    cols = st.columns(3)
-    project_to_show_3d = None  # Variable para saber qué proyecto expandir al ancho total
 
-    for idx, p in enumerate(projects[:3]):
-        with cols[idx]:
-            try:
-                raw = json.loads(p.get('characteristics_json') or '{}')
-                data = raw.get('characteristics', raw) if isinstance(raw, dict) else {}
-            except Exception:
-                data = {}
 
-            img = p.get('foto_principal') or data.get('imagenes') or "https://via.placeholder.com/640x360?text=No+Image"
-            st.image(img, use_column_width=True)
-            
-            title = p.get('title') or p.get('titulo') or 'Proyecto Archi'
-            st.subheader(title)
 
-            # Checkbox para activar 3D (Solo uno a la vez se guardará en el estado)
-            if st.checkbox("🏗️ Abrir Visor 3D", key=f"cb_3d_{p.get('id')}"):
-                project_to_show_3d = p  # Marcamos este proyecto para mostrarlo abajo
+# ==========================================
+# FUNCIONES DE DIAGNÓSTICO
+# ==========================================
 
-            with st.expander("📄 Ficha Técnica Completa"):
-                # Mostramos los datos clave de forma elegante
-                st.markdown(f"### {title}")
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.write(f"💰 **Precio:** {p.get('price') or 'Consultar'}")
-                    st.write(f"📐 **Superficie:** {p.get('area_m2', '—')} m²")
-                    st.write(f"🛏️ **Habitaciones:** {data.get('habitaciones', '—')}")
-                with c2:
-                    st.write(f"🛁 **Baños:** {data.get('baños', data.get('banos', '—'))}")
-                    st.write(f"🏢 **Plantas:** {data.get('plantas', '—')}")
-                    st.write(f"🅿️ **Garaje:** {'Sí' if data.get('garaje') else 'No'}")
-                # Si hay extras o descripción, los añadimos (seguros ante datos faltantes o no-lista)
-                if data.get('extras'):
-                    extras = data.get('extras')
-                    if isinstance(extras, list):
-                        texto_extras = ", ".join(extras)
-                    else:
-                        texto_extras = str(extras)
-                    st.info(f"✨ **Detalles adicionales:** {texto_extras}")
-                if p.get('description'):
-                    st.write(f"📝 {p.get('description')}")
+def check_backend():
+    try:
+        r = requests.get("http://localhost:8000/health", timeout=2)
+        return r.status_code == 200 and r.json().get("status") == "ok"
+    except Exception:
+        return False
 
-    # --- EL VISOR 3D AHORA SE RENDERIZA AQUÍ (ANCHO COMPLETO) ---
-    # Determine STATIC_URL for asset links (avoid NameError if server returned None)
-    if STATIC_PORT:
-        STATIC_URL = f"http://127.0.0.1:{STATIC_PORT}/"
-    else:
-        STATIC_URL = "http://127.0.0.1:8765/"
+# ==========================================
+# INICIALIZACIÓN DEL SISTEMA
+# ==========================================
 
-    if project_to_show_3d:
-        st.markdown("---")
-        st.subheader(f"🌐 Visor Interactivo: {project_to_show_3d.get('title')}")
-        # DEBUG: mostrar contenido completo del proyecto antes de renderizar el visor 3D
-        try:
-            st.write(project_to_show_3d)
-        except Exception:
-            pass
-        
-        # Obtener URL del modelo
-        modelo_path = project_to_show_3d.get('modelo_3d_path')
-        if modelo_path:
-            # Saneamiento de ruta para Windows/URL
-            rel_path = modelo_path.replace("\\", "/").lstrip("/")
-            model_url = f"{STATIC_URL}{rel_path}".replace(" ", "%20")
+inicializar_conexion()
 
-            # Llamada a la función con el fix de auto-zoom
-            html_final = three_html_for(model_url, str(project_to_show_3d.get('id')))
+# ==========================================
+# HEADER PRINCIPAL
+# ==========================================
 
-            # Usamos st.components al ancho total
-            st.components.v1.html(html_final, height=700, scrolling=False)
-            # --- VR Viewer (aditivo, seguro) ---
-            st.markdown("### 🥽 Visor de Realidad Virtual")
+def render_app_header():
+    """Header de la aplicación"""
+    render_header()
 
-            # Intentar llamar a cualquier renderer VR conocido en el repo; si no hay ninguno, ofrecer fallback GLB
-            renderer_called = False
-            try:
-                for name in ('render_vr_viewer', 'visor_vr', 'render_vr_experience'):
-                    fn = globals().get(name)
-                    if callable(fn):
-                        try:
-                            fn(project_to_show_3d)
-                            renderer_called = True
-                            break
-                        except Exception as e:
-                            st.warning(f'VR renderer {name} raised an error: {e}')
-            except Exception as e:
-                st.warning(f'Error while attempting to initialize VR renderers: {e}')
+# ==========================================
+# PANEL PRINCIPAL DEL CLIENTE
+# ==========================================
 
-            # Si ningún renderer fue invocado, ofrecemos un enlace al visor GLB o un botón de prueba
-            if not renderer_called:
-                model_glb = project_to_show_3d.get('modelo_3d_glb') or None
-                if not model_glb and project_to_show_3d.get('modelo_3d_path'):
-                    modelo_path = project_to_show_3d.get('modelo_3d_path')
-                    if str(modelo_path).lower().endswith('.glb'):
-                        model_glb = modelo_path
+def main():
+    # Inicializar estado de sesión para coherencia
+    if "finca_id" not in st.session_state:
+        st.session_state["finca_id"] = None
+    if "clicked_fid" not in st.session_state:
+        st.session_state["clicked_fid"] = None
 
-                if model_glb:
-                    rel = str(model_glb).replace('\\','/').lstrip('/')
-                    glb_url = f"{STATIC_URL}{rel}".replace(' ', '%20')
-                    viewer_url = f"{STATIC_URL}static/vr_viewer.html?model={glb_url}"
-                    with st.container():
-                        st.markdown(f'<a href="{viewer_url}" target="_blank"><button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">Abrir experiencia RV</button></a>', unsafe_allow_html=True)
-                        st.caption('Se abrirá el visor RV en una nueva pestaña. Requiere navegador con WebXR o modo Desktop para previsualizar.')
-                else:
-                    # Mostrar botón de prueba con un modelo GLB público para validar el flujo
-                    test_glb = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb"
-                    test_viewer = f"{STATIC_URL}static/vr_viewer.html?model={test_glb}"
-                    with st.container():
-                        st.markdown(f'<a href="{test_viewer}" target="_blank"><button style="padding:8px 12px;border-radius:6px;background:#28a745;color:#fff;border:none;">Probar RV (modelo de ejemplo)</button></a>', unsafe_allow_html=True)
-                        st.caption('Botón de prueba: abre un modelo público para validar el visor VR. No modifica datos del proyecto.')
-
-            # --- Bloque aditivo: Me gusta / Lo quiero (100% aditivo, no rompe nada) ---
-            st.markdown("---")
-            st.markdown("### ❤️ ¿Te gusta este proyecto?")
-
-            email = st.session_state.get("email", "")
-            proyecto_id = project_to_show_3d.get("id")
-            proyecto_titulo = project_to_show_3d.get("titulo", "Proyecto sin título")
-
-            if not email:
-                st.info("Para guardar este proyecto en tu espacio de cliente, introduce tu email:")
-                email_input = st.text_input("Tu email", key=f"email_interes_{proyecto_id}")
-
-                if st.button("✅ Guardar este proyecto y continuar", key=f"btn_guardar_proyecto_email_{proyecto_id}"):
-                    if email_input:
-                        st.session_state["email"] = email_input
-                        st.session_state["interes_proyecto_id"] = proyecto_id
-                        st.session_state["interes_proyecto_titulo"] = proyecto_titulo
-                        # Guardar el objeto de proyecto completo para que el Portal Cliente lo reciba
-                        st.session_state["proyecto_seleccionado"] = project_to_show_3d
-                        st.success("Proyecto guardado. Nuestro equipo comercial podrá contactarte si lo deseas.")
-                        # Navegar automáticamente al Portal Cliente después de guardar interés
-                        st.session_state["vista_actual"] = "portal_cliente"
-                        st.experimental_rerun()
-                    else:
-                        st.warning("Por favor, introduce un email válido.")
-            else:
-                st.success(f"Estás navegando como: {email}")
-                if st.button("💾 Me gusta este proyecto (guardarlo)", key=f"btn_me_gusta_proyecto_{proyecto_id}"):
-                    st.session_state["interes_proyecto_id"] = proyecto_id
-                    st.session_state["interes_proyecto_titulo"] = proyecto_titulo
-                    # Guardar el objeto de proyecto completo para que el Portal Cliente lo reciba
-                    st.session_state["proyecto_seleccionado"] = project_to_show_3d
-                    st.success("✅ Hemos guardado tu interés por este proyecto.")
-                    # Cambiar automáticamente a la vista Portal Cliente
-                    st.session_state["vista_actual"] = "portal_cliente"
-                    st.experimental_rerun()
+    # Normalizar estado y entrada (query params + session)
+    params = st.experimental_get_query_params()
+    if params.get("modal", ["0"])[0] == "1" and params.get("fid"):
+        fid = params["fid"][0]
+        st.session_state["clicked_fid"] = fid
+        st.session_state["finca_id"] = fid  # Mantener para compatibilidad
+    # Manejar acciones de reserva/compra vía query params (página de confirmación)
+    action = params.get("action", [None])[0]
+    if action in ("reserve", "buy") and params.get("fid"):
+        fid_act = params["fid"][0]
+        # Mostrar página simple de confirmación y evitar render normal
+        st.title("Confirmación de acción")
+        if action == "reserve":
+            st.success(f"✅ Reserva registrada para finca {fid_act}")
+            st.write("Te enviaremos más detalles por email (MVP).")
         else:
-            st.error("Este proyecto no tiene un archivo 3D vinculado.")
+            st.success(f"✅ Compra simulada completada para finca {fid_act}")
+            st.write("Gracias por tu compra. Se abrirán más opciones para seguir (MVP).")
+        st.write("[Volver al inicio](./)")
+        return
 
+    # Mostrar header siempre
+    render_app_header()
+    # Placeholder en la parte superior para modal (se usa para mostrar overlay en top)
+    top_modal = st.empty()
+
+    # Inject postMessage listener so popups inside the map iframe can ask the parent
+    # page to open the modal. This is necessary because direct top navigation from
+    # the component iframe may be blocked by browser sandboxing.
+    try:
+        inject_postmessage_listener()
+    except Exception:
+        pass
+
+    # Indicador global de backend mejorado
+    BACKEND_URL = "http://localhost:8000"
+    try:
+        r = requests.get(f"{BACKEND_URL}/health", timeout=2)
+        is_backend_ok = r.status_code == 200 and r.json().get("status") == "ok"
+    except Exception:
+        is_backend_ok = False
+
+    if is_backend_ok:
+        status_label = "🟢 **Backend conectado** - Modo Producción"
+        status_color = "green"
+    else:
+        status_label = "🔴 **Backend desconectado** - Modo Demo"
+        status_color = "red"
+
+    st.markdown(f"<h4 style='color: {status_color};'>{status_label}</h4>", unsafe_allow_html=True)
+
+    if not is_backend_ok:
+        st.warning("⚠️ El backend FastAPI no está disponible. La aplicación funciona en modo demostración con datos de ejemplo.")
+        st.info("💡 **Para activar modo producción**: Ejecute en terminal: `cd backend && uvicorn main:app --host 0.0.0.0 --port 8000`")
+
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("🔄 Actualizar estado", help="Verificar conexión con backend"):
+            st.rerun()
+
+    # Sidebar con navegación
+    with st.sidebar:
+        st.markdown("### 🎯 Mi Panel")
+
+        # Navegación principal
+        opciones = [
+            "🏠 Inicio",
+            "👥 Owners",
+            "📊 Panel Cliente",
+            "🏡 Ficha Finca",
+            "📊 Mis Proyectos",
+            "🏢 Intranet Arquitectos",
+            "🧠 Gemelo Digital",
+            "📦 Exportar Proyecto"
+        ]
+
+        seleccion = st.radio("Navegación:", opciones, key="navegacion_radio")
+
+        # Actualizar session_state
+        st.session_state.seleccion = seleccion
+
+        # Sección de acceso (no bloqueante)
+        st.markdown("### 🔐 Acceso")
+        email = st.text_input(
+            "Tu email (opcional para explorar, requerido para guardar/exportar)",
+            value=st.session_state.get("email", ""),
+            key="user_email"
+        )
+        if email:
+            st.session_state["email"] = email
+            st.success(f"✅ Acceso completo: {email}")
+        else:
+            st.info("💡 Puedes explorar libremente. Para guardar/exportar, introduce tu email.")
+
+        # Información del sistema
+        with st.expander("ℹ️ Estado del Sistema"):
+            mostrar_estado_conexion()
+
+            if st.session_state.get("proyecto_actual"):
+                st.markdown(f"**Proyecto:** {st.session_state.proyecto_actual.get('titulo', 'N/A')}")
+                st.markdown(f"**Versión:** {st.session_state.proyecto_actual.get('version', 0)}")
+
+    # Contenido principal - SIEMPRE accesible
+    if seleccion == "🏠 Inicio":
+        render_inicio(top_modal)
+    elif seleccion == "👥 Owners":
+        render_owners()
+    elif seleccion == "📊 Panel Cliente":
+        render_panel_cliente()
+    elif seleccion == "🏡 Ficha Finca":
+        render_ficha_finca()
+    elif seleccion == "📊 Mis Proyectos":
+        render_mis_proyectos()
+    elif seleccion == "🏢 Intranet Arquitectos":
+        render_intranet_arquitectos()
+    elif seleccion == "🧠 Gemelo Digital":
+        render_gemelo_digital()
+        render_precios_vivo()
+    elif seleccion == "📦 Exportar Proyecto":
+        render_exportacion()
+
+# ==========================================
+# MODAL NATIVO DE STREAMLIT
+# ==========================================
+
+def mostrar_modal_finca(finca):
+    """Mostrar detalles de la finca en un modal si `st.modal` está disponible,
+    o en un contenedor superior como fallback.
+    """
+    if finca is None:
+        st.error("Finca no encontrada")
+        return
+
+    thumb = get_browser_image_url(get_thumb(finca))
+
+    def _render_body(container):
+        with container:
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                try:
+                    st.image(thumb, use_column_width=True)
+                except Exception:
+                    st.image(placeholder, use_column_width=True)
+            with c2:
+                st.subheader(finca.get('direccion', '—'))
+                st.write(f"**Superficie:** {finca.get('superficie_m2', '—')} m²")
+                pvp = finca.get('pvp')
+                st.write(f"**PVP:** €{pvp:,}" if pvp is not None else "**PVP:** No especificado")
+                st.write(f"**Ref. catastral:** {finca.get('ref_catastral', '—')}")
+
+                descripcion = finca.get('descripcion', '')
+                if descripcion:
+                    st.markdown("---")
+                    st.write(descripcion)
+
+                st.markdown("---")
+                st.markdown("### 🎯 Acciones")
+
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button("💰 Reservar", use_container_width=True, type="primary", key=f"modal_reservar_{finca.get('id')}"):
+                        st.success("✅ Reserva registrada correctamente (MVP)")
+                        st.balloons()
+                with col_b:
+                    if st.button("🛒 Comprar", use_container_width=True, key=f"modal_comprar_{finca.get('id')}"):
+                        st.success("✅ Compra registrada correctamente (MVP)")
+                        st.balloons()
+
+    # Use native modal when available
+    if hasattr(st, "modal"):
+        try:
+            with st.modal("Detalles de la Finca"):
+                _render_body(st)
+        except Exception:
+            # If modal fails for any reason, fallback to inline container
+            fallback = st.empty()
+            _render_body(fallback)
+    else:
+        # Fallback: render into a top-level placeholder so it appears above content
+        fallback = st.empty()
+        _render_body(fallback)
+
+# ==========================================
+# PANTALLA DE INICIO
+# ==========================================
+
+def render_inicio(top_modal=None):
+    st.header("🏠 Bienvenido a ARCHIRAPID")
+
+    st.markdown("""
+    ### 🚀 Tu casa ideal en minutos con IA
+
+    **ARCHIRAPID** combina inteligencia artificial avanzada con precios en tiempo real
+    para crear diseños arquitectónicos profesionales al instante.
+
+    #### ✨ Lo que puedes hacer:
+    - 🎨 **Diseñar con IA**: Describe tu casa ideal y la IA la crea
+    - 💰 **Precios en Vivo**: Ve cómo cambian los precios en tiempo real
+    - 📦 **Exportación Profesional**: Obtén planos CAD, memorias técnicas y presupuestos
+    - 🔄 **Iteración Continua**: Modifica y perfecciona tu diseño paso a paso
+    """)
+
+    # Ensure we have a top placeholder to render modal overlay
+    if top_modal is None:
+        top_modal = st.empty()
+
+    # Mostrar mapa con fincas disponibles
+    fincas = load_fincas()
+    if not fincas:
+        st.warning("No hay fincas disponibles. El sistema está en modo demo.")
+        return
     
+    # Si el usuario ha hecho clic en un marcador, abrir modal directamente
+    if st.session_state.get('clicked_fid'):
+        fid = st.session_state.get('clicked_fid')
+        finca = get_finca_by_id(fincas, fid)
+        if finca:
+            mostrar_modal_finca(finca)
+            # Limpiar flag después de que el modal se ha mostrado
+            # Esto permite que el modal se renderice en el rerun actual
+            st.session_state['clicked_fid'] = None
+    
+    render_mapa_inmobiliario(fincas)
 
-elif page == "Propietario (Gemelo Digital)":
-    with st.container():
-        # Flujo principal: Propietario sube finca → IA genera plan
-        from modules.marketplace import gemelo_digital
-        gemelo_digital.main()
+    # Lista lateral con fincas para explorar
+    st.markdown("---")
+    st.subheader("🏡 Fincas Disponibles")
 
-elif page == "Propietarios (Subir Fincas)":
-    with st.container():
-        # Propietarios suben fincas al marketplace inmobiliario
-        from modules.marketplace import owners
-        owners.main()
+    if not fincas:
+        st.warning("No hay fincas disponibles. El sistema está en modo demo.")
+        return
 
-elif page == "Diseñador de Vivienda":
-    with st.container():
-        # Flujo secundario: Cliente diseña vivienda personalizada
-        from modules.marketplace import disenador_vivienda
-        disenador_vivienda.main()
+    # Mostrar lista de fincas en formato 3x3
+    # Ordenar por ID descendente (más recientes primero) y tomar máximo 9
+    fincas_ordenadas = sorted(fincas, key=lambda x: x.get('id', 0), reverse=True)[:9]
 
-# "Inmobiliaria (Mapa)" route removed — Home now uses `marketplace.main()` directly.
+    if not fincas_ordenadas:
+        st.info("No hay fincas disponibles.")
+    else:
+        # Mostrar fincas en filas de 3 columnas
+        for i in range(0, len(fincas_ordenadas), 3):
+            row = st.columns(3)
+            for j in range(3):
+                if i + j < len(fincas_ordenadas):
+                    f = fincas_ordenadas[i + j]
+                    foto = f.get("foto_url", [placeholder])[0]
+                    with row[j]:
+                        cols = st.columns([1, 2])
+                        with cols[0]:
+                            img_src = get_browser_image_url(foto)
+                            st.image(img_src, width=120)
+                        with cols[1]:
+                            st.write(f"{f['direccion']}")
+                            st.write(f"Superficie: {f['superficie_m2']} m2")
+                            st.write(f"PVP: {f.get('pvp','—')} €")
+                            if st.button(f"Ver detalles {f.get('id','')}"):
+                                st.session_state["clicked_fid"] = str(f.get("id"))
+                                st.rerun()
 
-elif page == "👤 Panel de Cliente":
-    with st.container():
-        # Panel de cliente con acceso a transacciones y servicios
-        from modules.marketplace import client_panel_fixed as client_panel
-        client_panel.main()
+    render_footer()
 
-elif page == "Arquitectos (Marketplace)":
-    with st.container():
-        # Use the new main() entrypoint which handles auth, plans and upload flow
-        from modules.marketplace import marketplace_upload
-        marketplace_upload.main()
+def render_owners():
+    st.header("👥 Panel de Propietarios - Subir Fincas")
 
-elif page == "Intranet":
-    with st.container():
-        from modules.marketplace import intranet
-        intranet.main()
+    st.markdown("""
+    ### 🏠 Sube tu finca al mercado inmobiliario
+
+    Completa tus datos personales y los de tu propiedad para que aparezca en el mapa y arquitectos puedan diseñar proyectos con IA.
+    """)
+
+    # Verificar si hay una finca recién creada para mostrar confirmación
+    if st.session_state.get("finca_creada", False):
+        propietario = st.session_state.get("propietario_actual", {})
+        finca = st.session_state.get("finca_reciente", {})
+
+        st.success("✅ ¡Propiedad registrada correctamente!")
+        st.balloons()
+
+        st.markdown(f"""
+        ### 🎉 ¡Registro completado!
+
+        **Propietario:** {propietario.get('nombre', 'N/A')}  
+        **Finca:** {finca.get('direccion', 'N/A')}  
+        **Superficie:** {finca.get('superficie_m2', 0)} m2
+
+        Tu propiedad ha sido añadida al mapa y está disponible para que arquitectos diseñen proyectos con IA.
+
+        **¿Qué sigue?**
+        - Los arquitectos podrán ver tu finca en el mapa
+        - Recibirás notificaciones cuando haya interés
+        - Podrás acceder a tu Panel Cliente para gestionar proyectos
+        """)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("👤 Ir a Mi Panel Cliente", type="primary", use_container_width=True):
+                st.session_state.seleccion = "📊 Panel Cliente"
+                st.session_state.finca_creada = False  # Limpiar flag
+                st.rerun()
+
+        with col2:
+            if st.button("➕ Registrar Otra Propiedad", use_container_width=True):
+                st.session_state.finca_creada = False  # Limpiar flag
+                st.rerun()
+
+        render_footer()
+        return
+
+    # Formulario completo: datos personales + finca
+    with st.form("form_propietario_finca"):
+        # Sección 1: Datos Personales del Propietario
+        st.subheader("👤 Datos Personales del Propietario")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            nombre = st.text_input("Nombre completo", placeholder="Juan Pérez García")
+            email = st.text_input("Email", placeholder="juan@email.com")
+            telefono = st.text_input("Teléfono", placeholder="+34 600 000 000")
+
+        with col2:
+            dni = st.text_input("DNI/NIF", placeholder="12345678A")
+            direccion_propietario = st.text_input("Dirección del propietario", placeholder="Calle Mayor 123, Madrid")
+            banco = st.text_input("Cuenta bancaria (opcional)", placeholder="ES12 3456 7890 1234 5678 9012")
+
+        # Sección 2: Datos de la Finca
+        st.subheader("🏠 Datos de la Finca")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            direccion = st.text_input("Dirección completa de la finca", placeholder="Calle Mayor 123, Madrid")
+            superficie = st.number_input("Superficie (m2)", min_value=1.0, step=1.0, value=100.0)
+            pvp = st.number_input("Precio de venta (PVP, €)", min_value=0.0, step=1000.0, value=150000.0)
+
+        with col2:
+            ref_catastral = st.text_input("Referencia catastral (opcional)")
+            # Campos de coordenadas (se actualizarán después de geocodificación)
+            default_lat = st.session_state.get("calculated_lat", 40.4168)
+            default_lng = st.session_state.get("calculated_lng", -3.7038)
+            lat = st.number_input("Latitud", value=default_lat, format="%.6f", key="lat_input")
+            lng = st.number_input("Longitud", value=default_lng, format="%.6f", key="lng_input")
+
+        # Nota catastral
+        st.subheader("📄 Nota Catastral")
+        nota_catastral_text = st.text_area("Descripción o resumen de la nota catastral", height=100)
+        nota_catastral_file = st.file_uploader("Subir nota catastral (PDF/imagen)", type=["pdf","png","jpg","jpeg"])
+
+        # Fotos
+        st.subheader("📸 Fotos de la Finca")
+        fotos = st.file_uploader("Subir fotos", type=["png","jpg","jpeg"], accept_multiple_files=True)
+
+        # Geocodificación
+        st.subheader("📍 Ubicación")
+        if st.form_submit_button("🔍 Calcular coordenadas por dirección", use_container_width=True):
+            if direccion:
+                try:
+                    geolocator = Nominatim(user_agent="archirapid_mvp")
+                    loc = geolocator.geocode(direccion)
+                    if loc:
+                        # Actualizar los campos de coordenadas
+                        st.session_state.calculated_lat = loc.latitude
+                        st.session_state.calculated_lng = loc.longitude
+                        st.success(f"✅ Coordenadas calculadas: {loc.latitude:.6f}, {loc.longitude:.6f}")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ No se encontraron coordenadas para esa dirección. Introduce manualmente.")
+                except Exception as e:
+                    st.error(f"❌ Error en geocodificación: {e}")
+            else:
+                st.warning("⚠️ Introduce una dirección primero.")
+
+        # Comisión estimada
+        if pvp and pvp > 0:
+            st.subheader("💰 Estimación de Comisión")
+            com_min = round(pvp * 0.07, 2)
+            com_max = round(pvp * 0.10, 2)
+            neto_min = round(pvp - com_min, 2)
+            neto_max = round(pvp - com_max, 2)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Comisión mínima (7%)", f"€{com_min:,.0f}")
+                st.metric("Neto para empresa", f"€{neto_min:,.0f}")
+            with col2:
+                st.metric("Comisión máxima (10%)", f"€{com_max:,.0f}")
+                st.metric("Neto para empresa", f"€{neto_max:,.0f}")
+
+            st.caption("La comisión real se ajustará según negociación y servicios prestados.")
+
+        # Botón de guardar
+        submitted = st.form_submit_button("💾 Guardar Propiedad y Acceder al Panel Cliente", type="primary")
+
+        if submitted:
+            # Validaciones
+            if not nombre or not email or not telefono or not direccion or superficie <= 0 or (lat == 0.0 and lng == 0.0):
+                st.error("❌ Nombre, email, teléfono, dirección de la finca, superficie y coordenadas son obligatorios.")
+                return
+
+            # Preparar payload con datos del propietario
+            foto_urls = []
+            if fotos:
+                # Guardar fotos en static/fotos/ con nombres únicos
+                import uuid
+                import os
+                from datetime import datetime
+                
+                fotos_dir = "static/fotos"
+                os.makedirs(fotos_dir, exist_ok=True)
+                
+                # Generar ID único para la finca (temporal hasta que el backend asigne el real)
+                temp_id = str(uuid.uuid4())[:8]
+                
+                for i, foto in enumerate(fotos):
+                    # Generar nombre único para cada foto
+                    extension = os.path.splitext(foto.name)[1].lower()
+                    if extension not in ['.jpg', '.jpeg', '.png']:
+                        extension = '.jpg'
+                    
+                    filename = f"finca_{temp_id}_{i+1}{extension}"
+                    filepath = os.path.join(fotos_dir, filename)
+                    
+                    # Guardar imagen
+                    with open(filepath, "wb") as f:
+                        f.write(foto.getbuffer())
+                    
+                    # Generar URL relativa
+                    foto_urls.append(f"/static/fotos/{filename}")
+            else:
+                # Si no hay fotos, usar placeholder
+                foto_urls = ["/static/no-photo.png"]
+
+            payload = {
+                "direccion": direccion,
+                "superficie_m2": float(superficie),
+                "ref_catastral": ref_catastral or None,
+                "foto_url": foto_urls,
+                "ubicacion_geo": {"lat": float(lat), "lng": float(lng)},
+                "max_construible_m2": float(superficie * 0.33),  # 33% de la superficie
+                "retranqueos": None,
+                "propietario": {
+                    "nombre": nombre,
+                    "email": email,
+                    "telefono": telefono,
+                    "dni": dni or None,
+                    "direccion": direccion_propietario or None,
+                    "cuenta_bancaria": banco or None
+                },
+                "estado": "pendiente",
+                "pvp": float(pvp) if pvp else None,
+                "sync_intranet": False  # Preparado para futura sincronización
+            }
+
+            # Enviar al backend
+            try:
+                BACKEND_URL = "http://localhost:8000"
+                r = requests.post(f"{BACKEND_URL}/fincas", json=payload, timeout=5)
+                if r.status_code in (200, 201):
+                    # Guardar datos del propietario en session_state para el panel cliente
+                    st.session_state.propietario_actual = {
+                        "nombre": nombre,
+                        "email": email,
+                        "telefono": telefono,
+                        "dni": dni,
+                        "direccion": direccion_propietario,
+                        "cuenta_bancaria": banco
+                    }
+                    st.session_state.finca_reciente = payload
+                    st.session_state.finca_creada = True  # Flag para mostrar confirmación
+                    # Limpiar coordenadas calculadas para la siguiente finca
+                    if "calculated_lat" in st.session_state:
+                        del st.session_state.calculated_lat
+                    if "calculated_lng" in st.session_state:
+                        del st.session_state.calculated_lng
+                    st.rerun()
+
+                else:
+                    st.error(f"❌ Error al crear propiedad: {r.status_code} → {r.text}")
+            except Exception as e:
+                st.error(f"❌ Error de conexión al backend: {e}")
+
+    render_footer()
+
+def render_panel_cliente():
+    st.header("📊 Panel Cliente - Mis Propiedades")
+
+    # Verificar si hay datos del propietario
+    propietario = st.session_state.get("propietario_actual")
+    if not propietario:
+        st.warning("⚠️ No tienes propiedades registradas aún. Ve al panel de Owners para subir tu primera propiedad.")
+        if st.button("👥 Ir a Panel de Owners", type="primary"):
+            st.session_state.seleccion = "👥 Owners"
+            st.rerun()
+        render_footer()
+        return
+
+    # Bienvenida personalizada
+    st.markdown(f"""
+    ### 👋 ¡Hola {propietario['nombre']}!
+
+    Bienvenido a tu Panel Cliente personal. Aquí puedes gestionar tus propiedades y ver el progreso de los proyectos arquitectónicos.
+    """)
+
+    # Información del propietario
+    with st.expander("👤 Mis Datos Personales", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Nombre:** {propietario['nombre']}")
+            st.markdown(f"**Email:** {propietario['email']}")
+            st.markdown(f"**Teléfono:** {propietario['telefono']}")
+        with col2:
+            if propietario.get('dni'):
+                st.markdown(f"**DNI/NIF:** {propietario['dni']}")
+            if propietario.get('direccion'):
+                st.markdown(f"**Dirección:** {propietario['direccion']}")
+            if propietario.get('cuenta_bancaria'):
+                st.markdown(f"**Cuenta Bancaria:** {'*' * 16 + propietario['cuenta_bancaria'][-4:]}")
+
+    # Obtener propiedades del propietario
+    try:
+        BACKEND_URL = "http://localhost:8000"
+        r = requests.get(f"{BACKEND_URL}/fincas?propietario_email={propietario['email']}", timeout=5)
+        if r.status_code == 200:
+            fincas = r.json()
+        else:
+            fincas = []
+    except Exception as e:
+        st.error(f"❌ Error al cargar propiedades: {e}")
+        fincas = []
+
+    if not fincas:
+        st.info("📭 No tienes propiedades registradas aún.")
+        if st.button("➕ Registrar Primera Propiedad", type="primary"):
+            st.session_state.seleccion = "👥 Owners"
+            st.rerun()
+    else:
+        st.subheader("🏠 Mis Propiedades")
+
+        for finca in fincas:
+            with st.container():
+                col1, col2 = st.columns([2, 1])
+
+                with col1:
+                    st.markdown(f"**🏡 {finca['direccion']}**")
+                    st.markdown(f"**Superficie:** {finca['superficie_m2']} m2")
+                    if finca.get('pvp'):
+                        st.markdown(f"**PVP:** €{finca['pvp']:,.0f}")
+                    st.markdown(f"**Estado:** {finca.get('estado', 'Pendiente')}")
+
+                    # Estado visual
+                    if finca.get('estado') == 'activa':
+                        st.success("✅ Propiedad activa en el mercado")
+                    elif finca.get('estado') == 'vendida':
+                        st.info("💰 Propiedad vendida")
+                    else:
+                        st.warning("⏳ Pendiente de activación")
+
+                with col2:
+                    st.markdown("### 🎯 Acciones")
+
+                    # Botón para ver diseños con IA
+                    if st.button(f"🎨 Ver Diseños IA", key=f"disenos_{finca['id']}", use_container_width=True):
+                        st.session_state.finca_actual = finca
+                        st.session_state.pantalla_actual = "diseno_ia"
+                        st.rerun()
+
+                    # Botón para ver proyectos existentes
+                    if st.button(f"📊 Ver Proyectos", key=f"proyectos_{finca['id']}", use_container_width=True):
+                        proyectos = obtener_proyectos_con_fallback({"finca_id": finca["id"]})
+                        if proyectos:
+                            st.session_state.proyectos_finca = proyectos
+                            st.session_state.pantalla_actual = "proyectos_finca"
+                            st.rerun()
+                        else:
+                            st.info("No hay proyectos para esta finca aún.")
+
+                    # Botón para editar propiedad
+                    if st.button(f"✏️ Editar", key=f"editar_{finca['id']}", use_container_width=True):
+                        st.info("Funcionalidad de edición próximamente disponible.")
+
+                    # Botón para sincronizar con intranet
+                    if finca.get('sync_intranet', False):
+                        st.success("🔄 Sincronizado con Intranet")
+                    else:
+                        if st.button(f"🔄 Sync Intranet", key=f"sync_{finca['id']}", use_container_width=True):
+                            st.info("Sincronización con intranet próximamente disponible.")
+
+                st.divider()
+
+        # Estadísticas generales
+        st.subheader("📈 Estadísticas")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Total Propiedades", len(fincas))
+
+        with col2:
+            activas = sum(1 for f in fincas if f.get('estado') == 'activa')
+            st.metric("Propiedades Activas", activas)
+
+        with col3:
+            total_valor = sum(f.get('pvp', 0) for f in fincas if f.get('pvp'))
+            st.metric("Valor Total", f"€{total_valor:,.0f}")
+
+    render_footer()
+
+def render_ficha_finca():
+    st.header("🏡 Ficha de Finca")
+
+    # Obtener finca_id de session_state
+    finca_id = st.session_state.get("finca_id")
+    if not finca_id:
+        st.error("No se ha seleccionado ninguna finca.")
+        if st.button("← Volver al Inicio"):
+            st.session_state.seleccion = "🏠 Inicio"
+            st.rerun()
+        render_footer()
+        return
+
+    # Obtener finca por ID
+    try:
+        BACKEND_URL = "http://localhost:8000"
+        r = requests.get(f"{BACKEND_URL}/fincas", timeout=5)
+        if r.status_code == 200:
+            fincas = r.json()
+            finca = next((f for f in fincas if str(f.get('id')) == str(finca_id)), None)
+        else:
+            finca = None
+    except Exception as e:
+        st.error(f"Error al cargar finca: {e}")
+        finca = None
+
+    if not finca:
+        st.error("Finca no encontrada.")
+        if st.button("← Volver al Inicio"):
+            st.session_state.seleccion = "🏠 Inicio"
+            st.rerun()
+        render_footer()
+        return
+
+    # Mostrar ficha completa
+    st.markdown(f"## 🏠 {finca['direccion']}")
+
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        # Foto principal
+        foto_url = finca.get('foto_url', [])
+        if foto_url and len(foto_url) > 0:
+            st.image(foto_url[0], width=300, caption="Foto principal")
+        else:
+            st.image("https://via.placeholder.com/300x200.png?text=Sin+Foto", width=300, caption="Sin foto disponible")
+
+        # Información básica
+        st.subheader("📋 Información Básica")
+        st.write(f"**Superficie:** {finca['superficie_m2']} m2")
+        st.write(f"**Máx. Construible:** {finca.get('max_construible_m2', finca['superficie_m2'] * 0.33):.0f} m2")
+        pvp = finca.get('pvp')
+        st.write(f"**PVP:** {f'€{pvp:,.0f}' if pvp else 'No especificado'}")
+
+        # Estado
+        estado = finca.get('estado', 'pendiente')
+        if estado == 'activa':
+            st.success("✅ Propiedad activa en el mercado")
+        elif estado == 'vendida':
+            st.info("💰 Propiedad vendida")
+        else:
+            st.warning("⏳ Pendiente de activación")
+
+    with col2:
+        # Datos catastrales
+        st.subheader("📄 Datos Catastrales")
+        st.write(f"**Referencia Catastral:** {finca.get('ref_catastral', 'No especificada')}")
+
+        # Ubicación
+        st.subheader("📍 Ubicación")
+        ubicacion = finca.get('ubicacion_geo', {})
+        lat = ubicacion.get('lat', 'N/A')
+        lng = ubicacion.get('lng', 'N/A')
+        st.write(f"**Latitud:** {lat}")
+        st.write(f"**Longitud:** {lng}")
+
+        # Propietario (si está disponible)
+        propietario = finca.get('propietario', {})
+        if propietario:
+            st.subheader("👤 Propietario")
+            st.write(f"**Nombre:** {propietario.get('nombre', 'N/A')}")
+            st.write(f"**Email:** {propietario.get('email', 'N/A')}")
+            st.write(f"**Teléfono:** {propietario.get('telefono', 'N/A')}")
+
+        # Acciones
+        st.subheader("🎯 Acciones Disponibles")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🎨 Diseñar con IA", type="primary", use_container_width=True):
+                st.session_state.finca_actual = finca
+                st.session_state.seleccion = "🧠 Gemelo Digital"
+                st.rerun()
+
+            if st.button("📊 Ver Proyectos Existentes", use_container_width=True):
+                proyectos = obtener_proyectos_con_fallback({"finca_id": finca["id"]})
+                if proyectos:
+                    st.session_state.proyectos_finca = proyectos
+                    st.session_state.seleccion = "📊 Mis Proyectos"
+                    st.rerun()
+                else:
+                    st.info("No hay proyectos para esta finca aún.")
+
+        with col2:
+            if st.button("💰 Reservar/Comprar", use_container_width=True):
+                st.success("✅ Reserva realizada (MVP demostrativo)")
+                st.balloons()
+
+            if st.button("📞 Contactar Propietario", use_container_width=True):
+                st.info("Funcionalidad de contacto próximamente disponible.")
+
+    # Botón volver
+    st.markdown("---")
+    if st.button("← Volver al Inicio"):
+        st.session_state.seleccion = "🏠 Inicio"
+        st.rerun()
+
+    render_footer()
+
+def render_diseno_ia():
+    st.header("🎨 Diseño Inteligente con IA")
+
+    if "finca_actual" not in st.session_state:
+        st.warning("Primero selecciona una finca en la pantalla de inicio")
+        return
+
+    finca = st.session_state.finca_actual
+
+    # Chat con IA para diseño
+    st.subheader("💬 Describe tu casa ideal")
+
+    # Historial de conversación
+    if "chat_historial" not in st.session_state:
+        st.session_state.chat_historial = []
+
+    # Área de chat
+    chat_container = st.container()
+
+    with chat_container:
+        for mensaje in st.session_state.chat_historial[-10:]:  # Últimos 10 mensajes
+            if mensaje["tipo"] == "usuario":
+                st.markdown(f"**👤 Tú:** {mensaje['texto']}")
+            else:
+                st.markdown(f"**🤖 IA:** {mensaje['texto']}")
+
+    # Input para nuevo mensaje
+    col1, col2 = st.columns([4, 1])
+
+    with col1:
+        mensaje_usuario = st.text_input(
+            "Describe qué quieres en tu casa:",
+            placeholder="Ej: Quiero una casa moderna de 3 habitaciones con piscina y garaje...",
+            key="mensaje_ia",
+            label_visibility="collapsed"
+        )
+
+    with col2:
+        if st.button("📤 Enviar", type="primary", use_container_width=True):
+            if mensaje_usuario.strip():
+                # Añadir mensaje del usuario
+                st.session_state.chat_historial.append({
+                    "tipo": "usuario",
+                    "texto": mensaje_usuario,
+                    "timestamp": datetime.now()
+                })
+
+                # Procesar con IA y generar respuesta
+                respuesta_ia = procesar_mensaje_ia(mensaje_usuario, finca)
+
+                st.session_state.chat_historial.append({
+                    "tipo": "ia",
+                    "texto": respuesta_ia,
+                    "timestamp": datetime.now()
+                })
+
+                st.rerun()
+
+    # Mostrar plan actual si existe
+    if "plan_actual" in st.session_state:
+        render_plan_actual()
+
+    # Acciones del plan
+    if st.session_state.get("plan_actual"):
+        st.markdown("---")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            if st.button("🔄 Modificar con IA", use_container_width=True):
+                st.info("Describe los cambios que quieres hacer")
+
+        with col2:
+            if st.button("💰 Ver Precios en Vivo", type="primary", use_container_width=True):
+                st.session_state.pantalla_actual = "precios_vivo"
+                st.rerun()
+
+        with col3:
+            if st.button("📦 Exportar Profesional", type="primary", use_container_width=True):
+                st.session_state.pantalla_actual = "exportacion"
+                st.rerun()
+
+def procesar_mensaje_ia(mensaje: str, finca: dict) -> str:
+    """
+    Procesa mensaje del usuario y actualiza el plan usando el motor paramétrico
+    """
+    # Lógica simplificada de procesamiento de IA
+    # En producción, esto usaría un LLM avanzado
+
+    mensaje_lower = mensaje.lower()
+
+    # Inicializar plan si no existe
+    if "plan_actual" not in st.session_state:
+        st.session_state.plan_actual = parametric_engine({}, "validate", {"finca": finca})
+
+    plan = st.session_state.plan_actual
+
+    # Procesar diferentes tipos de solicitudes
+    if "habitacion" in mensaje_lower or "dormitorio" in mensaje_lower:
+        # Extraer número de habitaciones
+        import re
+        nums = re.findall(r'\d+', mensaje)
+        if nums:
+            num_hab = int(nums[0])
+            for i in range(num_hab):
+                plan = parametric_engine(plan, "add_room", {
+                    "type": "bedroom",
+                    "name": f"Dormitorio {i+1}"
+                })
+            respuesta = f"✅ Añadidas {num_hab} habitaciones al plano"
+
+    elif "baño" in mensaje_lower or "bathroom" in mensaje_lower:
+        nums = re.findall(r'\d+', mensaje)
+        if nums:
+            num_banos = int(nums[0])
+            for i in range(num_banos):
+                plan = parametric_engine(plan, "add_room", {
+                    "type": "bathroom",
+                    "name": f"Baño {i+1}"
+                })
+            respuesta = f"✅ Añadidos {num_banos} baños al plano"
+
+    elif "piscina" in mensaje_lower or "pool" in mensaje_lower:
+        plan = parametric_engine(plan, "add_system", {
+            "system_type": "pool",
+            "config": {"exists": True, "area": 50}
+        })
+        respuesta = "✅ Piscina añadida al diseño"
+
+    elif "moderno" in mensaje_lower or "modern" in mensaje_lower:
+        plan = parametric_engine(plan, "set_style", {"style": "modern"})
+        respuesta = "✅ Estilo moderno aplicado al diseño"
+
+    elif "clasico" in mensaje_lower or "classic" in mensaje_lower:
+        plan = parametric_engine(plan, "set_style", {"style": "classic"})
+        respuesta = "✅ Estilo clásico aplicado al diseño"
+
+    elif "distribuir" in mensaje_lower or "layout" in mensaje_lower:
+        plan = parametric_engine(plan, "auto_layout")
+        respuesta = "✅ Distribución automática optimizada"
+
+    else:
+        respuesta = "🤔 Entiendo tu solicitud. Estoy procesando los cambios en el plano. ¿Puedes darme más detalles sobre qué tipo de espacio necesitas?"
+
+    # Actualizar plan en sesión
+    st.session_state.plan_actual = plan
+
+    return respuesta
+
+def render_plan_actual():
+    """Muestra el plan actual en formato visual"""
+    plan = st.session_state.plan_actual
+
+    st.subheader("📋 Plan Actual")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        rooms = plan.get("program", {}).get("rooms", [])
+        st.metric("Habitaciones", len([r for r in rooms if r.get("type") == "bedroom"]))
+        st.metric("Baños", len([r for r in rooms if r.get("type") == "bathroom"]))
+
+    with col2:
+        total_m2 = plan.get("program", {}).get("total_m2", 0)
+        st.metric("Superficie Total", f"{total_m2} m2")
+
+    with col3:
+        precio = calculate_live_price(plan)
+        st.metric("Presupuesto Estimado", f"€{precio['breakdown']['total']:,.0f}")
+
+    # Mostrar distribución
+    with st.expander("📊 Ver distribución detallada"):
+        st.json(plan)
+
+    render_footer()
+
+def render_precios_vivo():
+    st.header("💰 Precios en Vivo")
+
+    if "plan_actual" not in st.session_state:
+        st.warning("Primero crea un diseño en la sección 'Diseñar con IA'")
+        return
+
+    plan = st.session_state.plan_actual
+
+    st.markdown("""
+    ### 🎛️ Configurador Interactivo
+
+    Modifica las características de tu casa y ve cómo cambian los precios **en tiempo real**,
+    igual que configurar un coche.
+    """)
+
+    # Controles interactivos en columnas
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("🏠 Características de la Vivienda")
+
+        # Sistema eléctrico inteligente
+        electrico_smart = st.checkbox(
+            "⚡ Sistema Eléctrico Inteligente (+€35/m2)",
+            value=plan.get("systems", {}).get("electrical", {}).get("smart_home", False)
+        )
+
+        # Iluminación LED
+        iluminacion_led = st.checkbox(
+            "💡 Iluminación LED Premium (+€25/m2)",
+            value=plan.get("systems", {}).get("lighting", {}).get("led_lighting", False)
+        )
+
+        # Domótica completa
+        domotica = st.checkbox(
+            "🏠 Domótica Completa (+€35/m2)",
+            value=plan.get("systems", {}).get("smart_home", {}).get("enabled", False)
+        )
+
+        # Materiales premium
+        materiales_premium = st.selectbox(
+            "🛠️ Calidad de Materiales",
+            ["Estándar", "Premium (+15%)", "Lujo (+30%)"],
+            index=0
+        )
+
+    with col2:
+        st.subheader("🌟 Acabados y Equipamiento")
+
+        # Piscina
+        piscina = st.checkbox(
+            "🏊 Piscina (+€300/m2)",
+            value=plan.get("site", {}).get("pool", {}).get("exists", False)
+        )
+
+        # Cocina premium
+        cocina_premium = st.checkbox(
+            "👨‍🍳 Cocina Premium (+€15,000)",
+            value=False  # Por defecto no marcado
+        )
+
+        # Baños premium
+        banos_premium = st.checkbox(
+            "🛁 Baños Premium (+€8,000 c/u)",
+            value=False
+        )
+
+        # Garaje
+        garaje = st.checkbox(
+            "🚗 Garaje (+€25/m2)",
+            value=False
+        )
+
+    # Aplicar cambios al plan en tiempo real
+    plan_actualizado = plan.copy()
+
+    # Aplicar sistemas
+    if electrico_smart:
+        plan_actualizado = parametric_engine(plan_actualizado, "add_system", {
+            "system_type": "electrical",
+            "config": {"smart_home": True}
+        })
+
+    if iluminacion_led:
+        plan_actualizado = parametric_engine(plan_actualizado, "add_system", {
+            "system_type": "lighting",
+            "config": {"led_lighting": True}
+        })
+
+    if domotica:
+        plan_actualizado = parametric_engine(plan_actualizado, "add_system", {
+            "system_type": "smart_home",
+            "config": {"enabled": True}
+        })
+
+    # Aplicar piscina
+    if piscina:
+        plan_actualizado = parametric_engine(plan_actualizado, "add_system", {
+            "system_type": "pool",
+            "config": {"exists": True, "area": 50}
+        })
+
+    # Calcular precios con los cambios
+    pricing = calculate_live_price(plan_actualizado)
+
+    # Mostrar precios en tiempo real
+    st.markdown("---")
+    st.subheader("💎 Precio Total en Tiempo Real")
+
+    # Métrica principal
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric(
+            "Precio Base",
+            f"€{pricing['breakdown']['subtotal_construction']:,.0f}",
+            help="Construcción básica"
+        )
+
+    with col2:
+        st.metric(
+            "Sistemas",
+            f"€{pricing['breakdown']['systems']:,.0f}",
+            help="Instalaciones avanzadas"
+        )
+
+    with col3:
+        st.metric(
+            "Acabados",
+            f"€{pricing['breakdown']['finishes']:,.0f}",
+            help="Materiales y mobiliario"
+        )
+
+    with col4:
+        st.metric(
+            "TOTAL",
+            f"€{pricing['breakdown']['total']:,.0f}",
+            delta=f"€{pricing['per_m2']:,.0f}/m2",
+            help="Precio final completo"
+        )
+
+    # Desglose detallado
+    with st.expander("📊 Desglose Completo del Presupuesto"):
+        st.markdown("#### 🏗️ Construcción")
+        st.write(f"- Base: €{pricing['breakdown']['base_construction']:,.0f}")
+        st.write(f"- Multiplicador calidad: {pricing['breakdown']['construction_multiplier']:.2f}x")
+        st.write(f"- **Subtotal construcción: €{pricing['breakdown']['subtotal_construction']:,.0f}**")
+
+        st.markdown("#### ⚡ Sistemas e Instalaciones")
+        st.write(f"- Sistemas avanzados: €{pricing['breakdown']['systems']:,.0f}")
+        st.write(f"- Materiales: €{pricing['breakdown']['materials']:,.0f}")
+        st.write(f"- Acabados: €{pricing['breakdown']['finishes']:,.0f}")
+
+        st.markdown("#### 💼 Honorarios y Licencias")
+        st.write(f"- Honorarios profesionales: €{pricing['breakdown']['professional_fees']:,.0f}")
+        st.write(f"- Impuestos y licencias: €{pricing['breakdown']['taxes_licenses']:,.0f}")
+
+        st.markdown(f"#### 📅 Cronograma: {pricing['estimated_duration_months']} meses")
+
+    # Opciones de financiación
+    with st.expander("💳 Opciones de Financiación"):
+        for opcion in pricing["financing_options"]:
+            st.markdown(f"**{opcion['type']}:** €{opcion['monthly_payment']:.0f}/meso")
+            st.caption(f"Total a pagar: €{opcion['final_amount']:,.0f}")
+
+    # Guardar cambios
+    if st.button("💾 Guardar Configuración", type="primary"):
+        st.session_state.plan_actual = plan_actualizado
+        st.success("✅ Configuración guardada exitosamente")
+
+    # Continuar al siguiente paso
+    if st.button("📦 Continuar a Exportación Profesional", type="primary"):
+        st.session_state.pantalla_actual = "exportacion"
+        st.rerun()
+
+    render_footer()
+
+def render_exportacion():
+    st.header("📦 Exportación Profesional")
+
+    if "plan_actual" not in st.session_state:
+        st.warning("Primero crea un diseño en la sección 'Diseñar con IA'")
+        return
+
+    plan = st.session_state.plan_actual
+
+    st.markdown("""
+    ### 🎯 Exportación Profesional Completa
+
+    Genera todos los documentos técnicos necesarios para construir tu casa:
+    planos CAD, memorias técnicas, presupuestos detallados y más.
+    """)
+
+    # Opciones de exportación disponibles
+    opciones_disponibles = get_export_options()
+
+    st.subheader("📋 Selecciona qué documentos necesitas:")
+
+    # Crear checkboxes para cada opción
+    opciones_seleccionadas = []
+    cols = st.columns(2)
+
+    for i, opcion in enumerate(opciones_disponibles):
+        col_idx = i % 2
+        with cols[col_idx]:
+            if st.checkbox(opcion, value=True):  # Por defecto todas seleccionadas
+                opciones_seleccionadas.append(opcion)
+
+    # Información del proyecto
+    st.markdown("---")
+    st.subheader("📊 Información del Proyecto")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        titulo = st.text_input(
+            "Título del proyecto:",
+            value=f"Proyecto ARCHIRAPID - {datetime.now().strftime('%d/%m/%Y')}"
+        )
+
+        descripcion = st.text_area(
+            "Descripción:",
+            value="Proyecto de vivienda unifamiliar diseñado con IA avanzada",
+            height=100
+        )
+
+    with col2:
+        autor = st.text_input("Autor:", value="Cliente ARCHIRAPID")
+        version = st.text_input("Versión:", value="1.0")
+
+        # Calcular tamaño estimado
+        from export_ops import estimate_export_size
+        tamano_estimado = estimate_export_size(opciones_seleccionadas)
+        st.metric("Tamaño estimado", f"{tamano_estimado:.1f} MB")
+
+    # Botón de exportación
+    if st.button("🚀 Generar Exportación Profesional", type="primary", use_container_width=True):
+        with st.spinner("🎨 Generando documentos profesionales... Esto puede tomar unos minutos"):
+
+            # Preparar datos del proyecto
+            proyecto_data = {
+                "titulo": titulo,
+                "descripcion": descripcion,
+                "autor": autor,
+                "version": version,
+                "plan_json": plan,
+                "fecha_creacion": datetime.now().isoformat()
+            }
+
+            # Generar exportación
+            try:
+                export_result = exportar_proyecto(proyecto_data, opciones_seleccionadas)
+
+                if export_result:
+                    st.success("✅ ¡Exportación completada exitosamente!")
+
+                    # Mostrar resumen
+                    st.subheader("📁 Archivos Generados")
+
+                    if "files_generated" in export_result:
+                        for archivo in export_result["files_generated"]:
+                            col1, col2, col3 = st.columns([3, 1, 1])
+                            with col1:
+                                st.write(f"📄 {archivo.get('description', archivo.get('filename', 'Archivo'))}")
+                            with col2:
+                                st.write(f"{archivo.get('type', 'N/A')}")
+                            with col3:
+                                st.write(f"{archivo.get('size_bytes', 0) / 1024:.1f} KB")
+
+                    # Botón de descarga del bundle
+                    if "bundle_file" in export_result:
+                        st.download_button(
+                            label="📥 Descargar Bundle Completo (ZIP)",
+                            data=b"mock_zip_content",  # En producción sería el contenido real
+                            file_name=export_result["bundle_file"].get("filename", "export.zip"),
+                            mime="application/zip",
+                            use_container_width=True
+                        )
+
+                    st.balloons()
+
+                else:
+                    st.error("❌ Error al generar la exportación")
+
+            except Exception as e:
+                st.error(f"❌ Error durante la exportación: {str(e)}")
+
+    # Información adicional
+    with st.expander("ℹ️ ¿Qué incluye cada documento?"):
+        st.markdown("""
+        #### 📄 Memoria Técnica PDF
+        - Descripción completa del proyecto
+        - Justificación técnica de las soluciones adoptadas
+        - Cálculos estructurales y de instalaciones
+        - Presupuesto detallado
+        - Anexos con normativas aplicables
+
+        #### 🏗️ Planos CAD/DWG
+        - Planta baja, alzados y secciones
+        - Planos de estructura, instalaciones y detalles
+        - Formato compatible con AutoCAD y software similar
+
+        #### 💰 Presupuesto Detallado
+        - Desglose completo por partidas
+        - Cronograma de pagos sugerido
+        - Opciones de financiación
+        - Comparativo de calidades
+
+        #### 📊 Análisis Estructural
+        - Cálculos de estructura portante
+        - Análisis de cargas y solicitaciones
+        - Certificados de cumplimiento normativo
+
+        #### ⚡ Planos Eléctricos
+        - Diagrama unifilar
+        - Distribución de circuitos
+        - Ubicación de puntos de luz y tomas
+
+        #### 🚿 Planos de Fontanería
+        - Distribución de agua fría y caliente
+        - Sistema de evacuación
+        - Ubicación de aparatos sanitarios
+
+        #### 📋 Lista de Materiales
+        - Catálogo completo de materiales
+        - Cantidades y calidades
+        - Referencias de proveedores
+
+        #### 🪑 Plano de Muebles
+        - Distribución del mobiliario
+        - Especificaciones técnicas
+        - Plano de implantación 2D
+        """)
+
+# ==========================================
+# MIS PROYECTOS
+# ==========================================
+
+def render_mis_proyectos():
+    st.header("📊 Mis Proyectos")
+
+    # Obtener proyectos
+    proyectos = obtener_proyectos_con_fallback()
+
+    if not proyectos:
+        st.info("Aún no tienes proyectos. ¡Comienza diseñando con IA!")
+        return
+
+    # Mostrar proyectos en cards
+    for proyecto in proyectos:
+        with st.expander(f"🏗️ {proyecto.get('titulo', 'Proyecto sin título')}"):
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric("Versión", proyecto.get("version", 1))
+                st.metric("Superficie", f"{proyecto.get('total_m2', 0)} m2")
+
+            with col2:
+                presupuesto = proyecto.get("presupuesto", 0)
+                st.metric("Presupuesto", f"€{presupuesto:,.0f}")
+
+            with col3:
+                estado = proyecto.get("estado", "borrador")
+                if estado == "completado":
+                    st.success("✅ Completado")
+                elif estado == "en_progreso":
+                    st.warning("🔄 En progreso")
+                else:
+                    st.info("📝 Borrador")
+
+            # Acciones
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                if st.button("👁️ Ver detalles", key=f"ver_{proyecto['id']}"):
+                    st.session_state.proyecto_seleccionado = proyecto
+                    st.session_state.pantalla_actual = "detalle_proyecto"
+
+            with col2:
+                if st.button("✏️ Continuar editando", key=f"editar_{proyecto['id']}"):
+                    st.session_state.plan_actual = proyecto.get("plan_json", {})
+                    st.session_state.pantalla_actual = "diseno_ia"
+
+            with col3:
+                if st.button("📦 Exportar", key=f"exportar_{proyecto['id']}"):
+                    st.session_state.plan_actual = proyecto.get("plan_json", {})
+                    st.session_state.pantalla_actual = "exportacion"
+
+# ==========================================
+# MAPA INMOBILIARIO
+# ==========================================
+
+def render_mapa_inmobiliario(fincas):
+    st.header("🏠 Mapa Inmobiliario ARCHIRAPID")
+
+    if not fincas:
+        st.warning("No hay fincas disponibles para mostrar en el mapa.")
+        return
+
+    # Crear mapa interactivo
+    import folium
+    from streamlit_folium import st_folium
+
+    # Centro de España por defecto
+    mapa = folium.Map(
+        location=[40.4168, -3.7038],  # Madrid
+        zoom_start=6,
+        tiles='OpenStreetMap'
+    )
+
+    # Añadir fincas al mapa
+    for finca in fincas:
+        # Coordenadas (usar reales si existen, sino cercanas a Madrid)
+        lat = finca.get('ubicacion_geo', {}).get('lat', 40.4168 + (hash(finca['id']) % 100 - 50) * 0.01)
+        lng = finca.get('ubicacion_geo', {}).get('lng', -3.7038 + (hash(finca['id']) % 100 - 50) * 0.01)
+
+        # Color según estado
+        color = 'green' if finca.get('estado') == 'disponible' else 'orange'
+
+        # PVP para mostrar
+        pvp = finca.get('pvp')
+        pvp_str = f"€{pvp:,.0f}" if pvp else "Precio no especificado"
+
+        # Foto para miniatura
+        foto_url = finca.get('foto_url', [])
+        if foto_url:
+            img_src = get_browser_image_url(foto_url[0])
+        else:
+            img_src = get_browser_image_url(placeholder)
+
+        # Escapar datos para prevenir XSS
+        direccion_safe = html.escape(str(finca.get('direccion', 'Finca sin dirección')))
+        superficie_safe = html.escape(str(finca.get('superficie_m2', 0)))
+        pvp_safe = html.escape(str(finca.get('pvp', '—')))
+        
+        # Para el ID, usar url_quote ya que se usará en un parámetro de URL
+        finca_id = str(finca.get('id', ''))
+        finca_id_url = url_quote(finca_id, safe='')
+        
+        # Para img_src, validar que sea data URL de imagen válida o escapar si es URL externa
+        if img_src.startswith('data:image/'):
+            img_src_safe = img_src  # Data URLs de imagen son seguras
+        else:
+            img_src_safe = html.escape(img_src)
+
+        # Popup con información y botón que envía postMessage al padre
+        popup_html = f"""
+        <div style="width: 220px; font-family: Arial, sans-serif;">
+          <h4 style="margin: 0 0 8px 0; font-size:14px;">{direccion_safe}</h4>
+          <img src="{img_src_safe}" width="140" height="90" style="border-radius: 4px; margin-bottom: 8px;"><br/>
+          <p style="margin: 4px 0; font-size:13px;"><strong>Superficie:</strong> {superficie_safe} m²</p>
+          <p style="margin: 4px 0; font-size:13px;"><strong>PVP:</strong> €{pvp_safe}</p>
+                    <div style="display:block;background:#d9534f;color:#fff;padding:6px 8px;border-radius:4px;width:100%;text-align:center;margin-top:6px;font-weight:600;">
+                        Ver detalles — haz clic en el marcador
+                    </div>
+        </div>
+        """
+
+        # Crear popup directo (sin IFrame) - renderiza HTML correctamente
+        popup = folium.Popup(popup_html, max_width=260)
+
+        marker = folium.Marker(
+            location=[lat, lng],
+            popup=popup,
+            tooltip='Haz clic aquí para ver más',
+            icon=folium.Icon(color=color)
+        )
+        marker.add_to(mapa)
+
+    # Mostrar mapa con captura de eventos (capturamos también 'last_object_clicked')
+    map_data = st_folium(mapa, width=800, height=600, returned_objects=["last_clicked", "last_object_clicked"])
+
+    # Manejar clic en marcador para mostrar card/modal
+    clicked_obj = None
+    if map_data:
+        clicked_obj = map_data.get("last_object_clicked") or map_data.get("last_clicked")
+
+    if clicked_obj:
+        # 'last_object_clicked' y 'last_clicked' suelen exponer 'lat'/'lng'
+        clicked_lat = clicked_obj.get("lat")
+        clicked_lng = clicked_obj.get("lng")
+
+        if clicked_lat is not None and clicked_lng is not None:
+            # Encontrar finca por coordenadas (aproximado)
+            for finca in fincas:
+                finca_lat = finca.get('ubicacion_geo', {}).get('lat', 0)
+                finca_lng = finca.get('ubicacion_geo', {}).get('lng', 0)
+                if abs(finca_lat - clicked_lat) < 0.001 and abs(finca_lng - clicked_lng) < 0.001:
+                    # Store clicked finca and open modal (same action as 'Ver detalles' list button)
+                    fid = str(finca.get('id'))
+                    st.session_state['finca_id'] = fid
+                    st.session_state['clicked_fid'] = fid
+                    st.session_state['show_modal'] = True
+                    break
+
+    # Estadísticas
+    st.markdown("---")
+    st.subheader("📊 Estadísticas de Fincas")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Total Fincas", len(fincas))
+
+    with col2:
+        superficie_total = sum(f.get('superficie_m2', 0) for f in fincas)
+        st.metric("Superficie Total", f"{superficie_total:,.0f} m2")
+
+    with col3:
+        superficie_promedio = superficie_total / len(fincas) if fincas else 0
+        st.metric("Superficie Promedio", f"{superficie_promedio:,.0f} m2")
+
+    with col4:
+        disponibles = sum(1 for f in fincas if f.get('estado') == 'disponible')
+        st.metric("Disponibles", disponibles)
+
+# ==========================================
+# REGISTRO DE ARQUITECTOS
+# ==========================================
+
+def render_registro_arquitectos():
+    st.header("👥 Registro de Arquitectos y Clientes")
+
+    tab1, tab2 = st.tabs(["👨‍💼 Registrar Arquitecto", "🏠 Registrar Cliente"])
+
+    with tab1:
+        st.subheader("Registro de Arquitecto")
+
+        with st.form("registro_arquitecto"):
+            nombre = st.text_input("Nombre completo")
+            email_arq = st.text_input("Email profesional")
+            especialidad = st.selectbox("Especialidad", ["Arquitectura Residencial", "Arquitectura Comercial", "Urbanismo", "Restauración", "Interiorismo"])
+            experiencia = st.slider("Años de experiencia", 0, 50, 5)
+            ubicacion = st.text_input("Ubicación")
+            descripcion = st.text_area("Descripción profesional")
+
+            if st.form_submit_button("📝 Registrar Arquitecto", type="primary"):
+                # Simular registro
+                arquitecto_data = {
+                    "id": f"arq_{len(st.session_state.get('arquitectos', [])) + 1}",
+                    "nombre": nombre,
+                    "email": email_arq,
+                    "especialidad": especialidad,
+                    "experiencia": experiencia,
+                    "ubicacion": ubicacion,
+                    "descripcion": descripcion,
+                    "fecha_registro": datetime.now().isoformat()
+                }
+
+                if "arquitectos" not in st.session_state:
+                    st.session_state.arquitectos = []
+                st.session_state.arquitectos.append(arquitecto_data)
+
+                st.success(f"✅ Arquitecto {nombre} registrado exitosamente!")
+                st.balloons()
+
+    with tab2:
+        st.subheader("Registro de Cliente")
+
+        with st.form("registro_cliente"):
+            nombre_cliente = st.text_input("Nombre completo")
+            email_cliente = st.text_input("Email")
+            tipo_cliente = st.selectbox("Tipo de cliente", ["Particular", "Empresa", "Inversor"])
+            presupuesto = st.number_input("Presupuesto aproximado (€)", min_value=0, step=10000)
+            ubicacion_deseada = st.text_input("Ubicación deseada")
+            necesidades = st.text_area("Necesidades específicas")
+
+            if st.form_submit_button("📝 Registrar Cliente", type="primary"):
+                # Simular registro
+                cliente_data = {
+                    "id": f"cli_{len(st.session_state.get('clientes', [])) + 1}",
+                    "nombre": nombre_cliente,
+                    "email": email_cliente,
+                    "tipo": tipo_cliente,
+                    "presupuesto": presupuesto,
+                    "ubicacion_deseada": ubicacion_deseada,
+                    "necesidades": necesidades,
+                    "fecha_registro": datetime.now().isoformat()
+                }
+
+                if "clientes" not in st.session_state:
+                    st.session_state.clientes = []
+                st.session_state.clientes.append(cliente_data)
+
+                st.success(f"✅ Cliente {nombre_cliente} registrado exitosamente!")
+                st.balloons()
+
+    # Mostrar registros existentes
+    st.markdown("---")
+    st.subheader("📋 Registros Recientes")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**👨‍💼 Arquitectos Registrados:**")
+        arquitectos = st.session_state.get('arquitectos', [])
+        if arquitectos:
+            for arq in arquitectos[-3:]:  # Últimos 3
+                st.markdown(f"- {arq['nombre']} ({arq['especialidad']})")
+        else:
+            st.info("No hay arquitectos registrados aún")
+
+    with col2:
+        st.markdown("**🏠 Clientes Registrados:**")
+        clientes = st.session_state.get('clientes', [])
+        if clientes:
+            for cli in clientes[-3:]:  # Últimos 3
+                st.markdown(f"- {cli['nombre']} ({cli['tipo']})")
+        else:
+            st.info("No hay clientes registrados aún")
+
+# ==========================================
+# INTRANET ARQUITECTOS
+# ==========================================
+
+def render_intranet_arquitectos():
+    st.header("🏢 Intranet Arquitectos ARCHIRAPID")
+
+    # Verificar si el usuario es arquitecto
+    email = st.session_state.get("email")
+    if not email or "@" not in email:
+        st.warning("Debes iniciar sesión con un email válido para acceder a la intranet.")
+        return
+
+    st.markdown("### 🏗️ Panel de Control Arquitecto")
+
+    # Métricas rápidas
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        proyectos_total = len(st.session_state.get('proyectos', []))
+        st.metric("Mis Proyectos", proyectos_total)
+
+    with col2:
+        clientes_total = len(st.session_state.get('clientes', []))
+        st.metric("Mis Clientes", clientes_total)
+
+    with col3:
+        # Simular proyectos activos
+        proyectos_activos = sum(1 for p in st.session_state.get('proyectos', []) if p.get('estado') != 'completado')
+        st.metric("Proyectos Activos", proyectos_activos)
+
+    with col4:
+        # Simular ingresos mensuales
+        ingresos = sum(p.get('precio_estimado', 0) for p in st.session_state.get('proyectos', []) if p.get('estado') == 'completado')
+        st.metric("Ingresos Totales", f"€{ingresos:,.0f}")
+
+    # Herramientas del arquitecto
+    st.markdown("---")
+    st.subheader("🛠️ Herramientas Profesionales")
+
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "👥 Mis Clientes", "📋 Proyectos"])
+
+    with tab1:
+        st.markdown("### 📊 Dashboard de Rendimiento")
+
+        # Gráfico simple de proyectos por estado
+        import matplotlib.pyplot as plt
+
+        proyectos = st.session_state.get('proyectos', [])
+        estados = {}
+        for p in proyectos:
+            estado = p.get('estado', 'borrador')
+            estados[estado] = estados.get(estado, 0) + 1
+
+        if estados:
+            fig, ax = plt.subplots()
+            ax.bar(estados.keys(), estados.values())
+            ax.set_ylabel('Número de Proyectos')
+            ax.set_title('Proyectos por Estado')
+            st.pyplot(fig)
+        else:
+            st.info("No hay proyectos para mostrar estadísticas")
+
+    with tab2:
+        st.markdown("### 👥 Gestión de Clientes")
+
+        clientes = st.session_state.get('clientes', [])
+        if clientes:
+            for cliente in clientes:
+                with st.expander(f"🏠 {cliente['nombre']} - {cliente['tipo']}"):
+                    st.write(f"**Email:** {cliente['email']}")
+                    st.write(f"**Presupuesto:** €{cliente['presupuesto']:,.0f}")
+                    st.write(f"**Ubicación deseada:** {cliente['ubicacion_deseada']}")
+                    st.write(f"**Necesidades:** {cliente['necesidades']}")
+
+                    if st.button(f"📞 Contactar", key=f"contact_{cliente['id']}"):
+                        st.info(f"Simulando contacto con {cliente['nombre']}...")
+        else:
+            st.info("No tienes clientes registrados aún")
+
+    with tab3:
+        st.markdown("### 📋 Gestión de Proyectos")
+
+        proyectos = st.session_state.get('proyectos', [])
+        if proyectos:
+            for proyecto in proyectos:
+                with st.expander(f"🏗️ {proyecto.get('titulo', 'Proyecto sin título')}"):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Estado", proyecto.get('estado', 'borrador').title())
+                        st.metric("Versión", proyecto.get('version', 1))
+                    with col2:
+                        precio = proyecto.get('precio_estimado', 0)
+                        st.metric("Precio Estimado", f"€{precio:,.0f}")
+
+                    if st.button(f"✏️ Editar Proyecto", key=f"edit_proy_{proyecto['id']}"):
+                        st.session_state.plan_actual = proyecto.get("plan_json", {})
+                        st.session_state.pantalla_actual = "diseno_ia"
+                        st.rerun()
+        else:
+            st.info("No tienes proyectos aún")
+
+# ==========================================
+# GEMELo DIGITAL
+# ==========================================
+
+def render_gemelo_digital():
+    st.header("🧠 Gemelo Digital ARCHIRAPID")
+
+    st.markdown("""
+    ### 🚀 Tecnología de Vanguardia
+
+    El **Gemelo Digital** de ARCHIRAPID es una representación virtual tridimensional
+    de tu proyecto arquitectónico que te permite:
+
+    - **Visualizar** la vivienda terminada antes de construir
+    - **Interactuar** con el diseño en tiempo real
+    - **Simular** iluminación, materiales y acabados
+    - **Compartir** el proyecto con clientes de forma inmersiva
+    """)
+
+    # Estado del desarrollo
+    st.info("🛠️ El Gemelo Digital está en desarrollo activo. Próximamente disponible.")
+
+    # Preview conceptual
+    st.subheader("🎯 Vista Previa Conceptual")
+
+    # Simular una imagen 3D (placeholder)
+    st.markdown("""
+    ```
+    [Vista 3D Interactiva - Próximamente]
+
+         _____
+       /     \\
+      /  🏠   \\
+     /_________\\
+    |           |
+    |   🪟 🪟    |
+    |           |
+    |   🚪      |
+    |___________|
+    ```
+    """)
+
+    # Características
+    st.subheader("✨ Características del Gemelo Digital")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+        **🎨 Personalización Visual:**
+        - Cambiar colores de paredes
+        - Probar diferentes materiales
+        - Ajustar iluminación
+
+        **📐 Medidas Precisas:**
+        - Dimensiones exactas
+        - Áreas calculadas
+        - Volúmenes 3D
+        """)
+
+    with col2:
+        st.markdown("""
+        **🌅 Simulación Ambiental:**
+        - Orientación solar
+        - Sombras proyectadas
+        - Eficiencia energética
+
+        **📱 Acceso Multiplataforma:**
+        - Web y móvil
+        - VR compatible
+        - Compartir con un link
+        """)
+
+    # Call to action
+    st.markdown("---")
+    if st.button("🚀 Solicitar Acceso Anticipado", type="primary"):
+        st.success("✅ ¡Gracias! Te notificaremos cuando el Gemelo Digital esté disponible.")
+        st.balloons()
+
+# ==========================================
+# EJECUCIÓN PRINCIPAL
+# ==========================================
+
+if __name__ == "__main__":
+    main()

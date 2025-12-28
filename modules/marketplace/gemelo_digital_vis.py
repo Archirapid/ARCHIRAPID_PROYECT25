@@ -2,6 +2,8 @@
 
 import plotly.graph_objects as go
 import random
+import streamlit as st
+from modules.marketplace.data_access import get_proyecto
 
 def create_gemelo_3d(plan_json: dict):
     """
@@ -113,3 +115,37 @@ def create_gemelo_3d(plan_json: dict):
     ))
 
     return fig
+
+
+def mostrar_visualizacion_3d():
+    """
+    Función segura para mostrar la visualización 3D del proyecto vigente.
+    Verifica que exista un proyecto activo antes de renderizar.
+    """
+    st.subheader("🌐 Visualización 3D del proyecto vigente")
+
+    proyecto_id = st.session_state.get("proyecto_id")
+    plan_json = st.session_state.get("plan_json")
+
+    if not proyecto_id or not plan_json:
+        st.info("ℹ️ No hay proyecto vigente. Genera o selecciona un plan primero.")
+        return
+
+    # Recuperar proyecto guardado (última versión)
+    proyecto = get_proyecto(proyecto_id)
+    if not proyecto:
+        st.error("❌ Proyecto no encontrado en base de datos.")
+        return
+
+    # Renderizar malla 3D con el plan vigente
+    try:
+        fig = create_gemelo_3d(plan_json)
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Mostrar información de la versión
+        version = proyecto.get('version', st.session_state.get('version', 'N/D'))
+        st.caption(f"📋 Proyecto ID: {proyecto_id} • Versión: {version}")
+
+    except Exception as e:
+        st.warning(f"⚠️ Error en visualización 3D: {e}")
+        st.info("💡 Intenta regenerar el plan si el problema persiste.")

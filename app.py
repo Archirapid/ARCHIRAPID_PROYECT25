@@ -7,13 +7,29 @@ IA Avanzada + Precios en Vivo + Exportación Profesional
 import streamlit as st
 import json
 import os
-import html
 from datetime import datetime
 import time
 import requests
 from urllib.parse import quote as url_quote
 from geopy.geocoders import Nominatim
 from streamlit.components.v1 import html as components_html
+import logging
+
+# Import security and performance utilities
+from utils.security import (
+    sanitize_html, sanitize_url, validate_email, validate_phone,
+    validate_numeric_range, sanitize_filename, validate_coordinate
+)
+from utils.backend_client import get_backend_client
+from utils.config import get_config
+from utils.performance import cache_result, Timer, get_cache
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # ==========================================
 # COMPONENTES LOCALES
@@ -70,27 +86,30 @@ st.set_page_config(
 # FUNCIONES AUXILIARES PARA FINCAS
 # ==========================================
 
+@cache_result(ttl_seconds=60)
 def load_fincas():
-    """Carga fincas desde backend o demo con manejo robusto de errores"""
-    try:
-        BACKEND_URL = "http://localhost:8000"
-        r = requests.get(f"{BACKEND_URL}/fincas", timeout=5)
-        if r.status_code == 200:
-            fincas = r.json()
-            if not fincas:  # Si backend responde pero no hay fincas, usar demo
+    """
+    Carga fincas desde backend o demo con manejo robusto de errores
+    Implementa caché para mejorar rendimiento
+    """
+    with Timer("load_fincas", logger.info):
+        try:
+            # Use new backend client with retry and circuit breaker
+            client = get_backend_client()
+            fincas = client.get_fincas()
+            
+            if not fincas:
+                logger.info("Backend returned empty list, using demo data")
                 fincas = demo_fincas()
-        else:
-            fincas = demo_fincas()
-    except requests.exceptions.ConnectionError:
-        # Backend no está disponible
-        st.warning("❌ **Backend no disponible**: El servidor FastAPI no está ejecutándose en http://localhost:8000")
-        st.info("💡 **Solución**: Ejecute `uvicorn main:app --host 0.0.0.0 --port 8000` en la carpeta backend")
-        st.info("🔄 **Modo demo activado**: Usando datos de ejemplo para demostración")
-        fincas = demo_fincas()
-    except Exception as e:
-        st.error(f"❌ Error inesperado al cargar fincas: {str(e)}")
-        fincas = demo_fincas()
-    return fincas
+            
+            return fincas
+            
+        except Exception as e:
+            logger.error(f"Error loading fincas: {e}")
+            st.warning("❌ **Backend no disponible**: El servidor FastAPI no está ejecutándose")
+            st.info("💡 **Solución**: Ejecute `uvicorn main:app --host 0.0.0.0 --port 8000` en la carpeta backend")
+            st.info("🔄 **Modo demo activado**: Usando datos de ejemplo para demostración")
+            return demo_fincas()
 
 def normalize_id(fid):
     """Normaliza ID: acepta str/int y evita None"""
@@ -242,10 +261,15 @@ def inject_postmessage_listener():
 # ==========================================
 
 def check_backend():
+    """
+    Check backend health with caching
+    Uses enhanced backend client with health check caching
+    """
     try:
-        r = requests.get("http://localhost:8000/health", timeout=2)
-        return r.status_code == 200 and r.json().get("status") == "ok"
-    except Exception:
+        client = get_backend_client()
+        return client.health_check(use_cache=True)
+    except Exception as e:
+        logger.error(f"Backend health check failed: {e}")
         return False
 
 # ==========================================
@@ -307,13 +331,8 @@ def main():
     except Exception:
         pass
 
-    # Indicador global de backend mejorado
-    BACKEND_URL = "http://localhost:8000"
-    try:
-        r = requests.get(f"{BACKEND_URL}/health", timeout=2)
-        is_backend_ok = r.status_code == 200 and r.json().get("status") == "ok"
-    except Exception:
-        is_backend_ok = False
+    # Indicador global de backend mejorado (con caché)
+    is_backend_ok = check_backend()
 
     if is_backend_ok:
         status_label = "🟢 **Backend conectado** - Modo Producción"
@@ -630,18 +649,28 @@ def render_owners():
         if st.form_submit_button("🔍 Calcular coordenadas por dirección", use_container_width=True):
             if direccion:
                 try:
-                    geolocator = Nominatim(user_agent="archirapid_mvp")
-                    loc = geolocator.geocode(direccion)
-                    if loc:
-                        # Actualizar los campos de coordenadas
-                        st.session_state.calculated_lat = loc.latitude
-                        st.session_state.calculated_lng = loc.longitude
-                        st.success(f"✅ Coordenadas calculadas: {loc.latitude:.6f}, {loc.longitude:.6f}")
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ No se encontraron coordenadas para esa dirección. Introduce manualmente.")
+                    with st.spinner("Calculando coordenadas..."):
+                        geolocator = Nominatim(
+                            user_agent="archirapid_mvp",
+                            timeout=10
+                        )
+                        loc = geolocator.geocode(direccion)
+                        
+                        if loc:
+                            # Validate coordinates
+                            if validate_coordinate(loc.latitude, loc.longitude):
+                                st.session_state.calculated_lat = loc.latitude
+                                st.session_state.calculated_lng = loc.longitude
+                                st.success(f"✅ Coordenadas calculadas: {loc.latitude:.6f}, {loc.longitude:.6f}")
+                                st.rerun()
+                            else:
+                                st.error("❌ Coordenadas inválidas recibidas del servicio")
+                        else:
+                            st.warning("⚠️ No se encontraron coordenadas para esa dirección. Introduce manualmente.")
                 except Exception as e:
-                    st.error(f"❌ Error en geocodificación: {e}")
+                    logger.error(f"Geocoding error: {e}")
+                    st.error(f"❌ Error en geocodificación: No se pudo conectar al servicio de mapas")
+                    st.info("💡 Introduce las coordenadas manualmente")
             else:
                 st.warning("⚠️ Introduce una dirección primero.")
 
@@ -667,42 +696,83 @@ def render_owners():
         submitted = st.form_submit_button("💾 Guardar Propiedad y Acceder al Panel Cliente", type="primary")
 
         if submitted:
-            # Validaciones
-            if not nombre or not email or not telefono or not direccion or superficie <= 0 or (lat == 0.0 and lng == 0.0):
-                st.error("❌ Nombre, email, teléfono, dirección de la finca, superficie y coordenadas son obligatorios.")
+            # Validaciones mejoradas con seguridad
+            errors = []
+            
+            if not nombre or len(nombre.strip()) < 3:
+                errors.append("El nombre debe tener al menos 3 caracteres")
+            
+            if not email or not validate_email(email):
+                errors.append("Email inválido")
+            
+            if not telefono or not validate_phone(telefono):
+                errors.append("Teléfono inválido (formato español requerido)")
+            
+            if not direccion or len(direccion.strip()) < 5:
+                errors.append("Dirección inválida o muy corta")
+            
+            if not validate_numeric_range(superficie, min_val=1, max_val=1000000):
+                errors.append("Superficie debe estar entre 1 y 1,000,000 m²")
+            
+            if not validate_coordinate(lat, lng):
+                errors.append("Coordenadas inválidas")
+            
+            if pvp and not validate_numeric_range(pvp, min_val=0, max_val=100000000):
+                errors.append("PVP debe estar entre 0 y 100,000,000 €")
+            
+            if errors:
+                for error in errors:
+                    st.error(f"❌ {error}")
                 return
 
-            # Preparar payload con datos del propietario
+            # Preparar payload con datos del propietario (con validación de seguridad)
             foto_urls = []
             if fotos:
-                # Guardar fotos en static/fotos/ con nombres únicos
                 import uuid
-                import os
                 from datetime import datetime
+                
+                config = get_config()
+                max_file_size = config.security.max_file_size_mb * 1024 * 1024  # Convert to bytes
                 
                 fotos_dir = "static/fotos"
                 os.makedirs(fotos_dir, exist_ok=True)
                 
-                # Generar ID único para la finca (temporal hasta que el backend asigne el real)
+                # Generar ID único para la finca
                 temp_id = str(uuid.uuid4())[:8]
                 
                 for i, foto in enumerate(fotos):
-                    # Generar nombre único para cada foto
-                    extension = os.path.splitext(foto.name)[1].lower()
-                    if extension not in ['.jpg', '.jpeg', '.png']:
-                        extension = '.jpg'
+                    # Validate file size
+                    if foto.size > max_file_size:
+                        st.warning(f"⚠️ Foto {foto.name} excede el tamaño máximo ({config.security.max_file_size_mb}MB)")
+                        continue
                     
+                    # Sanitize and validate filename
+                    safe_name = sanitize_filename(foto.name)
+                    extension = os.path.splitext(safe_name)[1].lower()
+                    
+                    # Validate extension
+                    if extension not in config.security.allowed_file_extensions:
+                        st.warning(f"⚠️ Formato de archivo no permitido: {extension}")
+                        continue
+                    
+                    # Generate unique filename
                     filename = f"finca_{temp_id}_{i+1}{extension}"
                     filepath = os.path.join(fotos_dir, filename)
                     
-                    # Guardar imagen
-                    with open(filepath, "wb") as f:
-                        f.write(foto.getbuffer())
-                    
-                    # Generar URL relativa
-                    foto_urls.append(f"/static/fotos/{filename}")
-            else:
-                # Si no hay fotos, usar placeholder
+                    try:
+                        # Save image
+                        with open(filepath, "wb") as f:
+                            f.write(foto.getbuffer())
+                        
+                        # Generate URL
+                        foto_urls.append(f"/static/fotos/{filename}")
+                        logger.info(f"Saved photo: {filename}")
+                    except Exception as e:
+                        logger.error(f"Error saving photo {filename}: {e}")
+                        st.error(f"❌ Error al guardar foto {foto.name}")
+            
+            # Use placeholder if no valid photos
+            if not foto_urls:
                 foto_urls = ["/static/no-photo.png"]
 
             payload = {
@@ -726,33 +796,43 @@ def render_owners():
                 "sync_intranet": False  # Preparado para futura sincronización
             }
 
-            # Enviar al backend
+            # Enviar al backend con cliente mejorado
             try:
-                BACKEND_URL = "http://localhost:8000"
-                r = requests.post(f"{BACKEND_URL}/fincas", json=payload, timeout=5)
-                if r.status_code in (200, 201):
-                    # Guardar datos del propietario en session_state para el panel cliente
-                    st.session_state.propietario_actual = {
-                        "nombre": nombre,
-                        "email": email,
-                        "telefono": telefono,
-                        "dni": dni,
-                        "direccion": direccion_propietario,
-                        "cuenta_bancaria": banco
-                    }
-                    st.session_state.finca_reciente = payload
-                    st.session_state.finca_creada = True  # Flag para mostrar confirmación
-                    # Limpiar coordenadas calculadas para la siguiente finca
-                    if "calculated_lat" in st.session_state:
-                        del st.session_state.calculated_lat
-                    if "calculated_lng" in st.session_state:
-                        del st.session_state.calculated_lng
-                    st.rerun()
-
-                else:
-                    st.error(f"❌ Error al crear propiedad: {r.status_code} → {r.text}")
+                with st.spinner("Guardando propiedad..."):
+                    client = get_backend_client()
+                    result = client.create_finca(payload)
+                    
+                    if result and "error" not in result:
+                        # Guardar datos del propietario en session_state
+                        st.session_state.propietario_actual = {
+                            "nombre": nombre,
+                            "email": email,
+                            "telefono": telefono,
+                            "dni": dni,
+                            "direccion": direccion_propietario,
+                            "cuenta_bancaria": banco
+                        }
+                        st.session_state.finca_reciente = payload
+                        st.session_state.finca_creada = True
+                        
+                        # Clear cache to show new finca immediately
+                        get_cache().clear()
+                        
+                        # Limpiar coordenadas calculadas
+                        for key in ["calculated_lat", "calculated_lng"]:
+                            st.session_state.pop(key, None)
+                        
+                        logger.info(f"Finca created successfully for {email}")
+                        st.rerun()
+                    else:
+                        error_msg = result.get("message", "Error desconocido") if result else "Sin respuesta del servidor"
+                        st.error(f"❌ Error al crear propiedad: {error_msg}")
+                        logger.error(f"Failed to create finca: {result}")
+                        
             except Exception as e:
-                st.error(f"❌ Error de conexión al backend: {e}")
+                logger.error(f"Exception creating finca: {e}")
+                st.error(f"❌ Error de conexión al backend: No se pudo guardar la propiedad")
+                st.info("💡 Verifica que el servidor backend esté ejecutándose")
 
     render_footer()
 
@@ -791,16 +871,15 @@ def render_panel_cliente():
             if propietario.get('cuenta_bancaria'):
                 st.markdown(f"**Cuenta Bancaria:** {'*' * 16 + propietario['cuenta_bancaria'][-4:]}")
 
-    # Obtener propiedades del propietario
+    # Obtener propiedades del propietario con cliente mejorado
     try:
-        BACKEND_URL = "http://localhost:8000"
-        r = requests.get(f"{BACKEND_URL}/fincas?propietario_email={propietario['email']}", timeout=5)
-        if r.status_code == 200:
-            fincas = r.json()
-        else:
+        client = get_backend_client()
+        fincas = client.get_fincas(filters={"propietario_email": propietario['email']})
+        if not fincas:
             fincas = []
     except Exception as e:
-        st.error(f"❌ Error al cargar propiedades: {e}")
+        logger.error(f"Error loading properties for {propietario['email']}: {e}")
+        st.error(f"❌ Error al cargar propiedades: No se pudo conectar con el servidor")
         fincas = []
 
     if not fincas:
@@ -892,17 +971,13 @@ def render_ficha_finca():
         render_footer()
         return
 
-    # Obtener finca por ID
+    # Obtener finca por ID con cliente mejorado
     try:
-        BACKEND_URL = "http://localhost:8000"
-        r = requests.get(f"{BACKEND_URL}/fincas", timeout=5)
-        if r.status_code == 200:
-            fincas = r.json()
-            finca = next((f for f in fincas if str(f.get('id')) == str(finca_id)), None)
-        else:
-            finca = None
+        fincas = load_fincas()  # Uses cache
+        finca = next((f for f in fincas if str(f.get('id')) == str(finca_id)), None)
     except Exception as e:
-        st.error(f"Error al cargar finca: {e}")
+        logger.error(f"Error loading finca {finca_id}: {e}")
+        st.error(f"Error al cargar finca: No se pudo conectar con el servidor")
         finca = None
 
     if not finca:
@@ -1605,20 +1680,21 @@ def render_mapa_inmobiliario(fincas):
         else:
             img_src = get_browser_image_url(placeholder)
 
-        # Escapar datos para prevenir XSS
-        direccion_safe = html.escape(str(finca.get('direccion', 'Finca sin dirección')))
-        superficie_safe = html.escape(str(finca.get('superficie_m2', 0)))
-        pvp_safe = html.escape(str(finca.get('pvp', '—')))
+        # Sanitizar datos para prevenir XSS (usando módulo de seguridad)
+        direccion_safe = sanitize_html(str(finca.get('direccion', 'Finca sin dirección')))
+        superficie_safe = sanitize_html(str(finca.get('superficie_m2', 0)))
+        pvp_safe = sanitize_html(str(finca.get('pvp', '—')))
         
         # Para el ID, usar url_quote ya que se usará en un parámetro de URL
         finca_id = str(finca.get('id', ''))
         finca_id_url = url_quote(finca_id, safe='')
         
-        # Para img_src, validar que sea data URL de imagen válida o escapar si es URL externa
-        if img_src.startswith('data:image/'):
-            img_src_safe = img_src  # Data URLs de imagen son seguras
-        else:
-            img_src_safe = html.escape(img_src)
+        # Validar y sanitizar URL de imagen
+        img_src_safe = sanitize_url(img_src)
+        if not img_src_safe:
+            # Si la URL no es válida, usar placeholder
+            config = get_config()
+            img_src_safe = sanitize_html(config.ui.image_placeholder_url)
 
         # Popup con información y botón que envía postMessage al padre
         popup_html = f"""

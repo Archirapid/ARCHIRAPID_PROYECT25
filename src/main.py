@@ -64,18 +64,9 @@ def show_plot_form():
             owner_name = st.text_input("Nombre del propietario", key="plot_owner_name")
             owner_email = st.text_input("Email del propietario", key="plot_owner_email")
             
-        # Campos de coordenadas
-        st.subheader("Coordenadas de ubicación")
-        col_lat, col_lon = st.columns(2)
-        with col_lat:
-            lat = st.number_input("Latitud", value=40.4168, format="%.6f", key="plot_lat")
-        with col_lon:
-            lon = st.number_input("Longitud", value=-3.7038, format="%.6f", key="plot_lon")
-        
-        # Mapa de referencia (solo visualización)
-        st.subheader("Mapa de referencia")
-        m = folium.Map(location=[lat, lon], zoom_start=10)
-        folium.Marker([lat, lon], popup="Ubicación seleccionada").add_to(m)
+        # Mapa para seleccionar ubicación
+        st.subheader("Selecciona la ubicación en el mapa")
+        m = folium.Map(location=[40.4168, -3.7038], zoom_start=6)
         try:
             st.components.v1.html(m._repr_html_(), height=400)
         except Exception:
@@ -92,7 +83,7 @@ def show_plot_form():
             try:
                 # Validar datos obligatorios
                 if not all([title, description, m2, height, price, type, province, 
-                           owner_name, owner_email, lat, lon]):
+                           owner_name, owner_email, output]):
                     st.error("Por favor completa todos los campos obligatorios")
                     return
                 
@@ -116,8 +107,8 @@ def show_plot_form():
                     'id': uuid.uuid4().hex,
                     'title': title,
                     'description': description,
-                    'lat': float(lat),
-                    'lon': float(lon), 
+                    'lat': output['last_clicked']['lat'],
+                    'lon': output['last_clicked']['lng'], 
                     'm2': int(m2),
                     'height': float(height),
                     'price': float(price),

@@ -77,58 +77,33 @@ def main():
             selected_from_url = selected_from_url[0]
         st.session_state["selected_plot"] = selected_from_url
     selected_plot_local = st.session_state.get("selected_plot")
-    st.title("ARCHIRAPID — Marketplace de Fincas y Proyectos")
+    # Título eliminado - se muestra en app.py
+    # st.title("ARCHIRAPID — Marketplace de Fincas y Proyectos")
 
-    st.sidebar.header("Filtros")
-    min_m = st.sidebar.number_input("Min m²", value=0)
-    max_m = st.sidebar.number_input("Max m²", value=100000)
-    q = st.sidebar.text_input("Buscar (provincia, título)")
+    # Filtros desactivados - los filtros se manejan en app.py
+    # st.sidebar.header("Filtros")
+    # min_m = st.sidebar.number_input("Min m²", value=0)
+    # max_m = st.sidebar.number_input("Max m²", value=100000)
+    # q = st.sidebar.text_input("Buscar (provincia, título)")
 
     plots_all = list_published_plots()
-    # simple filters - pero mantener todas para detalles
-    plots_filtered = [p for p in plots_all if (p["surface_m2"] is None or (p["surface_m2"]>=min_m and p["surface_m2"]<=max_m))]
-    if q:
-        plots_filtered = [p for p in plots_filtered if q.lower() in (p.get("title","")+" "+str(p.get("cadastral_ref",""))).lower()]
-
-    # Usar plots_filtered para mostrar en mapa y miniaturas, pero plots_all para detalles
+    # Sin filtros por ahora - mostrar todas las fincas
+    plots_filtered = plots_all
     plots = plots_filtered
 
-    left,right = st.columns([1,2])
-    with left:
-        st.header("Fincas Destacadas")
-        if plots:
-            # Grid 2x3 para miniaturas (máximo 6, pero con 4 existentes)
-            cols = st.columns(2)
-            for i, p in enumerate(plots[:6]):  # Max 6
-                with cols[i % 2]:
-                    img_path = get_plot_image_path(p)
-                    if st.button("Ver", key=f"mini_{p['id']}", help=f"Ver detalles de {p['title']}"):
-                        st.session_state["selected_plot"] = p["id"]
-                    st.image(img_path, width=120, caption=f"{p['title'][:15]}...")
+    # Mapa desactivado - se renderiza en app.py mediante render_mapa_inmobiliario()
+    # El mapa y los filtros se manejan centralmente para evitar duplicación
 
-    with right:
-        m = folium.Map(location=[40.1,-4.0], zoom_start=6, tiles="CartoDB positron")
-        for p in plots:
-            lat = p['lat'] or (40.1 + hash(p['id']) % 10 * 0.01)
-            lon = p['lon'] or (-4.0 + hash(p['id']) % 10 * 0.01)
-            img_path = get_plot_image_path(p)
-            img_base64 = get_image_base64(img_path)
-            icon = folium.Icon(color='red', icon='map-marker', prefix='fa')
-            popup_html = f"""
-            <div style='width:220px'>
-                <h4>{p['title']}</h4>
-                <img src='{img_base64}' width='200' style='margin-bottom:10px;'>
-                <div>{p.get('surface_m2')} m² · €{p.get('price')}</div>
-                <button onclick="window.location.href = window.location.pathname + '?selected_plot={p['id']}'" style='display:block; margin-top:10px; padding:5px; background:#4CAF50; color:white; border:none; border-radius:3px; text-align:center; width:100%; cursor:pointer;'>Ver detalles aquí</button>
-            </div>
-            """
-            marker = folium.Marker([lat,lon], icon=icon, popup=popup_html)
-            marker.add_to(m)
-            # Asignar ID al marker para identificación
-            marker._id = p['id']
-        map_data = st_folium(m, width=700, height=600)
-
-        # NO detectar clics aquí - usar solo el botón del popup que cambia URL
+    # Mostrar fincas destacadas en grid 3x3
+    st.header("Fincas Disponibles")
+    if plots:
+        cols = st.columns(3)
+        for i, p in enumerate(plots[:9]):  # Máximo 9 fincas
+            with cols[i % 3]:
+                img_path = get_plot_image_path(p)
+                if st.button("Ver", key=f"mini_{p['id']}", help=f"Ver detalles de {p['title']}"):
+                    st.session_state["selected_plot"] = p["id"]
+                st.image(img_path, width=180, caption=f"{p['title'][:25]}...")
 
     # Detalles de finca seleccionada - MODAL DESACTIVADO TEMPORALMENTE
     # Para resolver conflicto de múltiples dialogs en Streamlit

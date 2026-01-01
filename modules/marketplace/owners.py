@@ -7,6 +7,129 @@ import json
 import geopy.geocoders
 from time import sleep
 from datetime import datetime
+import os
+
+
+def obtener_coordenadas_gps(municipio, provincia="Madrid"):
+    """
+    Obtiene coordenadas GPS (lat, lon) de un municipio usando geopy.
+    Si falla, devuelve coordenadas por defecto del centro del municipio.
+    """
+    try:
+        # Usar Nominatim (OpenStreetMap) para geocodificación
+        geolocator = geopy.geocoders.Nominatim(user_agent="archi_rapid_app")
+
+        # Buscar por municipio + provincia
+        location_query = f"{municipio}, {provincia}, Spain"
+        location = geolocator.geocode(location_query, timeout=10)
+
+        if location:
+            return location.latitude, location.longitude
+        else:
+            # Si no encuentra, intentar solo con el municipio
+            location = geolocator.geocode(f"{municipio}, Spain", timeout=10)
+            if location:
+                return location.latitude, location.longitude
+
+    except Exception as e:
+        st.warning(f"⚠️ No se pudieron obtener coordenadas GPS automáticas: {str(e)}")
+
+    # Coordenadas por defecto para municipios comunes de Madrid
+    coordenadas_default = {
+        "Madrid": (40.4168, -3.7038),
+        "Alcalá de Henares": (40.4821, -3.3599),
+        "Alcobendas": (40.5475, -3.6424),
+        "Alcorcón": (40.3458, -3.8249),
+        "Algete": (40.5971, -3.4974),
+        "Aranjuez": (40.0311, -3.6025),
+        "Arganda del Rey": (40.3008, -3.4382),
+        "Boadilla del Monte": (40.4050, -3.8783),
+        "Collado Villalba": (40.6341, -4.0053),
+        "Colmenar Viejo": (40.6590, -3.7676),
+        "Coslada": (40.4238, -3.5613),
+        "Fuenlabrada": (40.2842, -3.7942),
+        "Galapagar": (40.5789, -3.9616),
+        "Getafe": (40.3083, -3.7329),
+        "Leganés": (40.3272, -3.7635),
+        "Majadahonda": (40.4735, -3.8718),
+        "Móstoles": (40.3223, -3.8645),
+        "Parla": (40.2360, -3.7675),
+        "Pinto": (40.2415, -3.6999),
+        "Pozuelo de Alarcón": (40.4379, -3.8134),
+        "Rivas-Vaciamadrid": (40.3260, -3.5181),
+        "San Sebastián de los Reyes": (40.5448, -3.6268),
+        "Torrejón de Ardoz": (40.4586, -3.4783),
+        "Tres Cantos": (40.6091, -3.7144),
+        "Valdemoro": (40.1889, -3.6787),
+        "Villaviciosa de Odón": (40.3572, -3.9001)
+    }
+
+    # Buscar municipio en coordenadas por defecto
+    municipio_lower = municipio.lower().strip()
+    for mun, coords in coordenadas_default.items():
+        if mun.lower() in municipio_lower or municipio_lower in mun.lower():
+            return coords
+
+    # Si no encuentra nada, usar Madrid centro como fallback
+    st.info("📍 Usando coordenadas por defecto de Madrid centro")
+    return 40.4168, -3.7038  # Madrid centro
+
+
+def guardar_datos_catastrales(data_extracted, pdf_path):
+    """
+    Guarda los datos catastrales extraídos por Gemini en la base de datos.
+    Si la referencia catastral ya existe, actualiza el registro.
+    """
+    try:
+        # Verificar que tenemos la referencia catastral (campo obligatorio)
+        referencia = data_extracted.get("referencia_catastral")
+        if not referencia:
+            st.warning("⚠️ No se pudo guardar: falta referencia catastral")
+            return False
+
+        # Preparar datos para insertar en la tabla plots
+        plot_data = {
+            "id": referencia,  # Usar referencia catastral como ID único
+            "catastral_ref": referencia,
+            "m2": data_extracted.get("superficie_grafica_m2"),
+            "locality": data_extracted.get("municipio"),
+            "province": "Madrid",  # Default Madrid
+            "plano_catastral_path": pdf_path,  # Guardar ruta del PDF
+            "type": "plot",  # Tipo de propiedad
+            "status": "draft",  # Estado inicial
+            "created_at": datetime.utcnow().isoformat(),
+            "title": f"Parcela {referencia}",
+            "description": f"Parcela catastral {referencia} - {data_extracted.get('municipio', 'Sin municipio')}",
+            # Campos opcionales con valores por defecto
+            "price": 0,
+            "height": None,
+            "owner_name": st.session_state.get("owner_name", ""),
+            "owner_email": st.session_state.get("owner_email", ""),
+            "owner_phone": st.session_state.get("owner_phone", ""),
+        }
+
+        # Obtener coordenadas GPS del municipio
+        municipio = data_extracted.get("municipio", "")
+        if municipio:
+            lat, lon = obtener_coordenadas_gps(municipio, "Madrid")
+            plot_data["lat"] = lat
+            plot_data["lon"] = lon
+            st.info(f"📍 Coordenadas GPS obtenidas: {lat:.4f}, {lon:.4f}")
+        else:
+            # Coordenadas por defecto si no hay municipio
+            plot_data["lat"] = 40.4168  # Madrid centro
+            plot_data["lon"] = -3.7038
+            st.warning("⚠️ No se detectó municipio, usando coordenadas por defecto de Madrid")
+
+        # Insertar/actualizar en la base de datos
+        db.insert_plot(plot_data)
+
+        st.success(f"✅ Datos guardados correctamente en BD (Referencia: {referencia})")
+        return True
+
+    except Exception as e:
+        st.error(f"❌ Error guardando en base de datos: {str(e)}")
+        return False
 
 
 def main():
@@ -108,107 +231,64 @@ def main():
         if uploaded_nota and st.button("👁️ Extraer Datos de Nota Simple (IA)"):
             with st.spinner("Analizando documento con Gemini Vision..."):
                 try:
-                    from modules.marketplace import ai_engine
-                    
-                    # Enhanced prompt to extract plot dimensions from diagrams
-                    prompt_vision = """
-                    Eres un experto en análisis de documentos catastrales españoles.
-                    Analiza CUIDADOSAMENTE este documento (Nota Simple/Certificación Catastral).
-                    
-                    IMPORTANTE: Si hay un PLANO o CROQUIS de la parcela, extrae las medidas de largo y ancho.
-                    
-                    Extrae TODOS los datos que encuentres y devuelve ÚNICAMENTE un JSON válido (sin markdown, sin explicaciones):
-                    {
-                       "referencia_catastral": "código de 20 caracteres",
-                       "superficie_m2": número entero,
-                       "titular": "nombre del propietario",
-                       "clasificacion": "Urbano/Rústico/Industrial",
-                       "municipio": "nombre del municipio",
-                       "provincia": "nombre de la provincia",
-                       "coordenadas_lat": número decimal o null,
-                       "coordenadas_lon": número decimal o null,
-                       "largo_m": número decimal extraído del plano o null,
-                       "ancho_m": número decimal extraído del plano o null,
-                       "lindes": {
-                          "norte": "descripción",
-                          "sur": "descripción",
-                          "este": "descripción",
-                          "oeste": "descripción"
-                       }
-                    }
-                    
-                    Si no encuentras algún dato, pon null (no strings vacíos).
-                    RESPONDE SOLO CON EL JSON, SIN TEXTO ADICIONAL.
-                    """
-                    
-                    if uploaded_nota.type == "application/pdf":
-                        # For PDFs, convert to images and use Vision API
-                        resp = ai_engine.generate_from_pdf(prompt_vision, uploaded_nota.getvalue())
-                    else:
-                        # For images, use vision directly
-                        resp = ai_engine.generate_from_image(prompt_vision, uploaded_nota.getvalue())
-                    
-                    # Parse JSON
-                    import json
+                    from modules.marketplace.ai_engine import extraer_datos_catastral
+                    import tempfile
+                    import os
+
+                    # Save uploaded file temporarily
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                        tmp_file.write(uploaded_nota.getvalue())
+                        tmp_path = tmp_file.name
+
                     try:
-                        # Clean code blocks
-                        clean_json = resp.replace("```json", "").replace("```", "").strip()
-                        data_extracted = json.loads(clean_json)
-                        
-                        st.success("✅ Datos extraídos correctamente del documento.")
-                        
-                        # Display extracted data in organized columns
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            st.markdown("**📋 Datos Catastrales:**")
-                            st.json({
-                                "referencia_catastral": data_extracted.get("referencia_catastral"),
-                                "superficie_m2": data_extracted.get("superficie_m2"),
-                                "clasificacion": data_extracted.get("clasificacion"),
-                                "municipio": data_extracted.get("municipio"),
-                                "provincia": data_extracted.get("provincia")
-                            })
-                        
-                        with col_b:
-                            st.markdown("**📐 Dimensiones de la Parcela:**")
-                            if data_extracted.get("largo_m") or data_extracted.get("ancho_m"):
-                                st.success(f"🎯 Largo: {data_extracted.get('largo_m', 'N/A')} m")
-                                st.success(f"🎯 Ancho: {data_extracted.get('ancho_m', 'N/A')} m")
-                                if data_extracted.get("largo_m") and data_extracted.get("ancho_m"):
-                                    area_calc = float(data_extracted["largo_m"]) * float(data_extracted["ancho_m"])
-                                    st.info(f"📊 Área calculada: {area_calc:.2f} m²")
+                        # Llamar a la función de extracción de ai_engine
+                        resultado = extraer_datos_catastral(tmp_path)
+
+                        # Verificar si hay error
+                        if isinstance(resultado, dict) and "error" in resultado:
+                            error_msg = resultado["error"]
+                            if "agotado la cuota" in error_msg or "429" in error_msg:
+                                st.warning("😴 La IA está descansando, espera 30 segundos")
+                                st.info("💡 La cuota de la API se resetea automáticamente cada hora.")
                             else:
-                                st.warning("⚠️ No se encontraron dimensiones en el plano")
-                            
-                            if data_extracted.get("lindes"):
-                                st.markdown("**🧭 Linderos:**")
-                                st.caption(f"N: {data_extracted['lindes'].get('norte', 'N/A')}")
-                                st.caption(f"S: {data_extracted['lindes'].get('sur', 'N/A')}")
-                                st.caption(f"E: {data_extracted['lindes'].get('este', 'N/A')}")
-                                st.caption(f"O: {data_extracted['lindes'].get('oeste', 'N/A')}")
-                        
-                        # Auto-fill session state variables if found
-                        if data_extracted.get("referencia_catastral"):
-                            st.session_state["auto_ref"] = data_extracted["referencia_catastral"]
-                        if data_extracted.get("superficie_m2"):
-                            st.session_state["auto_m2"] = data_extracted["superficie_m2"]
-                        if data_extracted.get("coordenadas_lat"):
-                            st.session_state["auto_lat"] = data_extracted["coordenadas_lat"]
-                        if data_extracted.get("coordenadas_lon"):
-                            st.session_state["auto_lon"] = data_extracted["coordenadas_lon"]
-                        if data_extracted.get("largo_m"):
-                            st.session_state["auto_largo"] = data_extracted["largo_m"]
-                        if data_extracted.get("ancho_m"):
-                            st.session_state["auto_ancho"] = data_extracted["ancho_m"]
-                        if data_extracted.get("provincia"):
-                            st.session_state["auto_provincia"] = data_extracted["provincia"]
-                        if data_extracted.get("lindes"):
-                            st.session_state["auto_lindes"] = data_extracted["lindes"]
-                        
-                    except Exception as e:
-                        st.error(f"No se pudo interpretar el JSON de la IA: {resp}")
+                                st.error(f"❌ Error: {error_msg}")
+                        else:
+                            # Datos extraídos correctamente
+                            st.success("✅ Datos extraídos correctamente del documento.")
+
+                            # Mostrar datos extraídos en pantalla
+                            col_a, col_b = st.columns(2)
+                            with col_a:
+                                st.markdown("**📋 Datos Catastrales Extraídos:**")
+                                st.markdown(f"**Referencia Catastral:** {resultado.get('referencia_catastral', 'No detectada')}")
+                                st.markdown(f"**Superficie Gráfica:** {resultado.get('superficie_grafica_m2', 'No detectada')} m²")
+                                st.markdown(f"**Municipio:** {resultado.get('municipio', 'No detectado')}")
+
+                            with col_b:
+                                st.markdown("**💾 Preparado para guardar:**")
+                                st.info("Los datos están listos para guardarse en la base de datos database.db")
+                                if st.button("💾 Guardar en Base de Datos"):
+                                    # Preparar datos para guardar
+                                    guardar_datos_catastrales(resultado, tmp_path)
+                                    st.success("✅ Datos guardados correctamente en la base de datos!")
+
+                            # Guardar en session state para autocompletar
+                            if resultado.get("referencia_catastral"):
+                                st.session_state["auto_ref"] = resultado["referencia_catastral"]
+                            if resultado.get("superficie_grafica_m2"):
+                                st.session_state["auto_m2"] = resultado["superficie_grafica_m2"]
+                            if resultado.get("municipio"):
+                                st.session_state["auto_municipio"] = resultado["municipio"]
+
+                    finally:
+                        # Clean up temporary file
+                        if 'tmp_path' in locals():
+                            try:
+                                os.unlink(tmp_path)
+                            except:
+                                pass
                 except Exception as e:
-                    st.error(f"Error procesando documento: {e}")
+                    st.error(f"❌ Error procesando documento: {e}")
 
         # Usar valores autocompletados
         def_ref = st.session_state.get("auto_ref", "")
@@ -374,6 +454,9 @@ def main():
                     "image_path": photo_paths[0] if photo_paths else None,
                     "photo_paths": photo_paths_json,
                     "registry_note_path": pdf_path,
+                    "plano_catastral_path": pdf_path,  # El mismo archivo PDF como plano catastral
+                    "vertices_coordenadas": st.session_state.get("auto_vertices"),
+                    "numero_parcela_principal": st.session_state.get("auto_parcela_principal"),
                     "created_at": str(datetime.now())
                 }
                 
@@ -409,7 +492,7 @@ def main():
                     with c2:
                         st.write(f"**Fecha:** {row['created_at']}")
                         if row.get('registry_note_path'):
-                            st.download_button("Descargar Nota Registro", "Nota dummy content", file_name="nota_simple.pdf")
+                            st.download_button(f"📄 Descargar Nota - {row['title']}", "Nota dummy content", file_name="nota_simple.pdf", key=f"download_nota_{row['id']}_{row['title'].replace(' ', '_')}")
                     
                     # Acciones adicionales
                     c_act1, c_act2 = st.columns(2)

@@ -3,18 +3,19 @@ import streamlit as st
 st.markdown("""
 <style>
 .role-container {
-    background: linear-gradient(135deg, #e8f1ff 0%, #f5faff 100%);
-    padding: 50px 20px;
-    border-radius: 16px;
+    background: linear-gradient(135deg, #d4e4ff 0%, #e8f1ff 100%);
+    padding: 60px 30px;
+    border-radius: 20px;
     margin-top: 20px;
 }
 
 .role-card {
-    background: white;
-    border-radius: 14px;
-    padding: 30px 20px;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border: 1px solid #d0ddff;
+    border-radius: 16px;
+    padding: 35px 25px;
     text-align: center;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -24,30 +25,32 @@ st.markdown("""
 }
 
 .card-icon {
-    font-size: 48px;
-    margin-bottom: 15px;
+    font-size: 56px;
+    margin-bottom: 18px;
 }
 
 .card-title {
-    font-size: 1.4em;
-    font-weight: 700;
+    font-size: 1.6em;
+    font-weight: 800;
     color: #003366;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 
 .card-text {
-    font-size: 0.95em;
-    color: #444;
-    margin-bottom: 20px;
+    font-size: 1.05em;
+    color: #333;
+    line-height: 1.4;
+    margin-bottom: 25px;
 }
 
 .role-btn > button {
     background-color: #0b5cff !important;
     color: white !important;
     border-radius: 8px !important;
-    padding: 10px 16px !important;
-    font-weight: 600 !important;
+    padding: 12px 18px !important;
+    font-weight: 700 !important;
     border: none !important;
+    box-shadow: 0 2px 6px rgba(11, 92, 255, 0.3) !important;
 }
 
 .role-btn > button:hover {
@@ -77,12 +80,12 @@ def render_landing():
             <div class="card-icon">🏗️</div>
             <div class="card-title">Tengo un Terreno</div>
             <div class="card-text">
-                Publica tu finca y recibe propuestas reales de arquitectos.
+                Publica tu finca y recibe propuestas reales de arquitectos especializados.
             </div>
         </div>
         """, unsafe_allow_html=True)
         st.markdown('<div class="role-btn">', unsafe_allow_html=True)
-        if st.button("Acceso Propietarios", key="btn_prop", use_container_width=True):
+        if st.button("Acceso Propietarios", key="btn_prop"):
             st.session_state['role'] = 'propietario'
             st.session_state['current_page'] = 'dashboard_propietario'
             st.rerun()
@@ -94,12 +97,12 @@ def render_landing():
             <div class="card-icon">📐</div>
             <div class="card-title">Soy Arquitecto</div>
             <div class="card-text">
-                Sube tus proyectos ejecutables y conecta con clientes reales.
+                Comparte tus proyectos ejecutables y conecta con clientes reales de forma profesional.
             </div>
         </div>
         """, unsafe_allow_html=True)
         st.markdown('<div class="role-btn">', unsafe_allow_html=True)
-        if st.button("Acceso Arquitectos", key="btn_arq", use_container_width=True):
+        if st.button("Acceso Arquitectos", key="btn_arq"):
             st.session_state['role'] = 'arquitecto'
             st.session_state['current_page'] = 'dashboard_arquitecto'
             st.rerun()
@@ -111,12 +114,12 @@ def render_landing():
             <div class="card-icon">🏡</div>
             <div class="card-title">Busco Casa</div>
             <div class="card-text">
-                Explora fincas, proyectos compatibles o diseña tu casa con IA.
+                Explora fincas, proyectos compatibles o diseña tu casa con IA en minutos.
             </div>
         </div>
         """, unsafe_allow_html=True)
         st.markdown('<div class="role-btn">', unsafe_allow_html=True)
-        if st.button("Acceso Clientes", key="btn_cli", use_container_width=True):
+        if st.button("Acceso Clientes", key="btn_cli"):
             st.session_state['role'] = 'cliente'
             st.session_state['current_page'] = 'marketplace_main'
             st.rerun()
@@ -243,7 +246,7 @@ def render_landing():
     # Footer con acceso corporativo sutil
     col_foot1, col_foot2, col_foot3 = st.columns([3, 1, 1])
     with col_foot3:
-        if st.button("🔐 Admin", type="secondary", use_container_width=True):
+        if st.button("🔐 Admin", type="secondary"):
             st.session_state['role'] = 'admin'
             st.rerun()
 

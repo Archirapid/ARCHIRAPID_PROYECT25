@@ -119,6 +119,9 @@ def create_plot_record(plot):
         "catastral_ref": plot.get("catastral_ref") or None,
         "services": plot.get("services") or None,
         "status": plot.get("status") or "published",
+        "plano_catastral_path": plot.get("plano_catastral_path") or None,
+        "vertices_coordenadas": plot.get("vertices_coordenadas") or None,
+        "numero_parcela_principal": plot.get("numero_parcela_principal") or None,
     }
 
     # Normalize photo_paths and set image_path to first photo if available

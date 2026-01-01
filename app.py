@@ -1,4 +1,7 @@
+# Configurar página con layout amplio (LÍNEA 1)
 import streamlit as st
+st.set_page_config(layout='wide')
+
 import sqlite3
 import pandas as pd
 import os
@@ -9,6 +12,31 @@ import functools
 import time
 from pathlib import Path
 from src import db as _db
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde .env
+load_dotenv()
+
+# Detectar si hay una finca seleccionada en los parámetros de consulta
+try:
+    # Intentar Streamlit nuevo (>=1.28)
+    params = dict(st.query_params)
+except (AttributeError, TypeError):
+    # Fallback a Streamlit antiguo
+    params = st.experimental_get_query_params()
+
+if "selected_plot" in params:
+    try:
+        plot_id = params["selected_plot"]
+        # En experimental_get_query_params puede venir como lista
+        if isinstance(plot_id, list):
+            plot_id = plot_id[0]
+        from modules.marketplace.plot_detail import show_plot_detail_page
+        show_plot_detail_page(plot_id)
+        st.stop()  # Detener la ejecución para no mostrar el resto de la app
+    except Exception as e:
+        st.error(f"Error mostrando detalles de la finca: {e}")
+
 @st.cache_resource
 def three_html_for(url_3d: str, project_id: str = "") -> str:
     three_html = """
@@ -87,17 +115,13 @@ def three_html_for(url_3d: str, project_id: str = "") -> str:
     return three_html
 
 # Page configuration and navigation
-# Ensure wide layout so projects don't overlap
-st.set_page_config(layout='wide')
 PAGES = {
-    "Home": ("modules.marketplace.marketplace", "main"),
-    "Propietario (Gemelo Digital)": ("modules.marketplace.gemelo_digital", "main"),
+    "Home":  ("modules.marketplace.marketplace", "main"),
     "Propietarios (Subir Fincas)": ("modules.marketplace.owners", "main"),
-    "Diseñador de Vivienda": ("modules.marketplace.disenador_vivienda", "main"),
     "Arquitectos (Marketplace)": ("modules.marketplace.marketplace_upload", None),
     "Intranet": ("modules.marketplace.intranet", "main"),
+    "Fincas Guardadas": ("modules.marketplace.plots_table", "main"),
 }
-
 
 # Helper: start a simple static server for local assets (with CORS)
 def _start_static_server(root_dir: Path, port: int = 8765):
@@ -137,7 +161,7 @@ def render_portal_cliente_proyecto():
     interes_id = st.session_state.get("interes_proyecto_id")
     interes_titulo = st.session_state.get("interes_proyecto_titulo")
     email = st.session_state.get("email", "")
-    rol = st.session_state.get("rol", "cliente")  # futuro: cliente / propietario / arquitecto / admin
+    rol = st.session_state.get("role", "cliente")  # futuro: cliente / propietario / arquitecto / admin
 
     if not proyecto and not interes_id:
         st.warning("No hay ningún proyecto seleccionado para mostrar en el portal de cliente.")
@@ -219,7 +243,7 @@ def render_portal_cliente_proyecto():
         if foto:
             rel = foto.replace("\\", "/").lstrip("/")
             url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel}"
-            st.image(url, use_column_width=True)
+            st.image(url, width=400)
 
         # Imagen adicional dentro de characteristics_json
         try:
@@ -232,7 +256,7 @@ def render_portal_cliente_proyecto():
             if img2:
                 rel2 = img2.replace("\\", "/").lstrip("/")
                 url2 = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel2}"
-                st.image(url2, use_column_width=True)
+                st.image(url2, width=400)
         except:
             pass
 
@@ -268,7 +292,7 @@ try:
     index = page_keys.index(selected_page) if selected_page in page_keys else 0
 except Exception:
     index = 0
-page = st.sidebar.radio("Navegación", page_keys, index=index)
+page = st.sidebar.radio("Navegación", page_keys, index=index, key="main_navigation")
 
 # Inicializar vista_actual si no existe (no altera comportamiento por defecto)
 if "vista_actual" not in st.session_state:
@@ -325,7 +349,7 @@ if page == "Home":
                             if val == "admin123":
                                 st.success("Acceso admin aceptado")
                                 st.session_state['selected_page'] = "Intranet"
-                                st.experimental_rerun()
+                                st.rerun()
                 else:
                     with st.expander("Acceso"):
                         login_val = st.text_input("Email o Clave", key="login_input_no_modal")
@@ -334,218 +358,92 @@ if page == "Home":
                             if val == "admin123":
                                 st.success("Acceso admin aceptado")
                                 st.session_state['selected_page'] = "Intranet"
-                                st.experimental_rerun()
+                                st.rerun()
 
-    if 'role' not in st.session_state:
-        from components.landing import render_landing
-        render_landing()
-    else:
-        # Top-level title and visible version banner for verification
-        st.title("ARCHIRAPID")
-    try:
-        st.warning(f"Versión de la App: 1.0.3 - 3D Integrado - {pd.Timestamp.now()}")
-    except Exception:
-        # Fallback in case pd.Timestamp isn't available for some reason
-        st.warning("Versión de la App: 1.0.3 - 3D Integrado")
+# ========== HOME: LANDING + MARKETPLACE + PROYECTOS ==========
 
-    # (Botón de prueba RV global eliminado por petición del usuario)
+    # PASO 1: Renderizar los 3 botones de roles
+    st.markdown("---")
+    st.markdown('<div class="role-container">', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
 
+    with col1:
+        st.markdown("""
+        <div class="role-card">
+            <div class="card-icon">🏗️</div>
+            <div class="card-title">Tengo un Terreno</div>
+            <div class="card-text">Publica tu finca y recibe propuestas reales de arquitectos.</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Acceso Propietarios", key="btn_prop_home"):
+            st.session_state['role'] = 'propietario'
+            st.session_state['current_page'] = 'dashboard_propietario'
+            st.rerun()
+
+    with col2:
+        st.markdown("""
+        <div class="role-card">
+            <div class="card-icon">📐</div>
+            <div class="card-title">Soy Arquitecto</div>
+            <div class="card-text">Sube tus proyectos ejecutables y conecta con clientes reales.</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Acceso Arquitectos", key="btn_arq_home"):
+            st.session_state['role'] = 'arquitecto'
+            st.session_state['current_page'] = 'dashboard_arquitecto'
+            st.rerun()
+
+    with col3:
+        st.markdown("""
+        <div class="role-card">
+            <div class="card-icon">🏡</div>
+            <div class="card-title">Busco Casa</div>
+            <div class="card-text">Explora fincas, proyectos compatibles o diseña tu casa con IA.</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Acceso Clientes", key="btn_cli_home"):
+            st.session_state['role'] = 'cliente'
+            st.session_state['current_page'] = 'marketplace_main'
+            st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown("---")
 
-    # BUSCADOR + MAPA
-    st.header("Buscar Fincas")
-    try:
-        from src import db
-        from src import map_manager
-    except Exception:
-        st.error("Error cargando módulos de base de datos o mapa")
-        db = None
-        map_manager = None
-
-    province_options = []
-    if db:
-        try:
-            province_options = db.get_all_provinces()
-        except Exception:
-            province_options = []
-
-    province = st.selectbox("Provincia", options=["Todas"] + province_options, index=0)
-    query = st.text_input("Localidad o dirección", value="")
-
-    filter_province = None if province == "Todas" else province
+    # PASO 2: Renderizar MARKETPLACE (miniaturas + mapa)
     try:
         from modules.marketplace import marketplace
         marketplace.main()
-    except Exception:
-        if map_manager:
-            map_manager.mostrar_plots_on_map(province=filter_province, query=query, width=1100, height=650)
-        else:
-            st.info("Mapa no disponible (módulos faltantes)")
+    except Exception as e:
+        import traceback
+        st.error(f"❌ Error cargando marketplace:  {e}")
+        st.code(traceback.format_exc())
 
+    # PASO 3: Renderizar PROYECTOS ARQUITECTÓNICOS
     st.markdown("---")
-    st.header("Proyectos destacados")
+    st.header("🏗️ Proyectos Arquitectónicos Disponibles")
 
-    # 1. Obtención de datos
-    projects = []
     try:
-        if db:
-            projects = db.get_featured_projects(limit=3)
-    except Exception:
-        projects = []
-
-    import json
-    # Creamos las columnas para las fichas
-    cols = st.columns(3)
-    project_to_show_3d = None  # Variable para saber qué proyecto expandir al ancho total
-
-    for idx, p in enumerate(projects[:3]):
-        with cols[idx]:
-            try:
-                raw = json.loads(p.get('characteristics_json') or '{}')
-                data = raw.get('characteristics', raw) if isinstance(raw, dict) else {}
-            except Exception:
-                data = {}
-
-            img = p.get('foto_principal') or data.get('imagenes') or "https://via.placeholder.com/640x360?text=No+Image"
-            st.image(img, use_column_width=True)
-            
-            title = p.get('title') or p.get('titulo') or 'Proyecto Archi'
-            st.subheader(title)
-
-            # Checkbox para activar 3D (Solo uno a la vez se guardará en el estado)
-            if st.checkbox("🏗️ Abrir Visor 3D", key=f"cb_3d_{p.get('id')}"):
-                project_to_show_3d = p  # Marcamos este proyecto para mostrarlo abajo
-
-            with st.expander("📄 Ficha Técnica Completa"):
-                # Mostramos los datos clave de forma elegante
-                st.markdown(f"### {title}")
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.write(f"💰 **Precio:** {p.get('price') or 'Consultar'}")
-                    st.write(f"📐 **Superficie:** {p.get('area_m2', '—')} m²")
-                    st.write(f"🛏️ **Habitaciones:** {data.get('habitaciones', '—')}")
-                with c2:
-                    st.write(f"🛁 **Baños:** {data.get('baños', data.get('banos', '—'))}")
-                    st.write(f"🏢 **Plantas:** {data.get('plantas', '—')}")
-                    st.write(f"🅿️ **Garaje:** {'Sí' if data.get('garaje') else 'No'}")
-                # Si hay extras o descripción, los añadimos (seguros ante datos faltantes o no-lista)
-                if data.get('extras'):
-                    extras = data.get('extras')
-                    if isinstance(extras, list):
-                        texto_extras = ", ".join(extras)
-                    else:
-                        texto_extras = str(extras)
-                    st.info(f"✨ **Detalles adicionales:** {texto_extras}")
-                if p.get('description'):
-                    st.write(f"📝 {p.get('description')}")
-
-    # --- EL VISOR 3D AHORA SE RENDERIZA AQUÍ (ANCHO COMPLETO) ---
-    # Determine STATIC_URL for asset links (avoid NameError if server returned None)
-    if STATIC_PORT:
-        STATIC_URL = f"http://127.0.0.1:{STATIC_PORT}/"
-    else:
-        STATIC_URL = "http://127.0.0.1:8765/"
-
-    if project_to_show_3d:
-        st.markdown("---")
-        st.subheader(f"🌐 Visor Interactivo: {project_to_show_3d.get('title')}")
-        # DEBUG: mostrar contenido completo del proyecto antes de renderizar el visor 3D
-        try:
-            st.write(project_to_show_3d)
-        except Exception:
-            pass
+        from src import db
+        projects = db.get_featured_projects(limit=6)
         
-        # Obtener URL del modelo
-        modelo_path = project_to_show_3d.get('modelo_3d_path')
-        if modelo_path:
-            # Saneamiento de ruta para Windows/URL
-            rel_path = modelo_path.replace("\\", "/").lstrip("/")
-            model_url = f"{STATIC_URL}{rel_path}".replace(" ", "%20")
-
-            # Llamada a la función con el fix de auto-zoom
-            html_final = three_html_for(model_url, str(project_to_show_3d.get('id')))
-
-            # Usamos st.components al ancho total
-            st.components.v1.html(html_final, height=700, scrolling=False)
-            # --- VR Viewer (aditivo, seguro) ---
-            st.markdown("### 🥽 Visor de Realidad Virtual")
-
-            # Intentar llamar a cualquier renderer VR conocido en el repo; si no hay ninguno, ofrecer fallback GLB
-            renderer_called = False
-            try:
-                for name in ('render_vr_viewer', 'visor_vr', 'render_vr_experience'):
-                    fn = globals().get(name)
-                    if callable(fn):
-                        try:
-                            fn(project_to_show_3d)
-                            renderer_called = True
-                            break
-                        except Exception as e:
-                            st.warning(f'VR renderer {name} raised an error: {e}')
-            except Exception as e:
-                st.warning(f'Error while attempting to initialize VR renderers: {e}')
-
-            # Si ningún renderer fue invocado, ofrecemos un enlace al visor GLB o un botón de prueba
-            if not renderer_called:
-                model_glb = project_to_show_3d.get('modelo_3d_glb') or None
-                if not model_glb and project_to_show_3d.get('modelo_3d_path'):
-                    modelo_path = project_to_show_3d.get('modelo_3d_path')
-                    if str(modelo_path).lower().endswith('.glb'):
-                        model_glb = modelo_path
-
-                if model_glb:
-                    rel = str(model_glb).replace('\\','/').lstrip('/')
-                    glb_url = f"{STATIC_URL}{rel}".replace(' ', '%20')
-                    viewer_url = f"{STATIC_URL}static/vr_viewer.html?model={glb_url}"
-                    with st.container():
-                        st.markdown(f'<a href="{viewer_url}" target="_blank"><button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">Abrir experiencia RV</button></a>', unsafe_allow_html=True)
-                        st.caption('Se abrirá el visor RV en una nueva pestaña. Requiere navegador con WebXR o modo Desktop para previsualizar.')
-                else:
-                    # Mostrar botón de prueba con un modelo GLB público para validar el flujo
-                    test_glb = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb"
-                    test_viewer = f"{STATIC_URL}static/vr_viewer.html?model={test_glb}"
-                    with st.container():
-                        st.markdown(f'<a href="{test_viewer}" target="_blank"><button style="padding:8px 12px;border-radius:6px;background:#28a745;color:#fff;border:none;">Probar RV (modelo de ejemplo)</button></a>', unsafe_allow_html=True)
-                        st.caption('Botón de prueba: abre un modelo público para validar el visor VR. No modifica datos del proyecto.')
-
-            # --- Bloque aditivo: Me gusta / Lo quiero (100% aditivo, no rompe nada) ---
-            st.markdown("---")
-            st.markdown("### ❤️ ¿Te gusta este proyecto?")
-
-            email = st.session_state.get("email", "")
-            proyecto_id = project_to_show_3d.get("id")
-            proyecto_titulo = project_to_show_3d.get("titulo", "Proyecto sin título")
-
-            if not email:
-                st.info("Para guardar este proyecto en tu espacio de cliente, introduce tu email:")
-                email_input = st.text_input("Tu email", key=f"email_interes_{proyecto_id}")
-
-                if st.button("✅ Guardar este proyecto y continuar", key=f"btn_guardar_proyecto_email_{proyecto_id}"):
-                    if email_input:
-                        st.session_state["email"] = email_input
-                        st.session_state["interes_proyecto_id"] = proyecto_id
-                        st.session_state["interes_proyecto_titulo"] = proyecto_titulo
-                        # Guardar el objeto de proyecto completo para que el Portal Cliente lo reciba
-                        st.session_state["proyecto_seleccionado"] = project_to_show_3d
-                        st.success("Proyecto guardado. Nuestro equipo comercial podrá contactarte si lo deseas.")
-                        # Navegar automáticamente al Portal Cliente después de guardar interés
-                        st.session_state["vista_actual"] = "portal_cliente"
-                        st.experimental_rerun()
-                    else:
-                        st.warning("Por favor, introduce un email válido.")
-            else:
-                st.success(f"Estás navegando como: {email}")
-                if st.button("💾 Me gusta este proyecto (guardarlo)", key=f"btn_me_gusta_proyecto_{proyecto_id}"):
-                    st.session_state["interes_proyecto_id"] = proyecto_id
-                    st.session_state["interes_proyecto_titulo"] = proyecto_titulo
-                    # Guardar el objeto de proyecto completo para que el Portal Cliente lo reciba
-                    st.session_state["proyecto_seleccionado"] = project_to_show_3d
-                    st.success("✅ Hemos guardado tu interés por este proyecto.")
-                    # Cambiar automáticamente a la vista Portal Cliente
-                    st.session_state["vista_actual"] = "portal_cliente"
-                    st.experimental_rerun()
+        if projects: 
+            cols = st.columns(3)
+            for idx, p in enumerate(projects):
+                with cols[idx % 3]:
+                    files = p.get('files', {})
+                    fotos = files.get('fotos', [])
+                    thumbnail = f"uploads/{os.path.basename(fotos[0])}" if fotos else "assets/fincas/image1.jpg"
+                    
+                    st.image(thumbnail, width=250)
+                    st.subheader(p.get('title', 'Proyecto'))
+                    st.write(f"**€{p.get('price', 0):,.0f}** | {p.get('area_m2', 0)} m²")
+                    if st.button("Ver Detalles", key=f"proj_home_{p['id']}"):
+                        st.session_state.selected_proj = p['id']
+                        st.rerun()
         else:
-            st.error("Este proyecto no tiene un archivo 3D vinculado.")
+            st.info("No hay proyectos arquitectónicos disponibles aún.")
+    except Exception as e:
+        st.error(f"Error cargando proyectos: {e}")
 
     
 

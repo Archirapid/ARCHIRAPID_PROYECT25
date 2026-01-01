@@ -1,7 +1,6 @@
 import streamlit as st
 from modules.marketplace.utils import list_published_plots, save_upload, reserve_plot, list_projects, calculate_edificability
 from src import db
-import streamlit as st
 import folium
 import uuid
 import base64
@@ -11,13 +10,15 @@ from pathlib import Path
 
 # Helper to read query params (compatible con varias versiones de Streamlit)
 def get_query_params():
+    """
+    Devuelve los query params como dict, compatible con versiones nuevas y antiguas de Streamlit.
+    """
     try:
+        # Streamlit nuevo
+        return dict(st.query_params)
+    except (AttributeError, TypeError):
+        # Streamlit antiguo
         return st.experimental_get_query_params()
-    except Exception:
-        try:
-            return st.query_params
-        except Exception:
-            return {}
 
 # Map plot ids to images
 PLOT_IMAGES = {
@@ -41,14 +42,33 @@ def get_plot_image_path(plot):
             pass
     return PLOT_IMAGES.get(plot['id'], 'assets/fincas/image1.jpg')
 
-def get_image_base64(image_path):
-    """Convert image to base64 for embedding in HTML."""
-    full_path = os.path.join(os.getcwd(), image_path)
-    try:
-        with open(full_path, "rb") as img_file:
-            return f"data:image/jpeg;base64,{base64.b64encode(img_file.read()).decode()}"
-    except Exception as e:
-        return ""
+def get_popup_image_url(plot):
+    """
+    Devuelve una URL absoluta file:// hacia la imagen de la finca,
+    para que Folium pueda mostrarla en el popup aunque se ejecute en local.
+    Si la imagen no existe, usa un placeholder en assets.
+    """
+    rel_path = get_plot_image_path(plot)  # 'uploads/...' o 'assets/...'
+    rel_path = rel_path.lstrip('/').replace('\\', '/')
+
+    # Construir ruta absoluta basada en el directorio actual del proyecto
+    abs_path = Path(rel_path).resolve()
+
+    if not abs_path.exists():
+        # Fallback a placeholder
+        abs_path = Path("assets/fincas/image1.jpg").resolve()
+
+    # Construir URL file:// (ej. file:///C:/ARCHIRAPID_PROYECT25/uploads/imagen.jpg)
+    return abs_path.as_uri()
+
+def get_plot_detail_url(plot_id):
+    """
+    Construye la URL completa para ver detalles de la finca.
+    Apunta a la app Streamlit principal para abrir página completa.
+    """
+    # Base URL de Streamlit (ajusta si es diferente)
+    base_url = "http://localhost:8501"
+    return f"{base_url}/?selected_plot={plot_id}"
 
 def extract_cadastral_data(plot):
     """Extrae datos catastrales de la nota si existe."""
@@ -80,377 +100,189 @@ def extract_cadastral_data(plot):
 
     return cadastral_data
 
-def main():
-    # Leer selected_plot desde la URL
-    params = get_query_params() or {}
-    selected_plot_local = None
-    if params.get("selected_plot"):
-        selected_plot_local = params["selected_plot"][0] if isinstance(params["selected_plot"], list) else params["selected_plot"]
-
-    # Si hay una finca seleccionada, mostrar página de detalles y salir
-    if selected_plot_local:
-        from modules.marketplace.plot_detail import show_plot_detail_page
-        show_plot_detail_page(selected_plot_local)
-        return
-    
-    st.title("ARCHIRAPID — Marketplace de Fincas y Proyectos")
-
+def setup_filters():
+    """Configura y retorna los filtros del sidebar."""
     st.sidebar.header("Filtros")
     min_m = st.sidebar.number_input("Min m²", value=0)
     max_m = st.sidebar.number_input("Max m²", value=100000)
     q = st.sidebar.text_input("Buscar (provincia, título)")
+    return min_m, max_m, q
 
-    # Filtros de búsqueda encima del mapa (formulario)
-    st.markdown("### Filtros de Búsqueda")
-    with st.form("filtros_busqueda", clear_on_submit=False):
-        provincia_sel = st.selectbox("Provincia / Comunidad", options=["Todas", "Madrid", "Barcelona", "Sevilla", "Lisboa"], index=0)
-        min_surface_sel = st.slider("Superficie Mínima (m²)", min_value=0, max_value=5000, value=0, step=10)
-        max_price_sel = st.slider("Presupuesto Máximo (€)", min_value=0, max_value=2_000_000, value=200_000, step=500)
-        aplicar = st.form_submit_button("Aplicar filtros")
+def get_filtered_plots(min_surface, max_price, search_query):
+    """Obtiene las fincas filtradas según los criterios especificados."""
+    # Por ahora no filtramos por provincia
+    prov_param = None
+    plots_all = db.list_fincas_filtradas(prov_param, float(min_surface), float(max_price))
 
-    prov_param = None if provincia_sel in (None, "", "Todas") else provincia_sel
-    plots_all = db.list_fincas_filtradas(prov_param, float(min_surface_sel), float(max_price_sel))
+    # Aplicar búsqueda de texto si existe
+    if search_query:
+        plots_all = [p for p in plots_all if search_query.lower() in
+                    (p.get("title", "") + " " + str(p.get("cadastral_ref", ""))).lower()]
 
-    # Aplicar búsqueda libre 'q' si existe
-    if q:
-        plots_all = [p for p in plots_all if q.lower() in (p.get("title","")+" "+str(p.get("cadastral_ref",""))).lower()]
+    return plots_all
 
-    # Usar plots_all para mostrar en mapa y miniaturas
-    plots = plots_all
+def render_featured_plots(plots):
+    """Renderiza la sección de fincas destacadas."""
+    st.header("Fincas Destacadas")
+    if not plots:
+        st.info("No hay fincas disponibles con los filtros actuales.")
+        return
 
-    left,right = st.columns([1,2])
-    with left:
-        st.header("Fincas Destacadas")
-        if plots:
-            # Grid 2x3 para miniaturas (máximo 6, pero con 4 existentes)
-            cols = st.columns(2)
-            for i, p in enumerate(plots[:6]):  # Max 6
-                with cols[i % 2]:
-                    img_path = get_plot_image_path(p)
-                    if st.button("Ver", key=f"mini_{p['id']}", help=f"Ver detalles de {p['title']}"):
-                        st.session_state["selected_plot"] = p["id"]
-                    st.image(img_path, width=120, caption=f"{p['title'][:15]}...")
+    # Grid 2x3 para miniaturas (máximo 6)
+    cols = st.columns(2)
+    for i, plot in enumerate(plots[:6]):
+        with cols[i % 2]:
+            img_path = get_plot_image_path(plot)
+            if st.button("Ver", key=f"mini_{plot['id']}", help=f"Ver detalles de {plot['title']}"):
+                st.query_params["selected_plot"] = plot["id"]
+                st.rerun()
+            st.image(img_path, width=120, caption=f"{plot['title'][:15]}...")
 
-    with right:
-        st.header("🗺️ Mapa de Fincas")
-        # Filtrar solo plots con coordenadas válidas
-        plots_with_coords = [p for p in plots if p.get('lat') is not None and p.get('lon') is not None]
-        
-        if not plots_with_coords:
-            st.info("📍 No hay fincas con coordenadas disponibles para mostrar en el mapa. Las fincas aparecerán aquí una vez que se publiquen con ubicación válida.")
-        else:
-            # Calcular centro del mapa basado en las coordenadas disponibles
-            lats = [float(p['lat']) for p in plots_with_coords]
-            lons = [float(p['lon']) for p in plots_with_coords]
-            center_lat = sum(lats) / len(lats) if lats else 40.1
-            center_lon = sum(lons) / len(lons) if lons else -4.0
-            zoom_level = 6 if len(plots_with_coords) > 1 else 12
-            
-            m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level, tiles="CartoDB positron")
-            
-            for p in plots_with_coords:
-                lat = float(p['lat'])
-                lon = float(p['lon'])
-                img_path = get_plot_image_path(p)
-                img_base64 = get_image_base64(img_path)
-                icon = folium.Icon(color='red', icon='home', prefix='fa')
-                
-                # Obtener superficie (puede ser surface_m2 o m2)
-                superficie = p.get('surface_m2') or p.get('m2') or 0
-                precio = p.get('price') or 0
-                
-                popup_html = f"""
-                <div style='width:220px'>
-                    <h4>{p.get('title', 'Sin título')}</h4>
-                    <img src='{img_base64}' width='200' style='margin-bottom:10px; border-radius:5px;'>
-                    <div style='font-weight:bold; margin-bottom:5px;'>{superficie} m² · €{precio:,.0f}</div>
-                    <button onclick="window.location.href = window.location.pathname + '?selected_plot={p['id']}'" style='display:block; margin-top:10px; padding:5px; background:#4CAF50; color:white; border:none; border-radius:3px; text-align:center; width:100%; cursor:pointer;'>Ver más detalles</button>
-                </div>
-                """
-                marker = folium.Marker([lat, lon], icon=icon, popup=folium.Popup(popup_html, max_width=250))
-                marker.add_to(m)
-                marker._id = p['id']
-            
-            # Renderizar el mapa solo si se creó correctamente
-            try:
-                st.components.v1.html(m._repr_html_(), height=600)
-            except Exception as e:
-                st.error(f"No fue posible renderizar el mapa interactivo: {str(e)}")
-                # Fallback: mostrar coordenadas como texto
-                st.write("**Fincas encontradas:**")
-                for p in plots_with_coords:
-                    st.write(f"- {p.get('title', 'Sin título')}: {p.get('lat')}, {p.get('lon')}")
+def render_map(plots):
+    """Renderiza el mapa interactivo con las fincas."""
+    st.header("🗺️ Mapa de Fincas")
 
-        # NO detectar clics aquí - usar solo el botón del popup que cambia URL
+    # Filtrar solo plots con coordenadas válidas
+    plots_with_coords = [p for p in plots if p.get('lat') is not None and p.get('lon') is not None]
 
-    # Detalles de finca seleccionada - MODAL DESACTIVADO TEMPORALMENTE
-    # Para resolver conflicto de múltiples dialogs en Streamlit
-    """
-    if selected_plot_local and not st.session_state.get("show_client_form", False):
-        pid = selected_plot_local
-        st.session_state["selected_plot"] = pid  # sync
+    if not plots_with_coords:
+        st.info("📍 No hay fincas con coordenadas disponibles para mostrar en el mapa.")
+        return
 
-        # Modal grande horizontal
-        @st.dialog("Detalle de Finca Seleccionada", width="large")
-        def show_plot_details(plots_data, plot_id):
-            try:
-                p = next((x for x in plots_data if x["id"]==plot_id), None)
-                if p:
-                    cadastral_data = extract_cadastral_data(p)
+    # Calcular centro del mapa
+    lats = [float(p['lat']) for p in plots_with_coords]
+    lons = [float(p['lon']) for p in plots_with_coords]
+    center_lat = sum(lats) / len(lats) if lats else 40.1
+    center_lon = sum(lons) / len(lons) if lons else -4.0
+    zoom_level = 6 if len(plots_with_coords) > 1 else 12
 
-                    # Layout horizontal con columnas
-                    col_left, col_right = st.columns([1, 1])
+    # Crear mapa con Folium
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level, tiles="CartoDB positron")
 
-                    with col_left:
-                        st.subheader("📋 Datos Catastrales")
-                        img_path = get_plot_image_path(p)
-                        if os.path.exists(img_path):
-                            st.image(img_path, width=300, caption=p['title'])
-                        else:
-                            st.image("assets/fincas/image1.jpg", width=300, caption=p['title'])
+    for plot in plots_with_coords:
+        lat = float(plot['lat'])
+        lon = float(plot['lon'])
+        img_path = get_plot_image_path(plot)
+        icon = folium.Icon(color='red', icon='home', prefix='fa')
 
-                        st.markdown(f"**🏠 Título:** {p['title']}")
-                        st.markdown(f"**📏 Superficie:** {cadastral_data.get('surface_m2', p.get('surface_m2', 'N/A'))} m²")
-                        st.markdown(f"**🏗️ Máx. Construible:** {cadastral_data.get('buildable_m2', int(p.get('surface_m2', 0) * 0.33))} m²")
-                        st.markdown(f"**💰 Precio:** €{p.get('price', 'N/A')}")
-                        st.markdown(f"**📋 Ref. Catastral:** {cadastral_data.get('cadastral_ref', p.get('cadastral_ref', 'N/A'))}")
-                        st.markdown(f"**📍 Ubicación:** {p.get('lat', 'N/A')}, {p.get('lon', 'N/A')}")
+        # Crear popup HTML con imagen y enlace a detalles
+        img_src = get_popup_image_url(plot)  # URL completa o relativa para la imagen
+        detail_url = get_plot_detail_url(plot['id'])
 
-                        if cadastral_data.get('shape'):
-                            st.markdown(f"**🔷 Forma:** {cadastral_data['shape']}")
-                        if cadastral_data.get('dimensions'):
-                            st.markdown(f"**📐 Dimensiones:** {cadastral_data['dimensions']}")
+        popup_html = f'''
+        <div style="width:160px; text-align:center;">
+            <img src="{img_src}" style="width:100%; border-radius:5px;" alt="Imagen de {plot['title']}">
+            <br><b>{plot['title']}</b><br>
+            <small>{plot.get('m2', 'N/A')} m²</small><br>
+            <a href="{detail_url}" target="_blank"
+               style="margin-top:5px; padding:5px 10px; background:#ff4b4b; color:white; text-decoration:none; border-radius:3px; display:inline-block;">
+                Ver más detalles
+            </a>
+        </div>
+        '''
 
-                    with col_right:
-                        # Acciones generales de la finca
-                        st.subheader("🛠️ Acciones")
-                        
-                        col_res_finca, col_comp_finca = st.columns(2)
-                        with col_res_finca:
-                            if st.button("💰 Reservar Finca (10%)", key=f"reserve_finca_10_{p['id']}", use_container_width=True, help="Reservar finca con 10% del precio"):
-                                amount = (p.get("price") or 0) * 0.10
-                                rid = reserve_plot(p['id'], "Cliente Demo", "cliente@demo.com", amount, kind="reservation")
-                                st.success(f"✅ Reserva de finca simulada: {rid} — {amount}€")
-                                st.session_state["show_client_form"] = True
-                                st.session_state["transaction_type"] = "reservation"
-                                st.session_state["transaction_id"] = rid
-                                st.rerun()
-                        with col_comp_finca:
-                            if st.button("🏠 Comprar Finca (100%)", key=f"purchase_finca_100_{p['id']}", use_container_width=True, help="Comprar finca completa"):
-                                amount = p.get("price") or 0
-                                rid = reserve_plot(p['id'], "Cliente Demo", "cliente@demo.com", amount, kind="purchase")
-                                st.success(f"✅ Compra de finca simulada: {rid} — {amount}€")
-                                st.session_state["show_client_form"] = True
-                                st.session_state["transaction_type"] = "purchase"
-                                st.session_state["transaction_id"] = rid
-                                st.rerun()
-                        
-                        # Herramientas avanzadas
-                        st.markdown("---")
-                        col_analizar, col_informe = st.columns(2)
-                        with col_analizar:
-                            if st.button("🔍 Analizar Nota Castral", key=f"analyze_note_{p['id']}", use_container_width=True, help="Analizar documento catastral"):
-                                st.info("🔄 Analizando nota catastral...")
-                                # Aquí iría la lógica de análisis de nota
-                                st.success("✅ Análisis completado - Datos extraídos de la nota")
-                        with col_informe:
-                            if st.button("📋 Generar Informe PDF", key=f"generate_report_{p['id']}", use_container_width=True, help="Generar informe completo en PDF"):
-                                st.info("🔄 Generando informe PDF...")
-                                # Aquí iría la lógica de generación de PDF
-                                st.success("✅ Informe PDF generado y descargado")
-                        
-                        # Edificabilidad
-                        if st.button("🏗️ Examinar Edificabilidad", key=f"check_edificability_{p['id']}", use_container_width=True, help="Análisis detallado de edificabilidad"):
-                            edificabilidad_detallada = calculate_edificability(cadastral_data.get('surface_m2', p.get('surface_m2', 0)))
-                            st.info(f"🏗️ **Análisis de Edificabilidad:**\n\n"
-                                   f"- Superficie total: {cadastral_data.get('surface_m2', p.get('surface_m2', 0)):.0f} m²\n"
-                                   f"- Coeficiente de edificabilidad: 33%\n"
-                                   f"- Área máxima construible: {edificabilidad_detallada:.0f} m²\n"
-                                   f"- Área disponible: {edificabilidad_detallada:.0f} m²")
-                        
-                        st.markdown("---")
+        marker = folium.Marker([lat, lon], icon=icon, popup=folium.Popup(popup_html, max_width=250))
+        marker.add_to(m)
 
-                        # Proyectos compatibles (Design Matchmaker - Edificabilidad 33%)
-                        try:
-                            from src import db as _db
-                            surface = cadastral_data.get('surface_m2', p.get('surface_m2', 0)) or 0
-                            compatible_projects = _db.list_proyectos_compatibles(surface)
-                        except Exception as e:
-                            compatible_projects = []
-                            st.warning(f"Error cargando proyectos compatibles: {e}")
+    # Renderizar mapa
+    try:
+        st.components.v1.html(m._repr_html_(), height=600)
+    except Exception as e:
+        st.error(f"No fue posible renderizar el mapa interactivo: {str(e)}")
+        # Fallback: mostrar coordenadas como texto
+        st.write("**Fincas encontradas:**")
+        for plot in plots_with_coords:
+            st.write(f"- {plot.get('title', 'Sin título')}: {plot.get('lat')}, {plot.get('lon')}")
 
-                        st.subheader("🔍 Proyectos Arquitectónicos Compatibles (Edificabilidad 33%)")
-                        max_built = int((cadastral_data.get('surface_m2', p.get('surface_m2', 0)) or 0) * 0.33)
-                        if compatible_projects:
-                            st.info(f"Edificabilidad máxima: {max_built:.0f} m² (33% de superficie)")
-                            if st.button("Ver Proyectos", key=f"ver_proyectos_{p['id']}"):
-                                st.session_state[f"show_compatible_{p['id']}"] = True
-                            if st.session_state.get(f"show_compatible_{p['id']}", False):
-                                for proj in compatible_projects:
-                                    with st.expander(f"🏗️ {proj.get('titulo', 'Sin título')} — {proj.get('m2_construidos', 'N/A')} m² — €{proj.get('presupuesto_ejecucion', 'N/A')}"):
-                                        st.markdown(f"**Estilo:** {proj.get('estilo', 'N/A')}")
-                                        st.markdown(f"**M² construidos:** {proj.get('m2_construidos', 'N/A')}")
-                                        st.markdown(f"**Presupuesto estimado:** €{proj.get('presupuesto_ejecucion', 'N/A')}")
-                                        pdf = proj.get('pdf_path')
-                                        if pdf and os.path.exists(pdf):
-                                            try:
-                                                with open(pdf, 'rb') as fh:
-                                                    b64 = base64.b64encode(fh.read()).decode()
-                                                    href = f"data:application/pdf;base64,{b64}"
-                                                    st.markdown(f"[Descargar PDF del proyecto]({href})")
-                                            except Exception:
-                                                st.write("PDF no disponible para descarga")
+    # Control nativo para navegación
+    render_map_navigation(plots_with_coords)
 
-                                        # Compra del proyecto (paquete ZIP) — pedir email comprador
-                                        buyer_email = st.text_input("Email comprador (para facturación)", key=f"buy_email_{proj.get('id')}")
-                                        if st.button("Comprar Proyecto (Paquete ZIP)", key=f"buy_proj_{proj.get('id')}"):
-                                            if not buyer_email or '@' not in buyer_email:
-                                                st.error('Introduce un email válido para completar la compra')
-                                            else:
-                                                precio_base = float(proj.get('presupuesto_ejecucion') or proj.get('m2_construidos') or 0)
-                                                try:
-                                                    comision = db.registrar_venta_proyecto(proj.get('id'), buyer_email, 'Paquete ZIP', precio_base)
-                                                except Exception:
-                                                    comision = 0.0
+def render_map_navigation(plots_with_coords):
+    """Renderiza el control de navegación del mapa."""
+    st.markdown("---")
+    if not plots_with_coords:
+        return
 
-                                                try:
-                                                    from export_ops import generar_paquete_descarga
-                                                    paquete = generar_paquete_descarga(proj.get('titulo', proj.get('nombre', 'proyecto')))
-                                                    st.download_button('Descargar paquete ZIP', data=paquete, file_name=f"{proj.get('titulo', proj.get('nombre', 'proyecto'))}.zip", mime='application/zip')
-                                                    st.success(f'Compra registrada. Comisión Archirapid: €{comision:.2f}')
-                                                except Exception as e:
-                                                    st.error(f'Error generando paquete de descarga: {e}')
-                        else:
-                            st.info("No hay proyectos que encajen con la edificabilidad de esta finca.")
+    # Crear opciones para el selectbox
+    plot_options = {f"{p['title']} ({p.get('m2', 'N/A')} m²)": p['id'] for p in plots_with_coords}
+    selected_option = st.selectbox(
+        "Selecciona una finca del mapa para ver detalles:",
+        options=[""] + list(plot_options.keys()),
+        key="map_plot_selector"
+    )
 
-                        # Información adicional
-                        if st.button("📊 Mostrar Información Adicional", key=f"info_{p['id']}", help="Ver datos técnicos completos"):
-                            st.json({**p, **cadastral_data})
-                else:
-                    st.error(f"No se encontró la finca con ID: {plot_id}")
-            except Exception as e:
-                st.error(f"Error al cargar detalles de la finca: {str(e)}")
-                st.exception(e)
+    if st.button("🔍 IR A LA FICHA DETALLADA DE LA FINCA SELECCIONADA",
+               use_container_width=True,
+               disabled=not selected_option):
+        if selected_option and selected_option in plot_options:
+            selected_id = plot_options[selected_option]
+            st.query_params["selected_plot"] = selected_id
 
-        show_plot_details(plots_all, pid)
-    """
+def render_client_panel():
+    """Renderiza el panel de cliente cuando hay una transacción completada."""
+    if not st.session_state.get("transaction_completed", False):
+        return
 
-    # Formulario de datos personales después de reserva/compra - DESACTIVADO TEMPORALMENTE
-    # Para evitar conflicto de múltiples dialogs en Streamlit
-    """
-    if st.session_state.get("show_client_form", False):
-        # Limpiar el estado de la modal de detalles para evitar conflictos
-        if "selected_plot" in st.session_state:
-            del st.session_state["selected_plot"]
+    st.success("🎉 ¡Transacción completada exitosamente!")
+    st.balloons()
 
-        # @st.dialog("Complete sus datos personales")  # DESACTIVADO: Conflicto con múltiples dialogs
-        def show_client_form():
-            st.subheader("📝 Datos Personales")
-            st.write("Por favor complete sus datos para finalizar la transacción:")
+    st.markdown("---")
 
-            with st.form("client_form"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    nombre = st.text_input("Nombre *", placeholder="Su nombre")
-                    apellidos = st.text_input("Apellidos *", placeholder="Sus apellidos")
-                    email = st.text_input("Email *", placeholder="+34 600 000 000")
-                with col2:
-                    telefono = st.text_input("Teléfono *", placeholder="+34 600 000 000")
-                    direccion = st.text_area("Dirección completa *", placeholder="Calle, número, CP, ciudad, provincia")
-                    observaciones = st.text_area("Observaciones", placeholder="Comentarios adicionales (opcional)")
+    # Panel de cliente mejorado
+    st.subheader("🏠 Panel de Cliente - ARCHIRAPID")
+    st.info(f"**✅ Transacción completada:** {st.session_state.get('transaction_type', 'N/A').title()} - ID: {st.session_state.get('transaction_id', 'N/A')}")
 
-                submitted = st.form_submit_button("✅ Confirmar y Finalizar")
+    st.markdown("### 🎯 ¿Qué desea hacer ahora?")
 
-                if submitted:
-                    if not nombre or not apellidos or not email or not telefono or not direccion:
-                        st.error("Por favor complete todos los campos obligatorios (*)")
-                    else:
-                        # Procesar la transacción
-                        transaction_type = st.session_state.get("transaction_type", "reservation")
-                        transaction_id = st.session_state.get("transaction_id", "")
+    # Opciones principales en cards
+    col1, col2 = st.columns(2)
 
-                        # Aquí iría la lógica para guardar los datos del cliente
-                        st.success(f"✅ {transaction_type.title()} completada exitosamente!")
-                        st.success(f"📧 Recibirás un email de confirmación en {email}")
-                        st.success(f"🆔 ID de transacción: {transaction_id}")
+    with col1:
+        st.markdown("#### 🏡 DISEÑAR VIVIENDA")
+        st.write("Cree su casa ideal con nuestros arquitectos")
+        if st.button("🚀 Ir al Diseñador", key="go_designer", type="primary"):
+            st.success("🎨 Redirigiendo al Diseñador de Vivienda...")
+            st.info("Aquí se abriría el módulo de diseño de vivienda")
 
-                        # Limpiar estado
-                        st.session_state["show_client_form"] = False
-                        if "transaction_type" in st.session_state:
-                            del st.session_state["transaction_type"]
-                        if "transaction_id" in st.session_state:
-                            del st.session_state["transaction_id"]
+    with col2:
+        st.markdown("#### 📐 GESTIONAR PROYECTOS")
+        st.write("Vea proyectos compatibles con su finca")
+        if st.button("📋 Ver Mis Proyectos", key="go_projects", type="primary"):
+            st.success("📐 Redirigiendo a Gestión de Proyectos...")
+            st.info("Aquí se mostrarían los proyectos disponibles para su finca")
 
-                        st.balloons()
-                        st.rerun()
+    st.markdown("---")
 
-        # show_client_form()  # DESACTIVADO: Conflicto con múltiples dialogs
-    """
+    # Opciones adicionales
+    st.markdown("### 🔧 Opciones Adicionales")
+    col_a, col_b, col_c = st.columns(3)
 
-    # Panel de cliente fuera del dialog
-    if st.session_state.get("transaction_completed", False):
-        
-        # Panel de cliente fuera del dialog
-        if st.session_state.get("transaction_completed", False):
-            st.success("🎉 ¡Transacción completada exitosamente!")
-            st.balloons()
+    with col_a:
+        if st.button("📊 Ver Transacción", key="view_transaction", use_container_width=True):
+            st.info(f"📋 **Detalles de la transacción:**\n"
+                   f"- Tipo: {st.session_state.get('transaction_type', 'N/A')}\n"
+                   f"- ID: {st.session_state.get('transaction_id', 'N/A')}\n"
+                   f"- Cliente: {st.session_state.get('client_name', 'N/A')}\n"
+                   f"- Email: {st.session_state.get('client_email', 'N/A')}")
 
-            st.markdown("---")
-            
-            # Panel de cliente mejorado
-            st.subheader("🏠 Panel de Cliente - ARCHIRAPID")
-            st.info(f"**✅ Transacción completada:** {st.session_state.get('transaction_type', 'N/A').title()} - ID: {st.session_state.get('transaction_id', 'N/A')}")
-            
-            st.markdown("### 🎯 ¿Qué desea hacer ahora?")
-            
-            # Opciones principales en cards
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("#### 🏡 DISEÑAR VIVIENDA")
-                st.write("Cree su casa ideal con nuestros arquitectos")
-                if st.button("🚀 Ir al Diseñador", key="go_designer", use_container_width=True, type="primary"):
-                    st.success("🎨 Redirigiendo al Diseñador de Vivienda...")
-                    st.info("Aquí se abriría el módulo de diseño de vivienda")
-                    # Aquí iría la navegación real al diseñador
-            
-            with col2:
-                st.markdown("#### 📐 GESTIONAR PROYECTOS") 
-                st.write("Vea proyectos compatibles con su finca")
-                if st.button("📋 Ver Mis Proyectos", key="go_projects", use_container_width=True, type="primary"):
-                    st.success("📐 Redirigiendo a Gestión de Proyectos...")
-                    st.info("Aquí se mostrarían los proyectos disponibles para su finca")
-                    # Aquí iría la navegación real a gestión de proyectos
-            
-            st.markdown("---")
-            
-            # Opciones adicionales
-            st.markdown("### 🔧 Opciones Adicionales")
-            col_a, col_b, col_c = st.columns(3)
-            
-            with col_a:
-                if st.button("📊 Ver Transacción", key="view_transaction", use_container_width=True):
-                    st.info(f"📋 **Detalles de la transacción:**\n"
-                           f"- Tipo: {st.session_state.get('transaction_type', 'N/A')}\n"
-                           f"- ID: {st.session_state.get('transaction_id', 'N/A')}\n"
-                           f"- Cliente: {st.session_state.get('client_name', 'N/A')}\n"
-                           f"- Email: {st.session_state.get('client_email', 'N/A')}")
-            
-            with col_b:
-                if st.button("🏠 Volver al Marketplace", key="back_marketplace", use_container_width=True):
-                    st.success("🏠 Volviendo al marketplace...")
-                    # Limpiar estado
-                    for key in ["show_client_form", "transaction_completed", "transaction_type", "transaction_id", "client_name", "client_email"]:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    st.rerun()
-            
-            with col_c:
-                if st.button("📧 Contactar Soporte", key="contact_support", use_container_width=True):
-                    st.info("📧 Contactando con soporte técnico...")
-                    st.info("Un agente se pondrá en contacto con usted pronto")
+    with col_b:
+        if st.button("🏠 Volver al Marketplace", key="back_marketplace"):
+            st.success("🏠 Volviendo al marketplace...")
+            # Limpiar estado
+            keys_to_clear = ["show_client_form", "transaction_completed", "transaction_type",
+                           "transaction_id", "client_name", "client_email"]
+            for key in keys_to_clear:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
 
-    # Proyectos Arquitectónicos
+    with col_c:
+        if st.button("📧 Contactar Soporte", key="contact_support"):
+            st.info("📧 Contactando con soporte técnico...")
+            st.info("Un agente se pondrá en contacto con usted pronto")
+
+def render_projects_section():
+    """Renderiza la sección de proyectos arquitectónicos (actualmente desactivada)."""
     st.markdown("---")
     # Temporarily disabled: list_projects() currently raises DB error (no such column: p.characteristics_json)
     # Wrapping the entire projects block in `if False` until DB schema is fixed.
@@ -472,237 +304,54 @@ def main():
                     st.write(f"**Arquitecto:** {proj['architect_name']} ({proj['company'] or 'Independiente'})")
                     st.write(f"**Precio:** €{proj['price']} | **Área:** {proj['area_m2']} m²")
                     st.write(f"**Descripción:** {proj['description'][:100]}...")
-                
+
         else:
             st.info("No hay proyectos arquitectónicos disponibles aún. ¡Sé el primero en subir uno!")
 
-    # Mostrar detalles del proyecto seleccionado
+    # Mostrar detalles del proyecto seleccionado (código desactivado)
     selected_proj_id = st.session_state.get('selected_proj')
     if selected_proj_id:
-        if projects:
-            proj = next((p for p in projects if p['id'] == selected_proj_id), None)
-            if proj:
-                with st.expander("Detalles Completos del Proyecto", expanded=True):
-                    tab_fotos, tab_3d, tab_rv, tab_datos, tab_ia, tab_comprar = st.tabs(["Fotos", "3D", "RV", "Datos", "IA", "Comprar"])
-                    
-                    with tab_fotos:
-                        files = proj['files']
-                        if 'fotos' in files and files['fotos']:
-                            # Imagen principal con popup
-                            img_path = f"uploads/{os.path.basename(files['fotos'][0])}"
-                            col1, col2 = st.columns([1, 4])
-                            with col1:
-                                with st.popover("Ver"):
-                                    st.image(img_path, width=600, caption="Vista completa")
-                            with col2:
-                                st.image(img_path, width=400, caption="Vista principal del proyecto")
-                            
-                            if len(files['fotos']) > 1:
-                                st.subheader("Galería de Fotos")
-                                cols = st.columns(min(len(files['fotos'])-1, 3))
-                                for i, foto in enumerate(files['fotos'][1:], start=1):
-                                    with cols[(i-1) % len(cols)]:
-                                        img_path = f"uploads/{os.path.basename(foto)}"
-                                        with st.popover(f"Ver Foto {i+1}"):
-                                            st.image(img_path, width=600, caption=f"Foto {i+1} completa")
-                                        st.image(img_path, width=200, caption=f"Foto {i+1}")
-                        else:
-                            st.image("assets/fincas/image1.jpg", width=400, caption="Proyecto sin imagen")
-                
-                    with tab_3d:
-                        files = proj['files']
-                        if 'glb' in files and files['glb']:
-                            glb_path = os.path.basename(files['glb'][0])
-                            st.subheader("Modelo 3D Interactivo")
-                            # Simulación MVP: SVG simple de casa 3D
-                            svg_3d = f"""
-                            <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
-                                <!-- Base de la casa -->
-                                <rect x="150" y="200" width="100" height="80" fill="#8B4513" stroke="#654321" stroke-width="2"/>
-                                <!-- Techo -->
-                                <polygon points="140,200 200,150 260,200" fill="#DC143C" stroke="#B22222" stroke-width="2"/>
-                                <!-- Puerta -->
-                                <rect x="185" y="240" width="30" height="40" fill="#654321"/>
-                                <!-- Ventanas -->
-                                <rect x="160" y="220" width="20" height="20" fill="#87CEEB"/>
-                                <rect x="220" y="220" width="20" height="20" fill="#87CEEB"/>
-                                <!-- Chimenea -->
-                                <rect x="210" y="160" width="10" height="30" fill="#696969"/>
-                                <!-- Texto -->
-                                <text x="200" y="290" text-anchor="middle" font-family="Arial" font-size="12" fill="#000">Vista 3D Simulada</text>
-                                <text x="200" y="305" text-anchor="middle" font-family="Arial" font-size="10" fill="#666">Proyecto: {proj['title'][:20]}...</text>
-                            </svg>
-                            """
-                            st.components.v1.html(svg_3d, height=320)
-                            st.write("**Representación 3D:**")
-                            st.write(f"- Modelo GLB disponible: {glb_path}")
-                            st.write("- Incluye: Estructura completa, divisiones de habitaciones y baños, jardín.")
-                            st.write("- Funcionalidad completa próximamente con visor 3D avanzado.")
-                            st.download_button(f"Descargar Modelo 3D ({glb_path})", data=open(f"uploads/{glb_path}", 'rb'), file_name=glb_path, key=f"dl_glb_{proj['id']}")
-                        else:
-                            st.warning("Modelo 3D no disponible. Mostrando representación esquemática.")
-                            # SVG esquemático
-                            svg_schema = f"""
-                            <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
-                                <rect x="150" y="200" width="100" height="80" fill="#D3D3D3" stroke="#A9A9A9" stroke-width="2"/>
-                                <polygon points="140,200 200,150 260,200" fill="#F0F0F0" stroke="#C0C0C0" stroke-width="2"/>
-                                <text x="200" y="240" text-anchor="middle" font-family="Arial" font-size="14" fill="#000">Casa</text>
-                                <text x="200" y="290" text-anchor="middle" font-family="Arial" font-size="12" fill="#000">Esquema Básico</text>
-                            </svg>
-                            """
-                            st.components.v1.html(svg_schema, height=320)
-                            st.write("**Esquema Básico:**")
-                            st.write(f"- Superficie: {proj['area_m2']} m²")
-                            st.write(f"- Habitaciones: {proj['characteristics'].get('habitaciones', 0)}")
-                            st.write(f"- Baños: {proj['characteristics'].get('banos', 0)}")
-                            st.write("- Diseño: Moderna con jardín integrado.")
-                            st.info("Sube un archivo GLB para ver el modelo 3D real.")
-                        
-                        # Otros archivos 3D
-                        if 'glb' in files and len(files['glb']) > 1:
-                            st.subheader("Modelos Adicionales")
-                            for glb in files['glb'][1:]:
-                                fname = os.path.basename(glb)
-                                st.download_button(f"Descargar {fname}", data=open(f"uploads/{fname}", 'rb'), file_name=fname, key=f"glb_extra_{proj['id']}_{fname}")
-                
-                    with tab_rv:
-                        files = proj['files']
-                        if 'rv' in files and files['rv']:
-                            rv_path = os.path.basename(files['rv'])
-                            st.subheader("Experiencia de Realidad Virtual")
-                            # Viewer RV inline con A-Frame (mock básico)
-                            rv_viewer_html = """
-                            <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-                            <a-scene embedded style="width: 100%; height: 400px;">
-                                <a-box position="-1 0.5 -3" rotation="0 45 0" color="#4CC3D9"></a-box>
-                                <a-sphere position="0 1.25 -5" radius="1.25" color="#EF2D5E"></a-sphere>
-                                <a-cylinder position="1 0.75 -3" radius="0.5" height="1.5" color="#FFC65D"></a-cylinder>
-                                <a-plane position="0 0 -4" rotation="-90 0 0" width="4" height="4" color="#7BC8A4"></a-plane>
-                                <a-sky color="#ECECEC"></a-sky>
-                            </a-scene>
-                            """
-                            st.components.v1.html(rv_viewer_html, height=450)
-                            st.caption("Vista RV básica (Próximamente: Cargar escena real desde archivo)")
-                            st.download_button(f"Descargar Archivo RV ({rv_path})", data=open(f"uploads/{rv_path}", 'rb'), file_name=rv_path, key=f"dl_rv_{proj['id']}")
-                        else:
-                            st.info("No hay experiencia RV disponible para este proyecto.")
+        # Código de detalles del proyecto aquí (desactivado)
+        pass
 
-                    # --- Bloque 'Me gusta / Lo quiero' (aditivo, seguro) ---
-                    st.markdown("---")
-                    st.markdown("### ❤️ ¿Te gusta este proyecto?")
+def main():
+    # 1. Verificar si hay una finca seleccionada en la URL
+    params = get_query_params() or {}
+    selected_plot_local = None
+    if params.get("selected_plot"):
+        selected_plot_local = params["selected_plot"][0] if isinstance(params["selected_plot"], list) else params["selected_plot"]
 
-                    email = st.session_state.get("email", "")
-                    proyecto_id = proj.get('id')
-                    proyecto_titulo = proj.get('title') or proj.get('titulo', 'Proyecto sin título')
+    # Si hay una finca seleccionada, mostrar página de detalles y salir
+    if selected_plot_local:
+        from modules.marketplace.plot_detail import show_plot_detail_page
+        show_plot_detail_page(selected_plot_local)
+        return
 
-                    if not email:
-                        st.info("Para guardar este proyecto en tu espacio de cliente, introduce tu email:")
-                        email_input = st.text_input("Tu email", key=f"email_interes_proyecto_{proyecto_id}")
+    # 2. Título principal
+    st.title("ARCHIRAPID — Marketplace de Fincas y Proyectos")
 
-                        if st.button("✅ Guardar este proyecto y continuar", key=f"btn_guardar_proyecto_email_{proyecto_id}"):
-                            if email_input:
-                                st.session_state["email"] = email_input
-                                st.session_state["interes_proyecto_id"] = proyecto_id
-                                st.session_state["interes_proyecto_titulo"] = proyecto_titulo
-                                st.success("Proyecto guardado. Nuestro equipo comercial podrá contactarte si lo deseas.")
-                                st.experimental_rerun()
-                            else:
-                                st.warning("Por favor, introduce un email válido.")
-                    else:
-                        st.success(f"Estás navegando como: {email}")
-                        if st.button("💾 Me gusta este proyecto (guardarlo)", key=f"btn_me_gusta_proyecto_{proyecto_id}"):
-                            st.session_state["interes_proyecto_id"] = proyecto_id
-                            st.session_state["interes_proyecto_titulo"] = proyecto_titulo
-                            st.success("✅ Hemos guardado tu interés por este proyecto.")
-                
-                    with tab_datos:
-                        st.subheader("Información Detallada del Proyecto")
-                        st.write(f"**Descripción:** {proj['description']}")
-                        st.write(f"**Superficie Construida:** {proj['area_m2']} m²")
-                        st.write(f"**Precio del Proyecto:** €{proj['price']}")
-                        st.write(f"**Arquitecto:** {proj['architect_name']}")
-                        if proj['company']:
-                            st.write(f"**Empresa:** {proj['company']}")
-                        
-                        chars = proj['characteristics']
-                        st.write(f"**Tipo de Construcción:** {chars.get('tipo_construccion', 'N/A')}")
-                        st.write(f"**Estilo Arquitectónico:** {chars.get('estilo', 'N/A')}")
-                        st.write(f"**Habitaciones:** {chars.get('habitaciones', 0)}")
-                        st.write(f"**Baños:** {chars.get('banos', 0)}")
-                        st.write(f"**Garage:** {chars.get('garage', 'Sí')}")
-                        st.write(f"**Piscina:** {chars.get('piscina', 'Opcional')}")
-                        st.write(f"**Parcela Construida:** {proj['area_m2'] * 1.5:.0f} m² (aprox.)")
-                        st.write(f"**Alturas:** {chars.get('alturas', '2 plantas')}")
-                        
-                        # Costes y presupuesto
-                        presupuesto_construccion = proj['price'] * 0.8  # Asumiendo que el precio incluye diseño + construcción
-                        st.write(f"**Presupuesto Estimado de Construcción:** €{presupuesto_construccion:.0f}")
-                        st.write(f"**Coste por m²:** €{presupuesto_construccion / proj['area_m2']:.0f}/m²")
-                        st.write("**Incluye:** Diseño arquitectónico, planos técnicos, permisos, construcción básica.")
-                        
-                        # Tecnologías
-                        st.subheader("Tecnologías y Sostenibilidad")
-                        st.write("**Gemelo Digital:** Sí - Modelo 3D interactivo incluido.")
-                        st.write("**Energías Alternativas:** Paneles solares opcionales, calefacción eficiente.")
-                        st.write("**Certificaciones:** Preparado para LEED o similar (consultar).")
-                        
-                        # Planos técnicos
-                        files = proj['files']
-                        if 'dwg' in files and files['dwg']:
-                            st.subheader("Planos Técnicos Disponibles")
-                            for dwg in files['dwg']:
-                                fname = os.path.basename(dwg)
-                                st.write(f"📁 {fname}")
-                                st.download_button(f"Descargar {fname}", data=open(f"uploads/{fname}", 'rb'), file_name=fname, key=f"dwg_{proj['id']}_{fname}")
-                
-                    with tab_ia:
-                        st.subheader("Asistente IA para Consultas sobre el Proyecto")
-                        st.write("Pregunta a la IA sobre modificaciones, costes adicionales, viabilidad, etc.")
-                        query = st.text_input("Escribe tu pregunta:", key=f"ia_query_{proj['id']}")
-                        if st.button("Consultar IA", key=f"ia_btn_{proj['id']}"):
-                            if query.strip():
-                                # Simulación de respuesta IA (MVP)
-                                if "coste" in query.lower() or "precio" in query.lower():
-                                    response = f"Basado en el proyecto '{proj['title']}', el coste estimado por m² es de €{proj['price'] / proj['area_m2']:.0f}. Para modificaciones, añade un 10-20% al presupuesto base."
-                                elif "habitacion" in query.lower():
-                                    response = f"El proyecto tiene {proj['characteristics'].get('habitaciones', 0)} habitaciones. Puedo sugerir agregar una más por €15,000 adicionales."
-                                elif "energia" in query.lower():
-                                    response = "Se puede integrar paneles solares por €10,000, reduciendo costes energéticos en un 30%."
-                                else:
-                                    response = f"Gracias por tu pregunta sobre '{query}'. Este proyecto es ideal para familias. Contacta al arquitecto para detalles personalizados."
-                                st.success("Respuesta de la IA:")
-                                st.write(response)
-                            else:
-                                st.warning("Por favor, escribe una pregunta.")
-                
-                    with tab_comprar:
-                        st.subheader("¡Contrata tu Proyecto Ahora!")
-                        st.write(f"**Precio Total del Proyecto:** €{proj['price']}")
-                        st.write("**Lo que Incluye:**")
-                        st.markdown("- ✅ Planos técnicos completos (DWG)\n- ✅ Modelo 3D interactivo\n- ✅ Asesoría inicial con arquitecto\n- ✅ Gemelo digital\n- ✅ Preparación para permisos")
-                        
-                        # Ofertas especiales
-                        descuento = proj['price'] * 0.1  # 10% descuento
-                        precio_descuento = proj['price'] - descuento
-                        st.success(f"🎉 Oferta Especial: 10% de descuento si contratas hoy - **€{precio_descuento:.0f}** en lugar de €{proj['price']}")
-                        
-                        st.write("**Financiación Disponible:** Hasta 60 meses sin intereses (consultar condiciones).")
-                        st.write("**Garantía:** 2 años en construcción, asesoría post-venta.")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button(f"Contratar con Descuento (€{precio_descuento:.0f})", key=f"hire_discount_{proj['id']}"):
-                                st.success("¡Proyecto contratado con descuento! (Simulación MVP)")
-                                st.balloons()
-                                st.info("Recibirás un email con los detalles y contrato.")
-                        with col2:
-                            if st.button(f"Contratar Precio Normal (€{proj['price']})", key=f"hire_normal_{proj['id']}"):
-                                st.success("¡Proyecto contratado! (Simulación MVP)")
-                                st.info("Próximamente: Integración con pagos seguros.")
-                        
-                        st.caption("Nota: Esta es una simulación para el MVP. El proceso real incluirá contratos legales y pagos seguros.")
+    # 3. Configurar filtros del sidebar
+    min_surface, max_price, search_query = setup_filters()
 
-    # Mostrar página de detalles si hay una finca seleccionada
+    # 4. Obtener fincas filtradas
+    plots = get_filtered_plots(min_surface, max_price, search_query)
+
+    # 5. Layout principal: dos columnas
+    left_col, right_col = st.columns([1, 2])
+
+    with left_col:
+        render_featured_plots(plots)
+
+    with right_col:
+        render_map(plots)
+
+    # 6. Panel de cliente (si hay transacción completada)
+    render_client_panel()
+
+    # 7. Sección de proyectos (desactivada temporalmente)
+    render_projects_section()
+
+    # 8. Verificar nuevamente si hay finca seleccionada (por si cambió durante la ejecución)
     if selected_plot_local:
         from modules.marketplace.plot_detail import show_plot_detail_page
         show_plot_detail_page(selected_plot_local)

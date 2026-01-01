@@ -14,14 +14,13 @@ pandas==2.3.3
 numpy==2.2.6
 
 # Image processing
-pillow==12.0.0
+Pillow==10.2.0
 opencv-python==4.12.0.88
 
 # PDF processing
-PyMuPDF==1.26.6
+PyMuPDF==1.23.25  # (Recomendado sobre PyPDF2 para manejar gráficos - sin dependencias externas)
 pypdfium2==5.0.0
 pdfminer.six==20251107
-pdf2image==1.17.0
 
 # OCR
 pytesseract==0.3.13
@@ -37,11 +36,14 @@ trimesh==4.5.1
 # HTTP requests
 requests==2.32.5
 
+# Environment variables
+python-dotenv==1.0.0
+
 # Backend API
 flask==3.0.3
 
 # AI and ML
-google-generativeai==0.8.3
+google-generativeai==0.8.6  # Versión estable para Gemini API (actualizada)
 
 # Date and time
 python-dateutil==2.9.0.post0

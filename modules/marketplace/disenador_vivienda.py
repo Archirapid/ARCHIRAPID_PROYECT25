@@ -15,6 +15,24 @@ def main():
     if "wizard_step" not in st.session_state:
         st.session_state["wizard_step"] = 1
     
+    # Verificar si viene desde plot_detail con una parcela específica
+    selected_plot_id = st.session_state.get("selected_plot_for_design")
+    preselected_finca = None
+    
+    if selected_plot_id:
+        # Buscar la finca específica por ID
+        from src import db
+        plot_data = db.get_plot_by_id(selected_plot_id)
+        if plot_data:
+            preselected_finca = {
+                'id': plot_data['id'],
+                'direccion': plot_data.get('address', plot_data.get('locality', 'Sin dirección')),
+                'ref_catastral': plot_data.get('catastral_ref', ''),
+                'superficie': plot_data.get('m2', 0),
+                'coordenadas': f"{plot_data.get('lat', 0)}, {plot_data.get('lon', 0)}"
+            }
+            st.info(f"🎯 Diseñando para la parcela: **{plot_data.get('title', 'Sin título')}**")
+    
     # === PASO 1: FINCA Y CONTEXTO ===
     if st.session_state["wizard_step"] == 1:
         st.header("Paso 1: Tu Terreno")
@@ -25,7 +43,26 @@ def main():
              return
              
         finca_opts = {f"{f['direccion']} (Ref: {f['ref_catastral']})": f for f in fincas}
-        sel = st.selectbox("Selecciona la finca donde construir:", list(finca_opts.keys()))
+        
+        # Si hay una finca preseleccionada, mostrarla primero
+        if preselected_finca:
+            default_finca_name = None
+            for finca_name, finca_data in finca_opts.items():
+                if finca_data.get('ref_catastral') == preselected_finca['ref_catastral']:
+                    default_finca_name = finca_name
+                    break
+            
+            if default_finca_name:
+                finca_opts_list = list(finca_opts.keys())
+                default_index = finca_opts_list.index(default_finca_name) if default_finca_name in finca_opts_list else 0
+            else:
+                default_index = 0
+        else:
+            default_index = 0
+        
+        sel = st.selectbox("Selecciona la finca donde construir:", 
+                          list(finca_opts.keys()),
+                          index=default_index)
         
         if sel:
             finca = finca_opts[sel]

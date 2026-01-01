@@ -1,6 +1,7 @@
 """Base de datos centralizada para ArchiRapid (SQLite)."""
 from __future__ import annotations
 import sqlite3
+import json
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Optional, Iterator
@@ -88,6 +89,10 @@ def ensure_tables():
             c.execute("ALTER TABLE plots ADD COLUMN status TEXT DEFAULT 'published'")
         except Exception:
             pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN plano_catastral_path TEXT")
+        except Exception:
+            pass  # Columna ya existe
         # CRÍTICO: Agregar columnas lat y lon si no existen
         try:
             c.execute("ALTER TABLE plots ADD COLUMN lat REAL")
@@ -116,6 +121,14 @@ def ensure_tables():
             pass  # Columna ya existe
         try:
             c.execute("ALTER TABLE plots ADD COLUMN registry_note_path TEXT")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN vertices_coordenadas TEXT")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN numero_parcela_principal TEXT")
         except Exception:
             pass  # Columna ya existe
         c.execute("""CREATE TABLE IF NOT EXISTS projects (
@@ -515,6 +528,19 @@ def get_all_projects():
         conn.close()
     return df
 
+def list_proyectos(filtros: dict | None = None):
+    """
+    Devuelve una lista de proyectos como lista de diccionarios,
+    aplicando filtros simples sobre el DataFrame de get_all_projects().
+    """
+    df = get_all_projects()
+    if filtros:
+        for campo, valor in filtros.items():
+            if campo in df.columns:
+                df = df[df[campo] == valor]
+    # devolver como lista de dicts
+    return df.to_dict(orient="records")
+
 def insert_architect(data: Dict):
     """Inserta o reemplaza un arquitecto."""
     ensure_tables()
@@ -821,6 +847,23 @@ def update_proposal_status(proposal_id: str, new_status: str):
             # Si no existe responded_at, degradar sin timestamp
             c.execute("UPDATE proposals SET status=? WHERE id=?", (new_status, proposal_id))
 
+def insert_plot(data: Dict):
+    """Inserta una nueva parcela en la tabla plots."""
+    ensure_tables()
+    with transaction() as c:
+        c.execute("""INSERT OR REPLACE INTO plots (
+            id, title, description, lat, lon, m2, height, price, type, province,
+            locality, owner_name, owner_email, image_path, registry_note_path, created_at,
+            address, owner_phone, photo_paths, catastral_ref, services, status, plano_catastral_path,
+            vertices_coordenadas, numero_parcela_principal
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+            data['id'], data['title'], data['description'], data['lat'], data['lon'], data['m2'], data.get('height'), data['price'], data['type'], data['province'],
+            data['locality'], data['owner_name'], data['owner_email'], data['image_path'], data['registry_note_path'], data['created_at'],
+            data['address'], data['owner_phone'], data['photo_paths'], data['catastral_ref'], data['services'], data['status'], data.get('plano_catastral_path'),
+            json.dumps(data.get('vertices_coordenadas')) if data.get('vertices_coordenadas') else None,
+            data.get('numero_parcela_principal')
+        ))
+
 def get_proposals_for_owner(owner_email: str):
     """Obtiene todas las propuestas recibidas por un propietario."""
     ensure_tables()
@@ -994,5 +1037,65 @@ def list_proyectos_compatibles(finca_surface_m2: float) -> list:
             for r in rows:
                 out.append({cols[i]: r[i] for i in range(len(cols))})
         return out
+    finally:
+        conn.close()
+
+
+def get_featured_projects(limit=6):
+    """
+    Obtiene proyectos arquitectónicos destacados de la base de datos. 
+    
+    Args:
+        limit (int): Número máximo de proyectos a retornar
+        
+    Returns:
+        list: Lista de diccionarios con datos de proyectos
+    """
+    ensure_tables()
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        
+        # Consulta SQL para obtener proyectos
+        query = """
+        SELECT 
+            id,
+            title,
+            description,
+            architect_name,
+            price,
+            area_m2,
+            file_path,
+            characteristics_json,
+            created_at
+        FROM projects
+        ORDER BY created_at DESC
+        LIMIT ?
+        """
+        
+        cursor.execute(query, (limit,))
+        rows = cursor.fetchall()
+        
+        projects = []
+        for row in rows:
+            project = {
+                'id': row['id'],
+                'title': row['title'],
+                'description': row['description'],
+                'architect_name': row['architect_name'],
+                'company': '',  # No existe en la tabla
+                'price': row['price'],
+                'area_m2': row['area_m2'],
+                'files': {'fotos': [row['file_path']] if row['file_path'] else []},
+                'characteristics': json.loads(row['characteristics_json']) if row['characteristics_json'] else {},
+                'created_at': row['created_at']
+            }
+            projects.append(project)
+        
+        return projects
+        
+    except Exception as e:
+        print(f"Error obteniendo proyectos destacados: {e}")
+        return []
     finally:
         conn.close()

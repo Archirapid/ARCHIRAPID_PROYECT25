@@ -174,7 +174,7 @@ def show_buyer_panel(client_email):
                             img_path = "assets/fincas/image1.jpg"
                 except:
                     pass
-            st.image(img_path, use_container_width=True)
+            st.image(img_path, width=250)
         
         with col_info:
             st.markdown(f"### 🏠 {plot_title or 'Finca sin título'}")

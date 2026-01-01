@@ -38,6 +38,9 @@ def get_all_plot_images(plot):
 def show_plot_detail_page(plot_id: str):
     """Muestra la página completa de detalles de una finca"""
     
+    # Limpiar sidebar para vista dedicada
+    st.sidebar.empty()
+    
     # Obtener datos de la finca
     conn = db.get_conn()
     cursor = conn.cursor()
@@ -75,7 +78,7 @@ def show_plot_detail_page(plot_id: str):
         # Mostrar primera imagen grande
         col_img_main, col_img_thumb = st.columns([2, 1])
         with col_img_main:
-            st.image(images[0], use_container_width=True, caption=plot.get('title', ''))
+            st.image(images[0], width=600, caption=plot.get('title', ''))
         
         with col_img_thumb:
             if len(images) > 1:
@@ -142,25 +145,80 @@ def show_plot_detail_page(plot_id: str):
     col_cat1, col_cat2 = st.columns(2)
     
     with col_cat1:
-        st.markdown(f"**Superficie:** {superficie} m²")
+        st.markdown(f"**Superficie Total:** {superficie} m²")
         st.markdown(f"**Edificabilidad máxima:** {edificabilidad:.0f} m² (33%)")
         if plot.get('catastral_ref'):
             st.markdown(f"**Ref. Catastral:** `{plot['catastral_ref']}`")
+        if plot.get('type'):
+            st.markdown(f"**Tipo de Suelo:** {plot['type']}")
     
     with col_cat2:
-        if plot.get('registry_note_path'):
+        st.markdown(f"**Provincia:** {provincia}")
+        st.markdown(f"**Localidad:** {localidad}")
+        if plot.get('services'):
+            st.markdown(f"**Servicios:** {plot['services']}")
+        
+        # Mostrar coordenadas GPS si están disponibles
+        if plot.get('lat') and plot.get('lon'):
+            st.markdown(f"**Coordenadas GPS:** {float(plot['lat']):.6f}, {float(plot['lon']):.6f}")
+    
+    # Información adicional de IA si está disponible
+    if plot.get('plano_catastral_path') and os.path.exists(plot['plano_catastral_path']):
+        st.markdown("---")
+        st.subheader("🤖 Datos Extraídos por IA")
+        col_ia1, col_ia2 = st.columns(2)
+        
+        with col_ia1:
+            st.info("📄 Documento analizado por Gemini AI")
+            if plot.get('m2'):
+                st.metric("Superficie Registrada", f"{plot['m2']} m²")
+            if plot.get('locality'):
+                st.metric("Municipio Detectado", plot['locality'])
+        
+        with col_ia2:
+            # Mostrar preview del PDF si existe
             try:
-                note_path = plot['registry_note_path']
-                if os.path.exists(note_path):
-                    with open(note_path, 'rb') as f:
+                pdf_path = plot['plano_catastral_path']
+                if os.path.exists(pdf_path):
+                    st.success("✅ Plano Catastral disponible")
+                    with open(pdf_path, 'rb') as f:
                         pdf_data = f.read()
                         b64 = base64.b64encode(pdf_data).decode()
                         href = f"data:application/pdf;base64,{b64}"
-                        st.markdown(f'[📄 Descargar Nota Simple Registral]({href})', unsafe_allow_html=True)
-            except Exception:
-                st.info("Nota registral disponible en el portal del cliente")
-        else:
-            st.info("Nota registral no disponible")
+                        st.markdown(f'[📄 Ver Plano Catastral Completo]({href})', unsafe_allow_html=True)
+                else:
+                    st.warning("Plano catastral no encontrado")
+            except Exception as e:
+                st.error(f"Error cargando plano: {e}")
+    
+    st.markdown("---")
+    
+    # Funcionalidades de IA
+    st.subheader("🤖 Herramientas de IA")
+    
+    col_gemelo, col_diseno = st.columns(2)
+    
+    with col_gemelo:
+        st.markdown("### 🏗️ Gemelo Digital")
+        st.markdown("Crea una réplica virtual 3D de tu proyecto")
+        if st.button("🚀 Crear Gemelo Digital", key="btn_gemelo", type="secondary"):
+            # Guardar el ID de la parcela actual para el gemelo digital
+            st.session_state["selected_plot_for_gemelo"] = plot_id
+            st.session_state["page"] = "gemelo_digital"
+            st.success("🔄 Redirigiendo al Gemelo Digital...")
+            st.info("Allí podrás diseñar tu vivienda en 3D con IA")
+            st.rerun()
+    
+    with col_diseno:
+        st.markdown("### 🏠 Diseño con IA")
+        st.markdown("Arquitecto virtual para diseñar tu casa")
+        if st.button("🎨 Diseñar con IA", key="btn_diseno", type="secondary"):
+            # Guardar el ID de la parcela actual para el diseñador
+            st.session_state["selected_plot_for_design"] = plot_id
+            st.session_state["page"] = "disenador_vivienda"
+            st.success("🔄 Redirigiendo al Arquitecto Virtual...")
+            st.info("Un asistente IA te guiará paso a paso")
+            st.rerun()
     
     st.markdown("---")
     
@@ -213,7 +271,7 @@ def show_plot_detail_page(plot_id: str):
             st.markdown(f"**Importe:** €{reservation_amount:,.0f}")
             st.caption("Reserva la finca pagando el 10% del precio total")
             
-            if st.button("🔒 Reservar Finca", key="btn_reserve", use_container_width=True, type="primary"):
+            if st.button("🔒 Reservar Finca", key="btn_reserve", type="primary"):
                 try:
                     rid = reserve_plot(
                         plot_id,
@@ -244,7 +302,7 @@ def show_plot_detail_page(plot_id: str):
             st.markdown(f"**Importe Total:** €{precio:,.0f}")
             st.caption("Compra la finca completa")
             
-            if st.button("💳 Comprar Finca", key="btn_buy", use_container_width=True, type="primary"):
+            if st.button("💳 Comprar Finca", key="btn_buy", type="primary"):
                 try:
                     rid = reserve_plot(
                         plot_id,

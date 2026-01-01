@@ -311,6 +311,25 @@ def main():
 
     # === CONEXIÓN CON FINCAS: Seleccionar finca del cliente ===
     st.subheader("📍 Selecciona tu Finca")
+    
+    # Verificar si viene desde plot_detail con una parcela específica
+    selected_plot_id = st.session_state.get("selected_plot_for_gemelo")
+    preselected_finca = None
+    
+    if selected_plot_id:
+        # Buscar la finca específica por ID
+        from src import db
+        plot_data = db.get_plot_by_id(selected_plot_id)
+        if plot_data:
+            preselected_finca = {
+                'id': plot_data['id'],
+                'direccion': plot_data.get('address', plot_data.get('locality', 'Sin dirección')),
+                'ref_catastral': plot_data.get('catastral_ref', ''),
+                'superficie': plot_data.get('m2', 0),
+                'coordenadas': f"{plot_data.get('lat', 0)}, {plot_data.get('lon', 0)}"
+            }
+            st.info(f"🎯 Analizando la parcela: **{plot_data.get('title', 'Sin título')}**")
+    
     fincas = list_fincas()
 
     if not fincas:
@@ -319,8 +338,22 @@ def main():
 
     finca_options = {f"{f['direccion']} (Ref: {f['ref_catastral']}) - {f.get('superficie', 'N/A')} m²": f
                     for f in fincas}
+    
+    # Si hay una finca preseleccionada, mostrarla primero
+    if preselected_finca:
+        default_index = 0
+        finca_options_list = list(finca_options.keys())
+        # Buscar si la finca preseleccionada está en la lista
+        for i, finca_name in enumerate(finca_options_list):
+            if preselected_finca['ref_catastral'] in finca_name:
+                default_index = i
+                break
+    else:
+        default_index = 0
+    
     selected_finca_name = st.selectbox("Selecciona una finca:",
                                       list(finca_options.keys()),
+                                      index=default_index,
                                       key="gemelo_finca_select_mvp")
     selected_finca = finca_options[selected_finca_name] if selected_finca_name else None
 

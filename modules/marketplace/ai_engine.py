@@ -1,152 +1,163 @@
+import fitz  # PyMuPDF
 import google.generativeai as genai
-import streamlit as st
+from PIL import Image
+import io
 import os
 import json
-import PIL.Image
-import io
+from dotenv import load_dotenv
 
-# Configuración inicial
-# Intentamos leer de st.secrets, luego variable de entorno
-try:
-    API_KEY = st.secrets["general"]["GOOGLE_API_KEY"]
-except Exception:
-    API_KEY = os.getenv("GOOGLE_API_KEY")
-
-if API_KEY:
-    genai.configure(api_key=API_KEY)
-else:
-    print("WARNING: GOOGLE_API_KEY no encontrada.")
-
-def get_gemini_model():
-    """Devuelve instancia del modelo configurado."""
-    # Using gemini-2.5-flash - latest model with good free tier limits
-    return genai.GenerativeModel('models/gemini-2.5-flash')
-
-def generate_text(prompt: str) -> str:
-    """Genera respuesta de texto usando Gemini 1.5 Flash."""
-    if not API_KEY:
-        return "Error: API Key de Google no configurada."
-    
-    try:
-        model = get_gemini_model()
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"Error en IA: {str(e)}"
-
-def generate_from_image(prompt: str, image_bytes: bytes) -> str:
+def extraer_datos_catastral(pdf_path):
     """
-    Analiza una imagen (o PDF convertido) usando Gemini Vision.
+    Función simplificada al máximo para extraer datos catastrales
+    Configuración de máxima compatibilidad con Gemini API
     """
-    if not API_KEY:
-         return "Error: API Key no configurada."
-    
     try:
-        model = get_gemini_model()
-        # Convert bytes to PIL Image
-        idx = 0
+        # Cargar variables de entorno desde .env
+        load_dotenv()
+
+        # Verificar API KEY
+        api_key = os.getenv('GEMINI_API_KEY')
+        if not api_key:
+            return {"error": "No se encontró la clave GEMINI_API_KEY en el archivo .env"}
+
+        # Configurar API de Gemini
+        genai.configure(api_key=api_key)
+
+        # Cargar PDF y convertir primera página a imagen
+        doc = fitz.open(pdf_path)
+        page = doc.load_page(0)  # Primera página
+        pix = page.get_pixmap(matrix=fitz.Matrix(3.0, 3.0))  # Zoom 3.0 para mejor calidad
+
+        # Verificar que la imagen no esté vacía
+        if pix.width == 0 or pix.height == 0:
+            doc.close()
+            return {"error": "La imagen generada del PDF está vacía o corrupta"}
+
+        img_bytes = pix.tobytes()
+        if not img_bytes or len(img_bytes) == 0:
+            doc.close()
+            return {"error": "No se pudieron generar bytes de imagen del PDF"}
+
+        img = Image.open(io.BytesIO(img_bytes))
+        doc.close()
+
+        # Verificar dimensiones de la imagen
+        if img.width == 0 or img.height == 0:
+            return {"error": "La imagen procesada tiene dimensiones inválidas"}
+
+        # Modelo a usar con máxima compatibilidad
+        nombre_modelo = 'models/gemini-2.0-flash'
+
+        # Forzar versión de API compatible
+        os.environ["GOOGLE_API_USE_MTLS"] = "never"
+
+        # Prompt corto para extraer datos catastrales
+        prompt = """Extrae de esta nota catastral: referencia_catastral, superficie_grafica_m2, municipio.
+        Devuelve solo JSON: {"referencia_catastral":"codigo","superficie_grafica_m2":numero,"municipio":"ciudad"}"""
+
+        # Usar el modelo directamente (sin sistema de fallback para ver errores reales)
         try:
-             img = PIL.Image.open(io.BytesIO(image_bytes))
-        except Exception:
-             return "Error: Formato de imagen no soportado o corrupto."
+            # Crear el modelo
+            model = genai.GenerativeModel(nombre_modelo)
 
-        response = model.generate_content([prompt, img])
-        return response.text
+            # Llamada a la IA
+            response = model.generate_content([prompt, img])
+
+            # Verificar que tenemos respuesta
+            if not response or not hasattr(response, 'text'):
+                return {"error": f"Respuesta vacía del modelo {nombre_modelo}"}
+
+            # Limpiar respuesta (quitar backticks si los hay)
+            text = response.text.strip()
+            if text.startswith('```json'):
+                text = text[7:]
+            if text.startswith('```'):
+                text = text[3:]
+            if text.endswith('```'):
+                text = text[:-3]
+            text = text.strip()
+
+            # Verificar que no esté vacía
+            if not text:
+                return {"error": f"Respuesta vacía del modelo {nombre_modelo}"}
+
+            # Convertir a diccionario Python
+            try:
+                resultado = json.loads(text)
+
+                # Verificar que tenemos los campos esperados
+                campos_requeridos = ['referencia_catastral', 'superficie_grafica_m2', 'municipio']
+                if not all(campo in resultado for campo in campos_requeridos):
+                    return {"error": f"Respuesta incompleta del modelo {nombre_modelo}: faltan campos requeridos"}
+
+                # Éxito - devolver resultado
+                return resultado
+
+            except json.JSONDecodeError as json_error:
+                return {"error": f"JSON inválido del modelo {nombre_modelo}: {str(json_error)}"}
+
+        except Exception as model_error:
+            return {"error": f"Error con modelo {nombre_modelo}: {str(model_error)}"}
+
     except Exception as e:
-        return f"Error en Visión IA: {str(e)}"
+        error_msg = str(e).lower()
 
-def generate_from_pdf(prompt: str, pdf_bytes: bytes) -> str:
-    """
-    Analiza un PDF convirtiéndolo a imágenes y usando Gemini Vision.
-    Procesa todas las páginas del PDF y combina la información extraída.
-    """
-    if not API_KEY:
-        return "Error: API Key no configurada."
-    
-    try:
-        from pdf2image import convert_from_bytes
-        import tempfile
-        
-        # Convert PDF to images (all pages)
-        images = convert_from_bytes(pdf_bytes, dpi=200)
-        
-        if not images:
-            return "Error: No se pudieron extraer imágenes del PDF."
-        
-        model = get_gemini_model()
-        
-        # If multiple pages, analyze all and combine
-        if len(images) > 1:
-            # Analyze all pages together for better context
-            content_parts = [prompt]
-            for idx, img in enumerate(images[:5]):  # Limit to first 5 pages to avoid token limits
-                content_parts.append(f"Página {idx+1}:")
-                content_parts.append(img)
-            
-            response = model.generate_content(content_parts)
-            return response.text
+        # Manejo específico de errores comunes
+        if 'quota' in error_msg or '429' in error_msg:
+            return {"error": "Se ha agotado la cuota de la API de Gemini. Espera unos minutos para que se resetee automáticamente."}
+
+        elif 'key' in error_msg or 'invalid' in error_msg or 'unauthorized' in error_msg:
+            return {"error": "La clave API de Gemini no es válida. Verifica tu GEMINI_API_KEY en el archivo .env"}
+
+        elif 'network' in error_msg or 'connection' in error_msg:
+            return {"error": "Error de conexión a internet. Verifica tu conexión y vuelve a intentarlo."}
+
         else:
-            # Single page - direct analysis
-            response = model.generate_content([prompt, images[0]])
-            return response.text
+            # Incluir el error técnico completo como se pidió
+            return {"error": f"Error crítico al procesar el PDF. Detalles técnicos: {str(e)}"}
+
+def get_ai_response(prompt: str, model_name: str = 'models/gemini-2.0-flash') -> str:
+    """
+    Función genérica para obtener respuesta de IA usando Gemini API
+    
+    Args:
+        prompt: El prompt a enviar a la IA
+        model_name: Nombre del modelo a usar
+        
+    Returns:
+        str: Respuesta de la IA o mensaje de error
+    """
+    try:
+        # Cargar variables de entorno
+        load_dotenv()
+        
+        # Verificar API KEY
+        api_key = os.getenv('GEMINI_API_KEY')
+        if not api_key:
+            return "Error: No se encontró la clave GEMINI_API_KEY en el archivo .env"
+        
+        # Configurar API de Gemini
+        genai.configure(api_key=api_key)
+        
+        # Crear modelo
+        model = genai.GenerativeModel(model_name)
+        
+        # Generar respuesta
+        response = model.generate_content(prompt)
+        
+        if response and response.text:
+            return response.text.strip()
+        else:
+            return "Error: No se pudo generar una respuesta válida"
             
-    except ImportError:
-        return "Error: pdf2image no está instalado. Instala con: pip install pdf2image"
     except Exception as e:
-        return f"Error procesando PDF: {str(e)}"
-
-# Alias para compatibilidad con módulos antiguos (gemelo_digital)
-get_ai_response = generate_text
-
-def plan_vivienda(superficie_finca: int, habitaciones: int, garage: bool = False) -> dict:
-    """Genera distribución en JSON usando Gemini."""
-    model = get_gemini_model()
-    prompt = f"""
-    Actúa como arquitecto experto. Para una finca de {superficie_finca} m² (edificabilidad max 33% = {int(superficie_finca*0.33)} m²),
-    diseña una casa con {habitaciones} habitaciones. Garage incluido: {"Sí" if garage else "No"}.
-    
-    Responde ÚNICAMENTE con un JSON válido (sin markdown ```json) con esta estructura:
-    {{
-        "habitaciones": [{{"nombre": "Salón", "m2": 25, "dim": "5x5"}}, ...],
-        "garage": {{"m2": 20}} (solo si se pidió),
-        "total_m2": 100,
-        "descripcion": "Breve descripción del concepto arquitectónico."
-    }}
-    """
-    try:
-        resp = model.generate_content(prompt)
-        text = resp.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(text)
-    except Exception as e:
-        return {"error": str(e)}
-
-def generate_sketch_svg(rooms_data: list, total_m2: int) -> str:
-    """
-    Pide a Gemini que genere un código SVG simple que represente la distribución en planta.
-    """
-    model = get_gemini_model()
-    rooms_str = json.dumps(rooms_data)
-    prompt = f"""
-    Genera un código SVG válido de un plano de planta arquitectónico esquemático (floor plan).
-    Datos de estancias: {rooms_str}.
-    Superficie total: {total_m2} m².
-    
-    Requisitos:
-    - Vista superior 2D.
-    - Usa rectángulos simples.
-    - Etiqueta cada habitación con texto SVG.
-    - Estilo moderno, líneas negras, fondo blanco o gris claro.
-    - Tamaño viewBox="0 0 500 500" o similar, ajustado.
-    - Responde ÚNICAMENTE con el código <svg>...</svg>, nada más.
-    """
-    try:
-        resp = model.generate_content(prompt)
-        svg_code = resp.text
-        # Extraer solo el bloque svg si hay texto alrededor
-        if "<svg" in svg_code:
-            start = svg_code.find("<svg")
-            end = svg_code.find("</svg>") + 6
-            svg_code = svg_code[start:end]
-        return svg_code
-    except Exception as e:
-        return f"<svg><text>Error generando plano: {e}</text></svg>"
+        error_msg = str(e).lower()
+        
+        if 'quota' in error_msg or '429' in error_msg:
+            return "Error: Se ha agotado la cuota de la API de Gemini. Espera unos minutos."
+        elif 'key' in error_msg or 'invalid' in error_msg or 'unauthorized' in error_msg:
+            return "Error: La clave API de Gemini no es válida."
+        elif 'network' in error_msg or 'connection' in error_msg:
+            return "Error: Error de conexión a internet."
+        else:
+            return f"Error al procesar la solicitud: {str(e)}"

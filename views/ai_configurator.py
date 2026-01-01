@@ -117,5 +117,5 @@ if can_export:
             except Exception:
                 title = 'Diseño_IA'
             paquete = generar_paquete_descarga(title)
-            st.download_button('Descargar paquete ZIP del diseño', data=paquete, file_name=f"{title}.zip", mime='application/zip')
+            st.download_button('Descargar paquete ZIP del diseño', data=paquete, file_name=f"{title}.zip", mime='application/zip', key=f"download_design_{title}")
             st.success(f'Paquete generado. Comisión Archirapid: €{comision:.2f}')

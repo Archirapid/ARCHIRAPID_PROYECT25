@@ -40,7 +40,7 @@ def mostrar_mapa_inmobiliario():
                 # Imagen placeholder
                 st.image("https://via.placeholder.com/300x200/4CAF50/white?text=FINCA+DISPONIBLE",
                         caption=f"📍 {finca['direccion']}",
-                        use_column_width=True)
+                        width=250)
 
             with col2:
                 st.markdown(f"## 🏠 {finca['titulo']}")

@@ -212,7 +212,7 @@ def render_map_navigation(plots_with_coords):
     selected_option = st.selectbox(
         "Selecciona una finca del mapa para ver detalles:",
         options=[""] + list(plot_options.keys()),
-        key="map_plot_selector_v2"
+        key="map_plot_selector_v3"
     )
 
     if st.button("🔍 IR A LA FICHA DETALLADA DE LA FINCA SELECCIONADA",

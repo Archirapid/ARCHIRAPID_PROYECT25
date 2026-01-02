@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
-import google.generativeai as genai
+import google.genai as genai
 
 def diagnostico_completo():
     """
@@ -90,27 +90,16 @@ def diagnostico_completo():
 
     try:
         # Configurar API
-        genai.configure(api_key=api_key)
+        client = genai.Client(api_key=api_key)
         print("✅ API configurada correctamente")
 
-        # Intentar crear modelo
-        try:
-            model = genai.GenerativeModel('gemini-2.0-flash')
-            print("✅ Modelo gemini-2.0-flash creado correctamente")
-        except Exception as model_error:
-            print("❌ Error creando modelo gemini-2.0-flash: {}".format(model_error))
-            # Intentar con modelo alternativo
-            try:
-                model = genai.GenerativeModel('gemini-1.5-pro')
-                print("✅ Modelo alternativo gemini-1.5-pro creado correctamente")
-            except Exception as alt_error:
-                print("❌ Error creando modelo alternativo: {}".format(alt_error))
-                return False
+        # Intentar crear modelo (en nueva API, no se crea explícitamente)
+        print("✅ Cliente API creado correctamente")
 
         # Listar modelos disponibles para verificar
         print("\n📋 Verificando modelos disponibles...")
         try:
-            available_models = genai.list_models()
+            available_models = client.models.list()
             vision_models = [m for m in available_models if 'vision' in str(m).lower() or 'gemini' in str(m).lower()]
             print("  Modelos disponibles ({}):".format(len(vision_models)))
             for model_info in vision_models[:5]:  # Mostrar primeros 5
@@ -122,9 +111,9 @@ def diagnostico_completo():
 
         # Intentar una llamada simple (puede fallar por cuota)
         try:
-            response = model.generate_content("Hola, ¿estás funcionando?")
+            response = client.models.generate_content(model='gemini-2.0-flash', contents=[{"parts": [{"text": "Hola, ¿estás funcionando?"}]}])
             print("✅ Conexión exitosa con Gemini API")
-            print("   Respuesta: {}...".format(response.text[:50]))
+            print("   Respuesta: {}...".format(response.candidates[0].content.parts[0].text[:50]))
             return True
 
         except Exception as api_error:
@@ -164,8 +153,7 @@ def diagnostico_rapido():
 
     # Configurar y probar
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        client = genai.Client(api_key=api_key)
         # No hacer llamada real aquí para evitar consumir cuota
         return {"status": "ok", "api_key_loaded": True}
     except Exception as e:

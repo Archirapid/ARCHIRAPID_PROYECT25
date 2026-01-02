@@ -7,18 +7,18 @@ import sys
 import os
 
 def check_import():
-    """Verificar importación correcta: import google.generativeai as genai"""
+    """Verificar importación correcta: import google.genai as genai"""
     print("🔍 Verificando importación...")
 
     try:
         with open('modules/marketplace/ai_engine.py', 'r', encoding='utf-8') as f:
             content = f.read()
 
-        if 'import google.generativeai as genai' in content:
-            print("✅ Importación correcta: import google.generativeai as genai")
+        if 'import google.genai as genai' in content:
+            print("✅ Importación correcta: import google.genai as genai")
             return True
         else:
-            print("❌ Importación incorrecta - debe ser: import google.generativeai as genai")
+            print("❌ Importación incorrecta - debe ser: import google.genai as genai")
             return False
     except Exception as e:
         print(f"❌ Error verificando importación: {e}")
@@ -46,18 +46,18 @@ def check_pdf_conversion():
         return False
 
 def check_model():
-    """Verificar que usa gemini-1.5-flash (el más rápido para documentos)"""
+    """Verificar que usa gemini-2.0-flash (el modelo actualizado)"""
     print("\n🔍 Verificando modelo Gemini...")
 
     try:
         with open('modules/marketplace/ai_engine.py', 'r', encoding='utf-8') as f:
             content = f.read()
 
-        if "gemini-1.5-flash" in content:
-            print("✅ Usa gemini-1.5-flash (el más rápido para documentos con imágenes)")
+        if "gemini-2.0-flash" in content:
+            print("✅ Usa gemini-2.0-flash (modelo actualizado)")
             return True
         else:
-            print("❌ No usa gemini-1.5-flash")
+            print("❌ No usa gemini-2.0-flash")
             return False
     except Exception as e:
         print(f"❌ Error verificando modelo: {e}")
@@ -105,9 +105,9 @@ def main():
     if passed == total:
         print("🎉 ¡TODOS LOS DETALLES TÉCNICOS ESTÁN CORRECTOS!")
         print("\n✅ Configuración técnica optimizada:")
-        print("   - Import: google.generativeai as genai")
+        print("   - Import: google.genai as genai")
         print("   - PDF: PyMuPDF (fitz) - sin Poppler")
-        print("   - Modelo: gemini-1.5-flash (más rápido)")
+        print("   - Modelo: gemini-2.0-flash (actualizado)")
         print("   - Dependencies: Sin pdf2image")
     else:
         print("⚠️  Algunos detalles técnicos necesitan corrección.")

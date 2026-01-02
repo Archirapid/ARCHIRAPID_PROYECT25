@@ -118,7 +118,7 @@ def render_landing():
         """, unsafe_allow_html=True)
         st.markdown('<div class="role-btn">', unsafe_allow_html=True)
         if st.button("Acceso Clientes", key="btn_cli"):
-            st.experimental_set_query_params(page="Home")
+            st.experimental_set_query_params(page="👤 Panel de Cliente")
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 

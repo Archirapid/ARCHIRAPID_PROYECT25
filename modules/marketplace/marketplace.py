@@ -11,28 +11,18 @@ from pathlib import Path
 # Helper to read query params (compatible con varias versiones de Streamlit)
 def get_query_params():
     """
-    Devuelve los query params como dict, compatible con versiones nuevas y antiguas de Streamlit.
+    Obtiene los query params actuales.
     """
-    try:
-        # Streamlit nuevo
-        return dict(st.query_params)
-    except (AttributeError, TypeError):
-        # Streamlit antiguo
-        return st.experimental_get_query_params()
+    return st.experimental_get_query_params()
 
 # Helper to set query params (compatible con varias versiones de Streamlit)
 def set_query_param(key, value):
     """
-    Establece un query param de manera compatible con versiones nuevas y antiguas de Streamlit.
+    Establece un query param.
     """
-    try:
-        # Streamlit nuevo
-        st.query_params[key] = value
-    except (AttributeError, TypeError):
-        # Streamlit antiguo
-        current_params = st.experimental_get_query_params()
-        current_params[key] = [str(value)]  # experimental_get_query_params espera listas
-        st.experimental_set_query_params(**current_params)
+    current_params = st.experimental_get_query_params()
+    current_params[key] = [str(value)]  # experimental_get_query_params espera listas
+    st.experimental_set_query_params(**current_params)
 
 # Map plot ids to images
 PLOT_IMAGES = {
@@ -222,7 +212,7 @@ def render_map_navigation(plots_with_coords):
     selected_option = st.selectbox(
         "Selecciona una finca del mapa para ver detalles:",
         options=[""] + list(plot_options.keys()),
-        key="map_plot_selector"
+        key="map_plot_selector_v2"
     )
 
     if st.button("🔍 IR A LA FICHA DETALLADA DE LA FINCA SELECCIONADA",

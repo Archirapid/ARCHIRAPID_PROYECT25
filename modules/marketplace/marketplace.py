@@ -112,16 +112,26 @@ def setup_filters():
     q = st.sidebar.text_input("Buscar (provincia, título)")
     return min_m, max_m, q
 
-def get_filtered_plots(min_surface, max_price, search_query):
-    """Obtiene las fincas filtradas según los criterios especificados."""
+def get_filtered_plots(min_surface, max_surface, search_query):
+    """Obtiene las fincas filtradas según los criterios especificados.
+    
+    Nota: min_surface y max_surface ahora corresponden a superficie en m²,
+    no a precio. La función db.list_fincas_filtradas filtra por precio,
+    pero aquí asumimos que los valores son para superficie.
+    """
     # Por ahora no filtramos por provincia
     prov_param = None
-    plots_all = db.list_fincas_filtradas(prov_param, float(min_surface), float(max_price))
+    # Si max_surface es 0 (valor por defecto), tratamos como sin máximo
+    if max_surface == 0:
+        max_surface = 999999  # Valor alto para representar sin límite
+    plots_all = db.list_fincas_filtradas(prov_param, float(min_surface), float(max_surface))
 
-    # Aplicar búsqueda de texto si existe
+    # Aplicar búsqueda de texto si existe (incluye provincia, título y referencia)
     if search_query:
         plots_all = [p for p in plots_all if search_query.lower() in
-                    (p.get("title", "") + " " + str(p.get("cadastral_ref", ""))).lower()]
+                    ((p.get("title", "") or "") + " " +
+                     (p.get("province", "") or "") + " " +
+                     str(p.get("cadastral_ref", "") or "")).lower()]
 
     return plots_all
 
@@ -335,10 +345,10 @@ def main():
     st.title("ARCHIRAPID — Marketplace de Fincas y Proyectos")
 
     # 3. Configurar filtros del sidebar
-    min_surface, max_price, search_query = setup_filters()
+    min_surface, max_surface, search_query = setup_filters()
 
     # 4. Obtener fincas filtradas
-    plots = get_filtered_plots(min_surface, max_price, search_query)
+    plots = get_filtered_plots(min_surface, max_surface, search_query)
 
     # 5. Layout principal: dos columnas
     left_col, right_col = st.columns([1, 2])

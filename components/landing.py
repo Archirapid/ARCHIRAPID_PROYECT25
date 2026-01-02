@@ -86,8 +86,7 @@ def render_landing():
         """, unsafe_allow_html=True)
         st.markdown('<div class="role-btn">', unsafe_allow_html=True)
         if st.button("Acceso Propietarios", key="btn_prop"):
-            st.session_state['role'] = 'propietario'
-            st.session_state['current_page'] = 'dashboard_propietario'
+            st.experimental_set_query_params(page="Propietarios (Subir Fincas)")
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -103,8 +102,7 @@ def render_landing():
         """, unsafe_allow_html=True)
         st.markdown('<div class="role-btn">', unsafe_allow_html=True)
         if st.button("Acceso Arquitectos", key="btn_arq"):
-            st.session_state['role'] = 'arquitecto'
-            st.session_state['current_page'] = 'dashboard_arquitecto'
+            st.experimental_set_query_params(page="Arquitectos (Marketplace)")
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -120,8 +118,7 @@ def render_landing():
         """, unsafe_allow_html=True)
         st.markdown('<div class="role-btn">', unsafe_allow_html=True)
         if st.button("Acceso Clientes", key="btn_cli"):
-            st.session_state['role'] = 'cliente'
-            st.session_state['current_page'] = 'marketplace_main'
+            st.experimental_set_query_params(page="Home")
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 

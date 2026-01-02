@@ -297,9 +297,13 @@ def main():
         # Optional coordinates
         col_coord1, col_coord2 = st.columns(2)
         with col_coord1:
-            manual_lat = st.number_input("Latitud (Opcional)", value=st.session_state.get("auto_lat", 0.0), format="%.6f", help="Déjalo en 0 para usar geocodificación automática")
+            manual_lat = st.number_input("Latitud (Opcional)", value=float(st.session_state.get("auto_lat", 0.0)), format="%.6f", help="Déjalo en 0 para usar geocodificación automática")
         with col_coord2:
-            manual_lon = st.number_input("Longitud (Opcional)", value=st.session_state.get("auto_lon", 0.0), format="%.6f", help="Déjalo en 0 para usar geocodificación automática")
+            manual_lon = st.number_input("Longitud (Opcional)", value=float(st.session_state.get("auto_lon", 0.0)), format="%.6f", help="Déjalo en 0 para usar geocodificación automática")
+        
+        # Feedback si coordenadas detectadas automáticamente
+        if st.session_state.get("auto_lat", 0.0) != 0.0:
+            st.caption("Coordenadas detectadas automáticamente a partir de la dirección.")
         
         # Catastro validation button - Mejorado para validar por dirección o referencia
         col_val1, col_val2 = st.columns(2)
@@ -307,22 +311,33 @@ def main():
             if st.button("🔍 Validar Dirección (Geocodificación)"):
                 if date_address:
                     with st.spinner("Geocodificando dirección..."):
-                        try:
-                            from geopy.geocoders import Nominatim
-                            geolocator = Nominatim(user_agent="archirapid_mvp", timeout=10)
-                            # Intentar con formato completo: dirección, municipio, provincia, España
-                            search_address = f"{date_address}, {st.session_state.get('auto_provincia', 'Málaga')}, España"
-                            loc = geolocator.geocode(search_address)
-                            if loc:
-                                st.session_state["auto_lat"] = loc.latitude
-                                st.session_state["auto_lon"] = loc.longitude
-                                st.success(f"✅ Ubicación encontrada: {loc.latitude:.6f}, {loc.longitude:.6f}")
-                                st.info(f"📍 {loc.address}")
-                                st.rerun()
-                            else:
-                                st.warning("⚠️ No se pudo geocodificar la dirección. Intenta ser más específico (incluye ciudad/provincia).")
-                        except Exception as e:
-                            st.error(f"Error en geocodificación: {str(e)}")
+                        # Si ya hay coordenadas manuales, respetarlas
+                        if manual_lat != 0.0 and manual_lon != 0.0:
+                            st.info(f"Usando las coordenadas introducidas manualmente: lat={manual_lat}, lon={manual_lon}.")
+                        else:
+                            try:
+                                from geopy.geocoders import Nominatim
+                                geolocator = Nominatim(user_agent="archirapid_app_2026", timeout=10)
+                                
+                                # Intentar primero la dirección tal cual
+                                search_address = date_address.strip()
+                                print(f"DEBUG: Intentando geocodificar (tal cual): '{search_address}'")
+                                loc = geolocator.geocode(search_address)
+                                
+                            # Si falla, intentar con ", España" si no lo contiene ya
+                            if not loc and "españa" not in search_address.lower() and "spain" not in search_address.lower():
+                                
+                                if loc:
+                                    st.session_state["auto_lat"] = loc.latitude
+                                    st.session_state["auto_lon"] = loc.longitude
+                                    st.success(f"✅ Ubicación encontrada: {loc.latitude:.6f}, {loc.longitude:.6f}")
+                                    st.info(f"📍 {loc.address}")
+                                    st.rerun()
+                                else:
+                                    st.warning("⚠️ No se pudo geocodificar la dirección. Intenta simplificarla (ej: 'Calle Mayor, Madrid') o ingresa coordenadas manualmente.")
+                            except Exception as e:
+                                print(f"DEBUG: Excepción en geocodificación: {str(e)}")
+                                st.error(f"Error en geocodificación: {str(e)}")
                 else:
                     st.warning("⚠️ Ingresa primero la dirección de la finca")
         

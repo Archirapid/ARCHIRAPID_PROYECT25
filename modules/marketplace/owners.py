@@ -324,8 +324,13 @@ def main():
                                 print(f"DEBUG: Intentando geocodificar (tal cual): '{search_address}'")
                                 loc = geolocator.geocode(search_address)
                                 
-                            # Si falla, intentar con ", España" si no lo contiene ya
-                            if not loc and "españa" not in search_address.lower() and "spain" not in search_address.lower():
+                                # Si falla, intentar con ", España" si no lo contiene ya
+                                if not loc and "españa" not in search_address.lower() and "spain" not in search_address.lower():
+                                    search_address = f"{date_address.strip()}, España"
+                                    print(f"DEBUG: Intentando geocodificar (con España): '{search_address}'")
+                                    loc = geolocator.geocode(search_address)
+                                
+                                print(f"DEBUG: Resultado geocodificación: {loc}")
                                 
                                 if loc:
                                     st.session_state["auto_lat"] = loc.latitude

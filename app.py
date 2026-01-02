@@ -25,6 +25,11 @@ except (AttributeError, TypeError):
     # Fallback a Streamlit antiguo
     params = st.experimental_get_query_params()
 
+# Detectar página seleccionada por query param
+page_from_query = params.get("page")
+if isinstance(page_from_query, list):
+    page_from_query = page_from_query[0] if page_from_query else None
+
 if "selected_plot" in params:
     try:
         plot_id = params["selected_plot"]
@@ -286,7 +291,7 @@ def render_portal_cliente_proyecto():
 
 # Navigation state handling (restore `page` variable)
 page_keys = list(PAGES.keys())
-default_page = st.session_state.get("auto_select_page", "Home")
+default_page = page_from_query or st.session_state.get("auto_select_page", "Home")
 selected_page = st.session_state.get("selected_page", default_page)
 try:
     index = page_keys.index(selected_page) if selected_page in page_keys else 0
@@ -376,8 +381,7 @@ if page == "Home":
         </div>
         """, unsafe_allow_html=True)
         if st.button("Acceso Propietarios", key="btn_prop_home"):
-            st.session_state['role'] = 'propietario'
-            st.session_state['current_page'] = 'dashboard_propietario'
+            st.experimental_set_query_params(page="Propietarios (Subir Fincas)")
             st.rerun()
 
     with col2:
@@ -389,8 +393,7 @@ if page == "Home":
         </div>
         """, unsafe_allow_html=True)
         if st.button("Acceso Arquitectos", key="btn_arq_home"):
-            st.session_state['role'] = 'arquitecto'
-            st.session_state['current_page'] = 'dashboard_arquitecto'
+            st.experimental_set_query_params(page="Arquitectos (Marketplace)")
             st.rerun()
 
     with col3:
@@ -402,8 +405,7 @@ if page == "Home":
         </div>
         """, unsafe_allow_html=True)
         if st.button("Acceso Clientes", key="btn_cli_home"):
-            st.session_state['role'] = 'cliente'
-            st.session_state['current_page'] = 'marketplace_main'
+            st.experimental_set_query_params(page="Home")
             st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)

@@ -18,12 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Detectar si hay una finca seleccionada en los parámetros de consulta
-try:
-    # Intentar Streamlit nuevo (>=1.28)
-    params = dict(st.query_params)
-except (AttributeError, TypeError):
-    # Fallback a Streamlit antiguo
-    params = st.experimental_get_query_params()
+params = st.experimental_get_query_params()
 
 # Detectar página seleccionada por query param
 page_from_query = params.get("page")
@@ -318,7 +313,7 @@ if st.session_state.get("vista_actual") == "portal_cliente":
 
 
 # Only handle Home here; other pages delegate to modules
-if page == "Home":
+if selected_page == "Home":
     STATIC_ROOT = Path(r"C:/ARCHIRAPID_PROYECT25")
     STATIC_PORT = _start_static_server(STATIC_ROOT, port=8765)
     # URL base del servidor estático (definida temprano para usar en el header de diagnóstico)
@@ -405,7 +400,7 @@ if page == "Home":
         </div>
         """, unsafe_allow_html=True)
         if st.button("Acceso Clientes", key="btn_cli_home"):
-            st.experimental_set_query_params(page="Home")
+            st.experimental_set_query_params(page="👤 Panel de Cliente")
             st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -449,19 +444,19 @@ if page == "Home":
 
     
 
-elif page == "Propietario (Gemelo Digital)":
+elif selected_page == "Propietario (Gemelo Digital)":
     with st.container():
         # Flujo principal: Propietario sube finca → IA genera plan
         from modules.marketplace import gemelo_digital
         gemelo_digital.main()
 
-elif page == "Propietarios (Subir Fincas)":
+elif selected_page == "Propietarios (Subir Fincas)":
     with st.container():
         # Propietarios suben fincas al marketplace inmobiliario
         from modules.marketplace import owners
         owners.main()
 
-elif page == "Diseñador de Vivienda":
+elif selected_page == "Diseñador de Vivienda":
     with st.container():
         # Flujo secundario: Cliente diseña vivienda personalizada
         from modules.marketplace import disenador_vivienda
@@ -469,19 +464,19 @@ elif page == "Diseñador de Vivienda":
 
 # "Inmobiliaria (Mapa)" route removed — Home now uses `marketplace.main()` directly.
 
-elif page == "👤 Panel de Cliente":
+elif selected_page == "👤 Panel de Cliente":
     with st.container():
         # Panel de cliente con acceso a transacciones y servicios
         from modules.marketplace import client_panel_fixed as client_panel
         client_panel.main()
 
-elif page == "Arquitectos (Marketplace)":
+elif selected_page == "Arquitectos (Marketplace)":
     with st.container():
         # Use the new main() entrypoint which handles auth, plans and upload flow
         from modules.marketplace import marketplace_upload
         marketplace_upload.main()
 
-elif page == "Intranet":
+elif selected_page == "Intranet":
     with st.container():
         from modules.marketplace import intranet
         intranet.main()

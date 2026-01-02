@@ -88,43 +88,45 @@ def main():
         
         st.markdown("---")
         st.info("💡 **Nota:** Si acabas de realizar una compra, usa el email que proporcionaste en el formulario de datos personales.")
-        st.stop()
+        st.info("Por favor inicia sesión para acceder al panel.")
+        # st.stop()  # Comentado para permitir que la página se cargue
     
-    # Panel de cliente logueado
-    client_email = st.session_state.get("client_email")
-    user_role = st.session_state.get("user_role", "buyer")
-    has_transactions = st.session_state.get("has_transactions", False)
-    has_properties = st.session_state.get("has_properties", False)
-    
-    # Botón de cerrar sesión en sidebar
-    with st.sidebar:
-        if st.button("🚪 Cerrar Sesión", use_container_width=True):
-            st.session_state["client_logged_in"] = False
-            if "client_email" in st.session_state:
-                del st.session_state["client_email"]
-            if "user_role" in st.session_state:
-                del st.session_state["user_role"]
-            if "has_transactions" in st.session_state:
-                del st.session_state["has_transactions"]
-            if "has_properties" in st.session_state:
-                del st.session_state["has_properties"]
-            st.rerun()
-    
-    # Mostrar rol del usuario
-    role_emoji = "🛒" if user_role == "buyer" else "🏠"
-    role_text = "Comprador" if user_role == "buyer" else "Propietario"
-    st.success(f"{role_emoji} **Bienvenido/a {role_text}** - {client_email}")
-    
-    # Contenido diferente según el rol
-    if user_role == "buyer" and has_transactions:
-        # Panel para compradores con transacciones
-        show_buyer_panel(client_email)
-    elif user_role == "owner" and has_properties:
-        # Panel para propietarios con fincas
-        show_owner_panel_v2(client_email)
-    else:
-        st.error("Error: No se pudo determinar el tipo de panel apropiado")
-        st.stop()
+    if st.session_state["client_logged_in"]:
+        # Panel de cliente logueado
+        client_email = st.session_state.get("client_email")
+        user_role = st.session_state.get("user_role", "buyer")
+        has_transactions = st.session_state.get("has_transactions", False)
+        has_properties = st.session_state.get("has_properties", False)
+        
+        # Botón de cerrar sesión en sidebar
+        with st.sidebar:
+            if st.button("🚪 Cerrar Sesión", use_container_width=True):
+                st.session_state["client_logged_in"] = False
+                if "client_email" in st.session_state:
+                    del st.session_state["client_email"]
+                if "user_role" in st.session_state:
+                    del st.session_state["user_role"]
+                if "has_transactions" in st.session_state:
+                    del st.session_state["has_transactions"]
+                if "has_properties" in st.session_state:
+                    del st.session_state["has_properties"]
+                st.rerun()
+        
+        # Mostrar rol del usuario
+        role_emoji = "🛒" if user_role == "buyer" else "🏠"
+        role_text = "Comprador" if user_role == "buyer" else "Propietario"
+        st.success(f"{role_emoji} **Bienvenido/a {role_text}** - {client_email}")
+        
+        # Contenido diferente según el rol
+        if user_role == "buyer" and has_transactions:
+            # Panel para compradores con transacciones
+            show_buyer_panel(client_email)
+        elif user_role == "owner" and has_properties:
+            # Panel para propietarios con fincas
+            show_owner_panel_v2(client_email)
+        else:
+            st.error("Error: No se pudo determinar el tipo de panel apropiado")
+            st.stop()
 
 def show_buyer_panel(client_email):
     """Panel para compradores con transacciones"""

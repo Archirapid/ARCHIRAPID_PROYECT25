@@ -13,16 +13,14 @@ def get_query_params():
     """
     Obtiene los query params actuales.
     """
-    return st.experimental_get_query_params()
+    return st.query_params
 
 # Helper to set query params (compatible con varias versiones de Streamlit)
 def set_query_param(key, value):
     """
     Establece un query param.
     """
-    current_params = st.experimental_get_query_params()
-    current_params[key] = [str(value)]  # experimental_get_query_params espera listas
-    st.experimental_set_query_params(**current_params)
+    st.query_params[key] = str(value)
 
 # Map plot ids to images
 PLOT_IMAGES = {

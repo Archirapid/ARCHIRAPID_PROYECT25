@@ -18,19 +18,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Detectar si hay una finca seleccionada en los parámetros de consulta
-params = st.experimental_get_query_params()
+params = st.query_params
 
 # Detectar página seleccionada por query param
 page_from_query = params.get("page")
-if isinstance(page_from_query, list):
-    page_from_query = page_from_query[0] if page_from_query else None
 
 if "selected_plot" in params:
     try:
         plot_id = params["selected_plot"]
-        # En experimental_get_query_params puede venir como lista
-        if isinstance(plot_id, list):
-            plot_id = plot_id[0]
         from modules.marketplace.plot_detail import show_plot_detail_page
         show_plot_detail_page(plot_id)
         st.stop()  # Detener la ejecución para no mostrar el resto de la app
@@ -376,7 +371,7 @@ if selected_page == "Home":
         </div>
         """, unsafe_allow_html=True)
         if st.button("Acceso Propietarios", key="btn_prop_home"):
-            st.experimental_set_query_params(page="Propietarios (Subir Fincas)")
+            st.query_params["page"] = "Propietarios (Subir Fincas)"
             st.rerun()
 
     with col2:
@@ -388,7 +383,7 @@ if selected_page == "Home":
         </div>
         """, unsafe_allow_html=True)
         if st.button("Acceso Arquitectos", key="btn_arq_home"):
-            st.experimental_set_query_params(page="Arquitectos (Marketplace)")
+            st.query_params["page"] = "Arquitectos (Marketplace)"
             st.rerun()
 
     with col3:
@@ -400,7 +395,7 @@ if selected_page == "Home":
         </div>
         """, unsafe_allow_html=True)
         if st.button("Acceso Clientes", key="btn_cli_home"):
-            st.experimental_set_query_params(page="👤 Panel de Cliente")
+            st.query_params["page"] = "👤 Panel de Cliente"
             st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)

@@ -1,9 +1,10 @@
 import fitz  # PyMuPDF
-import google.generativeai as genai
+import google.genai as genai
 from PIL import Image
 import io
 import os
 import json
+import base64
 from dotenv import load_dotenv
 
 def extraer_datos_catastral(pdf_path):
@@ -21,7 +22,7 @@ def extraer_datos_catastral(pdf_path):
             return {"error": "No se encontró la clave GEMINI_API_KEY en el archivo .env"}
 
         # Configurar API de Gemini
-        genai.configure(api_key=api_key)
+        client = genai.Client(api_key=api_key)
 
         # Cargar PDF y convertir primera página a imagen
         doc = fitz.open(pdf_path)
@@ -45,8 +46,11 @@ def extraer_datos_catastral(pdf_path):
         if img.width == 0 or img.height == 0:
             return {"error": "La imagen procesada tiene dimensiones inválidas"}
 
+        # Codificar imagen a base64
+        img_b64 = base64.b64encode(img_bytes).decode()
+
         # Modelo a usar con máxima compatibilidad
-        nombre_modelo = 'models/gemini-2.0-flash'
+        nombre_modelo = 'gemini-2.0-flash'
 
         # Forzar versión de API compatible
         os.environ["GOOGLE_API_USE_MTLS"] = "never"
@@ -55,20 +59,20 @@ def extraer_datos_catastral(pdf_path):
         prompt = """Extrae de esta nota catastral: referencia_catastral, superficie_grafica_m2, municipio.
         Devuelve solo JSON: {"referencia_catastral":"codigo","superficie_grafica_m2":numero,"municipio":"ciudad"}"""
 
+        # Preparar contenidos para la API
+        contents = [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": "image/png", "data": img_b64}}]}]
+
         # Usar el modelo directamente (sin sistema de fallback para ver errores reales)
         try:
-            # Crear el modelo
-            model = genai.GenerativeModel(nombre_modelo)
-
             # Llamada a la IA
-            response = model.generate_content([prompt, img])
+            response = client.models.generate_content(model=nombre_modelo, contents=contents)
 
             # Verificar que tenemos respuesta
-            if not response or not hasattr(response, 'text'):
+            if not response or not response.candidates:
                 return {"error": f"Respuesta vacía del modelo {nombre_modelo}"}
 
             # Limpiar respuesta (quitar backticks si los hay)
-            text = response.text.strip()
+            text = response.candidates[0].content.parts[0].text.strip()
             if text.startswith('```json'):
                 text = text[7:]
             if text.startswith('```'):
@@ -137,16 +141,16 @@ def get_ai_response(prompt: str, model_name: str = 'models/gemini-2.0-flash') ->
             return "Error: No se encontró la clave GEMINI_API_KEY en el archivo .env"
         
         # Configurar API de Gemini
-        genai.configure(api_key=api_key)
+        client = genai.Client(api_key=api_key)
+        
+        # Preparar contenidos
+        contents = [{"parts": [{"text": prompt}]}]
         
         # Crear modelo
-        model = genai.GenerativeModel(model_name)
+        response = client.models.generate_content(model=model_name, contents=contents)
         
-        # Generar respuesta
-        response = model.generate_content(prompt)
-        
-        if response and response.text:
-            return response.text.strip()
+        if response and response.candidates:
+            return response.candidates[0].content.parts[0].text.strip()
         else:
             return "Error: No se pudo generar una respuesta válida"
             

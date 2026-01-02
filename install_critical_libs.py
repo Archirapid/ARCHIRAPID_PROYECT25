@@ -43,7 +43,7 @@ def main():
     if success_count == len(librerias_criticas):
         print("\n🎉 ¡Todas las librerías críticas están instaladas!")
         print("\nPara verificar la instalación, ejecuta:")
-        print("python -c \"import fitz, PIL, google.generativeai; print('✅ Todas las librerías funcionan')\"")
+        print("python -c \"import fitz, PIL, google.genai; print('✅ Todas las librerías funcionan')\"")
 
         print("\nPara probar el motor de extracción:")
         print("python test_motor_optimizado.py")

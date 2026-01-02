@@ -12,29 +12,29 @@ import json
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def check_library_conflicts():
-    """Verificar que NO se usa google.genai (SDK v2) sino google.generativeai (SDK v1)"""
-    print("🔍 Verificando conflictos de librerías...")
+    """Verificar que se usa google.genai (SDK v2) en lugar del obsoleto google.generativeai (SDK v1)"""
+    print("🔍 Verificando uso de librerías actualizadas...")
 
     # Buscar importaciones problemáticas solo en archivos del proyecto (excluir venv)
     problematic_imports = []
     for root, dirs, files in os.walk('.'):
         # Excluir directorios del venv y otros irrelevantes
-        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['venv', '__pycache__', 'node_modules']]
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['venv', '__pycache__', 'node_modules', 'Z_OLD']]
 
         for file in files:
             if file.endswith('.py') and not root.startswith('./venv') and file != 'critical_verification.py':
                 try:
                     with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
                         content = f.read()
-                        if 'import google.genai' in content or 'from google.genai' in content:
+                        if 'import google.generativeai' in content or 'from google.generativeai' in content:
                             problematic_imports.append(os.path.join(root, file))
-                        if 'genai.Part' in content and 'critical_verification.py' not in os.path.join(root, file):
-                            problematic_imports.append(f"{os.path.join(root, file)} (usa genai.Part)")
+                        if 'genai.configure' in content and 'critical_verification.py' not in os.path.join(root, file):
+                            problematic_imports.append(f"{os.path.join(root, file)} (usa genai.configure - obsoleto)")
                 except:
                     pass
 
     if problematic_imports:
-        print("❌ Encontrados imports problemáticos:")
+        print("❌ Encontrados imports obsoletos:")
         for imp in problematic_imports:
             print(f"   - {imp}")
         return False
@@ -43,27 +43,27 @@ def check_library_conflicts():
         return True
 
 def check_pdf_processing():
-    """Verificar que NO se usa PyPDF2 para análisis visual"""
+    """Verificar que se usa PyMuPDF (fitz) para análisis visual"""
     print("\n🔍 Verificando tratamiento del PDF...")
 
-    # Verificar que ai_engine.py usa pdf2image correctamente
+    # Verificar que ai_engine.py usa fitz correctamente
     try:
         with open('modules/marketplace/ai_engine.py', 'r', encoding='utf-8') as f:
             content = f.read()
 
-        if 'from pdf2image import convert_from_bytes' not in content:
-            print("❌ ai_engine.py no importa convert_from_bytes de pdf2image")
+        if 'import fitz' not in content:
+            print("❌ ai_engine.py no importa fitz (PyMuPDF)")
             return False
 
-        if 'dpi=300' not in content:
-            print("❌ ai_engine.py no usa 300 DPI para conversión")
+        if 'fitz.Matrix(3.0, 3.0)' not in content:
+            print("❌ ai_engine.py no usa zoom 3.0 para mejor calidad")
             return False
 
         if 'PyPDF2' in content:
             print("❌ ai_engine.py contiene referencias a PyPDF2")
             return False
 
-        print("✅ ai_engine.py usa pdf2image con 300 DPI correctamente")
+        print("✅ ai_engine.py usa fitz (PyMuPDF) correctamente")
         return True
 
     except Exception as e:
@@ -78,9 +78,9 @@ def check_gemini_call_structure():
         with open('modules/marketplace/ai_engine.py', 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # Verificar que usa la estructura correcta: [prompt, img]
-        if 'client.generate_content([prompt, img])' not in content and 'client.generate_content([prompt, image])' not in content:
-            print("❌ No se encuentra la estructura correcta [prompt, image]")
+        # Verificar que usa la estructura correcta con contents y parts
+        if 'contents' not in content or 'parts' not in content:
+            print("❌ No se encuentra la estructura correcta con contents y parts")
             return False
 
         # Verificar que NO extrae texto manualmente del PDF
@@ -88,7 +88,7 @@ def check_gemini_call_structure():
             print("❌ Parece que se extrae texto manualmente del PDF")
             return False
 
-        print("✅ Estructura de llamada correcta: [prompt, image]")
+        print("✅ Estructura de llamada correcta: contents con parts")
         return True
 
     except Exception as e:
@@ -100,18 +100,32 @@ def check_prompt_content():
     print("\n🔍 Verificando contenido del prompt...")
 
     try:
-        from modules.marketplace.ai_engine import PROMPT_ANALISIS
+        with open('modules/marketplace/ai_engine.py', 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Buscar el prompt en el código
+        prompt_start = content.find('prompt = """')
+        if prompt_start == -1:
+            print("❌ No se encuentra la definición del prompt")
+            return False
+
+        prompt_end = content.find('"""', prompt_start + 10)
+        if prompt_end == -1:
+            print("❌ No se encuentra el fin del prompt")
+            return False
+
+        prompt_content = content[prompt_start:prompt_end + 3]
 
         required_terms = [
-            "REFERENCIA CATASTRAL",
-            "SUPERFICIE GRÁFICA",
+            "referencia_catastral",
+            "superficie_grafica_m2",
             "JSON",
-            "coordenadas"
+            "municipio"
         ]
 
         missing_terms = []
         for term in required_terms:
-            if term.lower() not in PROMPT_ANALISIS.lower():
+            if term.lower() not in prompt_content.lower():
                 missing_terms.append(term)
 
         if missing_terms:
@@ -119,7 +133,7 @@ def check_prompt_content():
             return False
 
         print("✅ Prompt incluye todos los términos requeridos")
-        print(f"📏 Longitud del prompt: {len(PROMPT_ANALISIS)} caracteres")
+        print(f"📏 Longitud del prompt: {len(prompt_content)} caracteres")
         return True
 
     except Exception as e:
@@ -131,8 +145,7 @@ def check_dependencies():
     print("\n🔍 Verificando dependencias exactas...")
 
     required_versions = {
-        'google-generativeai': '0.8.3',
-        'pdf2image': '1.17.0',
+        'google-genai': '1.56.0',
         'PyMuPDF': '1.23.25',
         'Pillow': '10.2.0'
     }

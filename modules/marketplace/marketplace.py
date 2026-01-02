@@ -20,6 +20,20 @@ def get_query_params():
         # Streamlit antiguo
         return st.experimental_get_query_params()
 
+# Helper to set query params (compatible con varias versiones de Streamlit)
+def set_query_param(key, value):
+    """
+    Establece un query param de manera compatible con versiones nuevas y antiguas de Streamlit.
+    """
+    try:
+        # Streamlit nuevo
+        st.query_params[key] = value
+    except (AttributeError, TypeError):
+        # Streamlit antiguo
+        current_params = st.experimental_get_query_params()
+        current_params[key] = [str(value)]  # experimental_get_query_params espera listas
+        st.experimental_set_query_params(**current_params)
+
 # Map plot ids to images
 PLOT_IMAGES = {
     'finca_es_malaga': 'assets/fincas/image1.jpg',
@@ -134,7 +148,7 @@ def render_featured_plots(plots):
         with cols[i % 2]:
             img_path = get_plot_image_path(plot)
             if st.button("Ver", key=f"mini_{plot['id']}", help=f"Ver detalles de {plot['title']}"):
-                st.query_params["selected_plot"] = plot["id"]
+                set_query_param("selected_plot", plot["id"])
                 st.rerun()
             st.image(img_path, width=120, caption=f"{plot['title'][:15]}...")
 
@@ -216,7 +230,7 @@ def render_map_navigation(plots_with_coords):
                disabled=not selected_option):
         if selected_option and selected_option in plot_options:
             selected_id = plot_options[selected_option]
-            st.query_params["selected_plot"] = selected_id
+            set_query_param("selected_plot", selected_id)
 
 def render_client_panel():
     """Renderiza el panel de cliente cuando hay una transacción completada."""

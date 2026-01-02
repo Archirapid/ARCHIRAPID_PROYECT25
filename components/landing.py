@@ -150,29 +150,35 @@ def render_landing():
         import folium
         import streamlit.components.v1 as components
         
-        # Obtener fincas con coordenadas
+        # Obtener todas las fincas
         db.ensure_tables()
         plots = list_published_plots()
-        plots_with_coords = [p for p in plots if p.get('lat') is not None and p.get('lon') is not None]
         
-        # Aplicar filtros
+        # Aplicar filtros sobre todas las fincas
         if provincia_filter and provincia_filter != "Todas":
-            plots_with_coords = [p for p in plots_with_coords 
-                                if p.get('province', '').lower() == provincia_filter.lower()]
+            selected_province = provincia_filter.lower()
+            plots = [p for p in plots 
+                    if selected_province in (p.get('province') or '').lower()]
         
         if search_query:
-            plots_with_coords = [p for p in plots_with_coords 
-                                if search_query.lower() in (p.get('title', '') + ' ' + 
-                                                           p.get('address', '') + ' ' + 
-                                                           str(p.get('catastral_ref', ''))).lower()]
+            plots = [p for p in plots 
+                    if search_query.lower() in (p.get('title', '') + ' ' + 
+                                               p.get('address', '') + ' ' + 
+                                               str(p.get('catastral_ref', ''))).lower()]
         
         if min_price > 0 or max_price > 0:
             filtered_plots = []
-            for p in plots_with_coords:
-                price = p.get('price', 0) or 0
-                if (min_price <= price <= max_price) or (min_price > 0 and price >= min_price) or (max_price > 0 and price <= max_price):
-                    filtered_plots.append(p)
-            plots_with_coords = filtered_plots
+            for p in plots:
+                price = p.get('price') or 0
+                if min_price > 0 and price < min_price:
+                    continue
+                if max_price > 0 and price > max_price:
+                    continue
+                filtered_plots.append(p)
+            plots = filtered_plots
+        
+        # Ahora filtrar por coordenadas para el mapa
+        plots_with_coords = [p for p in plots if p.get('lat') is not None and p.get('lon') is not None]
         
         if plots_with_coords:
             # Centrar mapa en España/Portugal

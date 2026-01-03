@@ -6,6 +6,7 @@ import os
 import json
 import base64
 from dotenv import load_dotenv
+import streamlit as st
 
 def extraer_datos_catastral(pdf_path):
     """
@@ -16,10 +17,14 @@ def extraer_datos_catastral(pdf_path):
         # Cargar variables de entorno desde .env
         load_dotenv()
 
-        # Verificar API KEY
-        api_key = os.getenv('GEMINI_API_KEY')
-        if not api_key:
-            return {"error": "No se encontró la clave GEMINI_API_KEY en el archivo .env"}
+        # Verificar API KEY - Usar secrets de Streamlit para seguridad
+        try:
+            api_key = st.secrets["GOOGLE_API_KEY"]
+        except KeyError:
+            # Fallback a .env para desarrollo local
+            api_key = os.getenv('GEMINI_API_KEY')
+            if not api_key:
+                return {"error": "No se encontró la clave GOOGLE_API_KEY en secrets de Streamlit ni en .env"}
 
         # Configurar API de Gemini
         client = genai.Client(api_key=api_key)
@@ -135,10 +140,14 @@ def get_ai_response(prompt: str, model_name: str = 'models/gemini-2.0-flash') ->
         # Cargar variables de entorno
         load_dotenv()
         
-        # Verificar API KEY
-        api_key = os.getenv('GEMINI_API_KEY')
-        if not api_key:
-            return "Error: No se encontró la clave GEMINI_API_KEY en el archivo .env"
+        # Verificar API KEY - Usar secrets de Streamlit para seguridad
+        try:
+            api_key = st.secrets["GOOGLE_API_KEY"]
+        except KeyError:
+            # Fallback a .env para desarrollo local
+            api_key = os.getenv('GEMINI_API_KEY')
+            if not api_key:
+                return "Error: No se encontró la clave GOOGLE_API_KEY en secrets de Streamlit ni en .env"
         
         # Configurar API de Gemini
         client = genai.Client(api_key=api_key)

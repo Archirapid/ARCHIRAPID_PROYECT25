@@ -131,6 +131,18 @@ def ensure_tables():
             c.execute("ALTER TABLE plots ADD COLUMN numero_parcela_principal TEXT")
         except Exception:
             pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN superficie_parcela REAL")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN superficie_edificable REAL")
+        except Exception:
+            pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN solar_virtual TEXT")
+        except Exception:
+            pass  # Columna ya existe
         c.execute("""CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
             title TEXT, architect_name TEXT, area_m2 INTEGER, max_height REAL,
@@ -383,15 +395,49 @@ def ensure_tables():
 
 def insert_plot(data: Dict):
     ensure_tables()
+    from datetime import datetime
     with transaction() as c:
-        c.execute("""INSERT OR REPLACE INTO plots (
-            id,title,description,lat,lon,m2,height,price,type,province,locality,owner_name,owner_email,
-            image_path,registry_note_path,created_at,address,owner_phone,photo_paths,catastral_ref,services,status
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (data['id'], data['title'], data['description'], data['lat'], data['lon'], data['m2'], data.get('height'),
-         data['price'], data['type'], data.get('province'), data.get('locality'), data['owner_name'], data['owner_email'],
-         data.get('image_path'), data.get('registry_note_path'), data['created_at'], data.get('address'), data.get('owner_phone'),
-         data.get('photo_paths'), data.get('catastral_ref'), data.get('services'), data.get('status', 'published')))
+        c.execute("""
+            INSERT OR REPLACE INTO plots (
+                id,
+                title,
+                address,
+                province,
+                locality,
+                price,
+                m2,
+                superficie_parcela,
+                superficie_edificable,
+                lat,
+                lon,
+                solar_virtual,
+                catastral_ref,
+                plano_catastral_path,
+                owner_name,
+                owner_email,
+                created_at,
+                status
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            data.get("id"),
+            data.get("titulo"),
+            data.get("direccion"),
+            data.get("provincia"),
+            data.get("provincia"),
+            data.get("precio"),
+            data.get("superficie_parcela"),
+            data.get("superficie_parcela"),
+            data.get("superficie_edificable"),
+            data.get("lat"),
+            data.get("lon"),
+            json.dumps(data.get("solar_virtual")) if data.get("solar_virtual") else None,
+            data.get("referencia_catastral"),
+            data.get("plano_catastral_path"),
+            data.get("propietario_nombre"),
+            data.get("propietario_email"),
+            datetime.utcnow().isoformat(),
+            "published"
+        ))
 
 def insert_project(data: Dict):
     """Inserta o reemplaza un proyecto en la tabla `projects` de forma flexible.
@@ -846,23 +892,6 @@ def update_proposal_status(proposal_id: str, new_status: str):
         except Exception:
             # Si no existe responded_at, degradar sin timestamp
             c.execute("UPDATE proposals SET status=? WHERE id=?", (new_status, proposal_id))
-
-def insert_plot(data: Dict):
-    """Inserta una nueva parcela en la tabla plots."""
-    ensure_tables()
-    with transaction() as c:
-        c.execute("""INSERT OR REPLACE INTO plots (
-            id, title, description, lat, lon, m2, height, price, type, province,
-            locality, owner_name, owner_email, image_path, registry_note_path, created_at,
-            address, owner_phone, photo_paths, catastral_ref, services, status, plano_catastral_path,
-            vertices_coordenadas, numero_parcela_principal
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
-            data['id'], data['title'], data['description'], data['lat'], data['lon'], data['m2'], data.get('height'), data['price'], data['type'], data['province'],
-            data['locality'], data['owner_name'], data['owner_email'], data['image_path'], data['registry_note_path'], data['created_at'],
-            data['address'], data['owner_phone'], data['photo_paths'], data['catastral_ref'], data['services'], data['status'], data.get('plano_catastral_path'),
-            json.dumps(data.get('vertices_coordenadas')) if data.get('vertices_coordenadas') else None,
-            data.get('numero_parcela_principal')
-        ))
 
 def get_proposals_for_owner(owner_email: str):
     """Obtiene todas las propuestas recibidas por un propietario."""

@@ -106,34 +106,74 @@ def main():
         desc_adicional = st.text_area("Cuéntale más detalles al arquitecto (vistas, orientación, sueños...):")
         
         if st.button("🧠 Generar Propuesta Arquitectónica"):
-             with st.spinner("La IA está diseñando tu proyecto... (Calculando estructuras y distribución)"):
-                 # Construir Prompt Experto
-                 finca = st.session_state["design_finca"]
-                 prompt = f"""
-                 Actúa como Arquitecto Senior. Diseña una vivienda unifamiliar en:
-                 - Finca: {finca['surface_m2']} m2 en {finca['municipio']}.
-                 - Estilo: {estilo} con cubierta {cubierta}.
-                 - Material: {material}.
-                 - Programa: {habs} habitaciones. Extras: {', '.join(extras)}.
-                 - Detalles usuario: {desc_adicional}.
-                 
-                 Genera un JSON con:
-                 1. "concepto": Descripción poética y técnica del diseño.
-                 2. "distribucion": Lista de habitaciones con m2 ideales.
-                 3. "materialidad": Explicación de por qué se eligieron esos materiales.
-                 4. "habitaciones": Array estructurado para visualización 3D.
-                 
-                 Salida JSON estricta.
-                 """
-                 res = ai_engine.generate_text(prompt)
-                 try:
-                     clean = res.replace("```json", "").replace("```", "").strip()
-                     plan = json.loads(clean)
-                     st.session_state["design_plan"] = plan
-                     st.session_state["wizard_step"] = 3
-                     st.rerun()
-                 except Exception as e:
-                     st.error(f"Error en generación: {e}")
+            with st.spinner("La IA está diseñando tu proyecto... (Calculando estructuras y distribución)"):
+                finca = st.session_state["design_finca"]
+        
+                prompt = f"""
+Actúa como Arquitecto Senior especializado en vivienda unifamiliar eficiente en España.
+
+Diseña una vivienda en:
+- Finca: {finca['surface_m2']} m2 en {finca['municipio']}.
+- Estilo arquitectónico: {estilo} con cubierta {cubierta}.
+- Material principal: {material}.
+- Programa: {habs} habitaciones.
+- Extras deseados: {', '.join(extras) if extras else 'ninguno'}.
+- Detalles adicionales del usuario: {desc_adicional}.
+
+Responde EXCLUSIVAMENTE en formato JSON válido, sin texto fuera del JSON.
+Estructura EXACTAMENTE así:
+
+{{
+  "concepto": "Descripción poética y técnica del diseño, máximo 4-5 frases.",
+  "distribucion": [
+    {{
+      "nombre": "Dormitorio principal",
+      "m2": 14
+    }},
+    {{
+      "nombre": "Salón-comedor",
+      "m2": 26
+    }}
+  ],
+  "materialidad": "Explicación de por qué se han elegido estos materiales y cómo se adaptan al entorno.",
+  "habitaciones": [
+    {{
+      "id": "dormitorio_1",
+      "tipo": "dormitorio",
+      "m2": 12,
+      "planta": 1
+    }},
+    {{
+      "id": "salon",
+      "tipo": "salon",
+      "m2": 25,
+      "planta": 1
+    }}
+  ]
+}}
+
+IMPORTANTE:
+- No incluyas comentarios.
+- No uses comillas simples.
+- No envuelvas el JSON en ```json ni ```.
+- No añadas texto antes ni después del JSON.
+                """.strip()
+        
+                res = ai_engine.generate_text(prompt)
+        
+                # Manejo de errores de la IA (cuota, clave, red, etc.)
+                if isinstance(res, str) and res.startswith("Error:"):
+                    st.error(res)
+                else:
+                    try:
+                        clean = res.replace("```json", "").replace("```", "").strip()
+                        plan = json.loads(clean)
+                        st.session_state["design_plan"] = plan
+                        st.session_state["wizard_step"] = 3
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al interpretar la respuesta de la IA: {e}")
+                        st.code(res)
 
     # === PASO 3: VISUALIZACIÓN Y REFINAMIENTO ===
     elif st.session_state["wizard_step"] == 3:

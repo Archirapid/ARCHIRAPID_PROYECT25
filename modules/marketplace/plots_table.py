@@ -4,6 +4,26 @@ Vista de tabla de fincas guardadas con opción de crear proyectos
 import streamlit as st
 import pandas as pd
 from src import db as _db
+import os
+
+# Configuración de columnas para la tabla
+columnas_disponibles = [
+    'title', 'catastral_ref', 'm2', 'locality', 'province',
+    'owner_name', 'created_at', 'id', 'referencia_catastral', 'plano_catastral_path'
+]
+
+nombres_columnas = {
+    'title': 'Título',
+    'catastral_ref': 'Referencia Catastral',
+    'referencia_catastral': 'Ref. Catastral IA',  # Nuevo campo
+    'm2': 'Superficie (m²)',
+    'locality': 'Municipio',
+    'province': 'Provincia',
+    'owner_name': 'Propietario',
+    'created_at': 'Fecha Creación',
+    'plano_catastral_path': 'PDF Catastral',  # Nuevo campo
+    'id': 'ID'
+}
 
 def main():
     """Vista principal de la tabla de fincas"""
@@ -82,7 +102,11 @@ def main():
         if len(df_filtrado) != len(df_fincas):
             st.info(f"📊 Mostrando {len(df_filtrado)} de {len(df_fincas)} fincas (filtros aplicados)")
 
-        # Preparar datos filtrados para mostrar
+        # Preparar datos para mostrar (con o sin filtros)
+        df_mostrar = df_fincas[columnas_disponibles].copy()
+        df_mostrar = df_mostrar.rename(columns=nombres_columnas)
+        df_fincas_para_acciones = df_fincas
+
         if not df_filtrado.empty:
             df_mostrar_filtrado = df_filtrado[columnas_disponibles].copy()
             df_mostrar_filtrado = df_mostrar_filtrado.rename(columns=nombres_columnas)
@@ -94,8 +118,17 @@ def main():
             if 'Superficie (m²)' in df_mostrar_filtrado.columns:
                 df_mostrar_filtrado['Superficie (m²)'] = df_mostrar_filtrado['Superficie (m²)'].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "N/A")
 
-            # Usar df_filtrado en lugar de df_fincas para las acciones
+            # Usar datos filtrados para mostrar y acciones
+            df_mostrar = df_mostrar_filtrado
             df_fincas_para_acciones = df_filtrado
+
+        # Formatear fechas y superficie para datos sin filtrar (si no hay filtros aplicados)
+        if len(df_filtrado) == len(df_fincas):
+            if 'created_at' in df_mostrar.columns:
+                df_mostrar['Fecha Creación'] = pd.to_datetime(df_mostrar['Fecha Creación'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+
+            if 'Superficie (m²)' in df_mostrar.columns:
+                df_mostrar['Superficie (m²)'] = df_mostrar['Superficie (m²)'].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "N/A")
 
         # Mostrar tabla con botones usando st.dataframe con columnas personalizadas
         st.markdown("### 📋 Lista de Fincas")
@@ -118,11 +151,13 @@ def main():
                 ),
                 "Título": st.column_config.TextColumn("Título", width="medium"),
                 "Referencia Catastral": st.column_config.TextColumn("Ref. Catastral", width="large"),
+                "Ref. Catastral IA": st.column_config.TextColumn("Ref. IA", width="large"),  # Nuevo campo
                 "Superficie (m²)": st.column_config.TextColumn("Superficie", width="small"),
                 "Municipio": st.column_config.TextColumn("Municipio", width="medium"),
                 "Provincia": st.column_config.TextColumn("Provincia", width="medium"),
                 "Propietario": st.column_config.TextColumn("Propietario", width="medium"),
-                "Fecha Creación": st.column_config.TextColumn("Creado", width="medium")
+                "Fecha Creación": st.column_config.TextColumn("Creado", width="medium"),
+                "PDF Catastral": st.column_config.TextColumn("PDF", width="medium")  # Nuevo campo
             }
         )
 
@@ -142,27 +177,81 @@ def main():
                         st.success(f"✅ Proyecto creado para la finca: {row.get('Título', f'Finca {idx+1}')}")
                         st.balloons()
 
+                    # Botón IA para generar análisis
+                    if st.button("🤖 Análisis IA", key=f"ai_analysis_{finca_id}"):
+                        with st.spinner("🔍 Generando análisis inteligente de la finca..."):
+                            try:
+                                # Obtener los datos completos de la finca
+                                finca_data = df_fincas_para_acciones.iloc[idx]
+
+                                # Construir diccionario con datos para el análisis
+                                datos = {
+                                    "referencia_catastral": finca_data.get("referencia_catastral"),
+                                    "superficie_parcela": finca_data.get("m2"),
+                                    "municipio": finca_data.get("locality"),
+                                    "lat": finca_data.get("lat"),
+                                    "lon": finca_data.get("lon")
+                                }
+
+                                # Llamar a la función de análisis IA
+                                from modules.marketplace.ai_engine import analisis_finca_ia
+                                informe = analisis_finca_ia(datos)
+
+                                # Mostrar el informe generado
+                                if informe.startswith("Error"):
+                                    st.error(informe)
+                                else:
+                                    st.success("✅ Análisis generado exitosamente")
+                                    st.markdown("### 📊 Análisis Inteligente de la Finca")
+                                    st.markdown(informe)
+
+                            except Exception as e:
+                                st.error(f"❌ Error al generar análisis: {str(e)}")
+
                 with col2:
                     if st.button("👁️ Ver Detalles", key=f"view_details_{finca_id}"):
+                        # Obtener datos completos de la finca
+                        finca_data = df_fincas_para_acciones.iloc[idx] if idx < len(df_fincas_para_acciones) else {}
+                        
                         st.info(f"""
                         **Detalles de la Finca:**
                         - 📍 Ubicación: {row.get('Municipio', 'N/A')}, {row.get('Provincia', 'N/A')}
                         - 📐 Superficie: {row.get('Superficie (m²)', 'N/A')} m²
                         - 🆔 Ref. Catastral: {row.get('Referencia Catastral', 'N/A')}
+                        - 🆔 Ref. IA: {finca_data.get('referencia_catastral', 'N/A')}
+                        - 📄 PDF: {finca_data.get('plano_catastral_path', 'N/A')}
                         - 👤 Propietario: {row.get('Propietario', 'N/A')}
                         - 📅 Creado: {row.get('Fecha Creación', 'N/A')}
                         """)
 
+                    # Botón para descargar/ver PDF si existe
+                    pdf_path = df_fincas_para_acciones.iloc[idx].get('plano_catastral_path') if idx < len(df_fincas_para_acciones) else None
+                    if pdf_path and os.path.exists(pdf_path):
+                        if st.button("📄 Ver PDF Catastral", key=f"view_pdf_{finca_id}"):
+                            st.info(f"📄 PDF disponible en: {pdf_path}")
+                            # Aquí se podría mostrar el PDF o permitir descarga
+
                 with col3:
                     st.markdown(f"**ID de Finca:** `{finca_id}`")
+                    
+                    # Mostrar estado de validación catastral
+                    ref_ia = df_fincas_para_acciones.iloc[idx].get('referencia_catastral') if idx < len(df_fincas_para_acciones) else None
+                    if ref_ia:
+                        st.success("✅ Datos catastrales validados por IA")
+                    else:
+                        st.warning("⚠️ Sin validación IA")
 
         # Información adicional
         st.markdown("### 💡 Información")
         st.markdown("""
         - **Crear Proyecto**: Inicia el proceso de diseño arquitectónico para la finca seleccionada
+        - **Análisis IA**: Genera análisis inteligente de la finca usando IA avanzada
         - **Referencia Catastral**: Código único que identifica la propiedad
+        - **Ref. IA**: Referencia catastral extraída automáticamente por IA del PDF
         - **Superficie**: Área en metros cuadrados de la parcela
         - **Municipio/Provincia**: Ubicación de la propiedad
+        - **PDF Catastral**: Ruta al documento PDF catastral guardado
+        - **✅ Datos validados por IA**: Indica que la finca tiene datos oficiales verificados
         """)
 
     except Exception as e:

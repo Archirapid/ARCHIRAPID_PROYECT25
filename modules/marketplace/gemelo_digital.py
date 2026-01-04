@@ -351,37 +351,69 @@ def main():
     else:
         default_index = 0
     
-    selected_finca_name = st.selectbox("Selecciona una finca:",
-                                      list(finca_options.keys()),
-                                      index=default_index,
-                                      key="gemelo_finca_select_mvp")
+    selected_finca_name = st.selectbox(
+        "Selecciona una finca:",
+        list(finca_options.keys()),
+        index=default_index,
+        key="gemelo_finca_select_mvp"
+    )
+
     selected_finca = finca_options[selected_finca_name] if selected_finca_name else None
 
     if not selected_finca:
         st.info("👆 Selecciona una finca para continuar con el análisis.")
         return
 
-    # Actualizar datos catastrales si es necesario
+    # === MAPEO DE CAMPOS REALES DE LA BD ===
+    direccion = selected_finca.get("direccion", "Sin dirección")
+    municipio = selected_finca.get("provincia", "Sin municipio")
+    superficie = selected_finca.get("superficie_parcela", 0)
+    ref_cat = selected_finca.get("referencia_catastral", "No disponible")
+    pdf_cat = selected_finca.get("plano_catastral_path", "No disponible")
+    lat = selected_finca.get("lat", None)
+    lon = selected_finca.get("lon", None)
+
+    coordenadas_str = f"{lat}, {lon}" if lat and lon else "No disponibles"
+
+    # === BOTÓN ACTUALIZAR CATASTRO ===
     if st.button("🔄 Actualizar datos catastrales", key="update_catastro_gemelo"):
         with st.spinner("Consultando Catastro..."):
-            catastro_data = fetch_by_ref_catastral(selected_finca['ref_catastral'])
+            from modules.marketplace.catastro_api import fetch_by_ref_catastral
+            catastro_data = fetch_by_ref_catastral(ref_cat)
             if catastro_data:
                 st.success("✅ Datos catastrales actualizados")
             else:
                 st.warning("No se pudieron actualizar los datos catastrales")
 
-    # Mostrar información de la finca seleccionada
-    st.success(f"✅ Finca seleccionada: **{selected_finca['direccion']}**")
+    # === MOSTRAR INFORMACIÓN DE LA FINCA ===
+    st.success(f"✅ Finca seleccionada: **{direccion}**")
+
     col1, col2, col3 = st.columns(3)
+
     with col1:
-        superficie = selected_finca.get('superficie', 0)
         st.metric("Superficie", f"{superficie} m²")
+        st.write(f"**Municipio:** {municipio}")
+
     with col2:
-        st.write(f"**Ref. Catastral:** {selected_finca['ref_catastral']}")
-        st.write(f"**Dirección:** {selected_finca['direccion']}")
+        st.write(f"**Ref. Catastral:** {ref_cat}")
+        st.write(f"**PDF Catastral:** {pdf_cat}")
+
     with col3:
-        coordenadas = selected_finca.get('coordenadas', 'No disponibles')
-        st.write(f"**Coordenadas:** {coordenadas}")
+        st.write(f"**Latitud:** {lat}")
+        st.write(f"**Longitud:** {lon}")
+
+    # Información adicional
+    with st.expander("📋 Detalles completos de la finca", expanded=False):
+        st.json({
+            "direccion": direccion,
+            "municipio": municipio,
+            "superficie_parcela": superficie,
+            "referencia_catastral": ref_cat,
+            "plano_catastral_path": pdf_cat,
+            "lat": lat,
+            "lon": lon,
+            "estado": selected_finca.get("estado", {})
+        })
 
     st.markdown("---")
 
@@ -406,7 +438,7 @@ def main():
         """)
 
     # --- Inputs del cliente (usando datos de la finca seleccionada) ---
-    superficie_finca = selected_finca.get('superficie', 500)  # Usar superficie de la finca seleccionada
+    superficie_finca = selected_finca.get('superficie_parcela', 500)  # Usar superficie de la finca seleccionada
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -511,7 +543,7 @@ def main():
         # --- Visualización 3D ---
         st.subheader("🏗️ Visualización 3D del Plan Generado")
         try:
-            fig = create_gemelo_3d(plan_json)
+            fig = create_gemelo_3d(plan_json, selected_finca)
             st.plotly_chart(fig, use_container_width=True)
 
             st.info("💡 **Visualización IA**: Los cubos representan habitaciones proporcionales centradas en la parcela. "
@@ -807,7 +839,7 @@ def main():
                     plan_json["garage"] = {"m2": garage_hab["m2"]}
 
                 # Crear visualización 3D del plan generado por IA
-                fig = create_gemelo_3d(plan_json)
+                fig = create_gemelo_3d(plan_json, selected_plot)
                 st.plotly_chart(fig, use_container_width=True)
 
                 st.info("💡 **Visualización IA**: Este modelo 3D muestra el plan generado automáticamente basado en tus preferencias.")
@@ -1141,7 +1173,7 @@ def posicionar_habitaciones(habitaciones, lado_edificio):
     return habitaciones_posicionadas
 
 
-def create_gemelo_3d(plan_json: dict):
+def create_gemelo_3d(plan_json: dict, selected_finca: dict = None):
     """
     Renderiza un modelo 3D básico de la vivienda a partir del JSON de la IA.
     - Centra los cubos en la parcela.
@@ -1151,9 +1183,17 @@ def create_gemelo_3d(plan_json: dict):
 
     fig = go.Figure()
 
-    # ✅ Coordenadas base de la parcela (simulada como cuadrado de 100x100 m)
-    parcela_x = [10, 90, 90, 10, 10]
-    parcela_y = [10, 10, 90, 90, 10]
+    # ✅ Dimensiones de la parcela desde selected_finca o valores por defecto
+    if selected_finca and "solar_virtual" in selected_finca:
+        ancho_parcela = selected_finca["solar_virtual"].get("ancho", 100)
+        largo_parcela = selected_finca["solar_virtual"].get("largo", 100)
+    else:
+        ancho_parcela = 100
+        largo_parcela = 100
+
+    # ✅ Coordenadas base de la parcela usando dimensiones reales
+    parcela_x = [0, ancho_parcela, ancho_parcela, 0, 0]
+    parcela_y = [0, 0, largo_parcela, largo_parcela, 0]
     parcela_z = [0] * len(parcela_x)
 
     fig.add_trace(go.Scatter3d(
@@ -1166,8 +1206,8 @@ def create_gemelo_3d(plan_json: dict):
     ))
 
     # ✅ Centro de la parcela
-    centro_x = 50
-    centro_y = 50
+    centro_x = ancho_parcela / 2
+    centro_y = largo_parcela / 2
 
     # ✅ Escala visual para que los cubos se vean bien
     escala_visual = 2.5

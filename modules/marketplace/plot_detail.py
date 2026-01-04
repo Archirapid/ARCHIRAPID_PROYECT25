@@ -117,20 +117,25 @@ def show_plot_detail_page(plot_id: str):
         try:
             import folium
             import streamlit.components.v1 as components
-            
             lat = float(plot.get('lat', 40.4168))
             lon = float(plot.get('lon', -3.7038))
-            
             m = folium.Map(location=[lat, lon], zoom_start=15, tiles="CartoDB positron")
             folium.Marker(
                 [lat, lon],
                 popup=plot.get('title', 'Finca'),
                 icon=folium.Icon(color='red', icon='home', prefix='fa')
             ).add_to(m)
-            
             components.html(m._repr_html_(), height=300)
         except Exception as e:
             st.error(f"Error mostrando mapa: {e}")
+        # --- Mostrar plano 2D solar virtual ---
+        try:
+            from src.models.finca import FincaMVP
+            from src.solar_virtual_svg import mostrar_solar_virtual_svg
+            finca = FincaMVP.desde_dict(plot)
+            mostrar_solar_virtual_svg(finca)
+        except Exception as e:
+            st.warning(f"No se pudo mostrar el plano 2D del solar virtual: {e}")
     
     st.markdown("---")
     

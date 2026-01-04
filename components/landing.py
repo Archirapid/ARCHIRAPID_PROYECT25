@@ -198,30 +198,24 @@ def render_landing():
             # Crear mapa (MÁS ALTO)
             m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level, tiles="CartoDB positron")
             
-            # Agregar marcadores
+            # Mostrar detalles de cada finca usando FincaMVP y visualización avanzada
+            from src.models.finca import FincaMVP
+            from src.solar_virtual_svg import mostrar_solar_virtual_svg
+            import folium
+            import streamlit.components.v1 as components
             for p in plots_with_coords:
-                lat = float(p['lat'])
-                lon = float(p['lon'])
-                superficie = p.get('surface_m2') or p.get('m2') or 0
-                precio = p.get('price') or 0
-                
-                popup_html = f"""
-                <div style='width:220px'>
-                    <h4 style='margin:5px 0;'>{p.get('title', 'Finca')}</h4>
-                    <p style='font-weight:bold; font-size:14px; margin:5px 0;'>{superficie} m² · €{precio:,.0f}</p>
-                    <button onclick="window.location.href = window.location.pathname + '?role=cliente&selected_plot={p['id']}'" 
-                            style='display:block; margin-top:10px; padding:8px; background:#4CAF50; color:white; border:none; border-radius:5px; text-align:center; width:100%; cursor:pointer; font-weight:bold;'>
-                        Ver más detalles
-                    </button>
-                </div>
-                """
-                icon = folium.Icon(color='red', icon='home', prefix='fa')
-                marker = folium.Marker([lat, lon], icon=icon, popup=folium.Popup(popup_html, max_width=250))
-                marker.add_to(m)
-            
-            # Renderizar mapa MÁS ALTO (700px en lugar de 450px)
-            components.html(m._repr_html_(), height=700)
-            st.success(f"📍 {len(plots_with_coords)} finca{'s' if len(plots_with_coords) != 1 else ''} encontrada{'s' if len(plots_with_coords) != 1 else ''}")
+                # 1. Convertir dict a FincaMVP
+                finca = FincaMVP.desde_dict(p)
+                # 2. Mostrar mapa de la finca
+                m_finca = folium.Map(location=[finca.lat, finca.lon], zoom_start=15, tiles="CartoDB positron")
+                folium.Marker([finca.lat, finca.lon], icon=folium.Icon(color='red', icon='home', prefix='fa')).add_to(m_finca)
+                st.markdown(f"### {finca.titulo if hasattr(finca, 'titulo') else p.get('title', 'Finca')}")
+                components.html(m_finca._repr_html_(), height=300)
+                # 3. Mostrar superficie edificable y solar_virtual
+                st.write(f"**Superficie edificable:** {finca.superficie_edificable:.2f} m²")
+                st.write(f"**Solar virtual:** {finca.solar_virtual}")
+                mostrar_solar_virtual_svg(finca)
+                st.markdown("---")
         else:
             # Mapa sin marcadores centrado en España/Portugal
             m = folium.Map(location=[40.0, -4.0], zoom_start=5, tiles="CartoDB positron")

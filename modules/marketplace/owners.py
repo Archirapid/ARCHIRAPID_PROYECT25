@@ -8,6 +8,7 @@ import geopy.geocoders
 from time import sleep
 from datetime import datetime
 import os
+from modules.marketplace.ai_engine import extraer_datos_nota_catastral
 
 
 def obtener_coordenadas_gps(municipio, provincia="Madrid"):
@@ -231,18 +232,21 @@ def main():
         if uploaded_nota and st.button("👁️ Extraer Datos de Nota Simple (IA)"):
             with st.spinner("Analizando documento con Gemini Vision..."):
                 try:
-                    from modules.marketplace.ai_engine import extraer_datos_catastral
-                    import tempfile
-                    import os
+                    # Crear directorio para guardar notas catastrales
+                    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                    notas_dir = os.path.join(base_dir, "data", "notas_catastrales")
+                    os.makedirs(notas_dir, exist_ok=True)
 
-                    # Save uploaded file temporarily
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                        tmp_file.write(uploaded_nota.getvalue())
-                        tmp_path = tmp_file.name
+                    # Guardar el archivo permanentemente
+                    save_path = os.path.join(notas_dir, uploaded_nota.name)
+                    with open(save_path, "wb") as f:
+                        f.write(uploaded_nota.getbuffer())
+
+                    st.info(f"📄 Documento guardado en: {save_path}")
 
                     try:
                         # Llamar a la función de extracción de ai_engine
-                        resultado = extraer_datos_catastral(tmp_path)
+                        resultado = extraer_datos_nota_catastral(save_path)
 
                         # Verificar si hay error
                         if isinstance(resultado, dict) and "error" in resultado:
@@ -256,39 +260,45 @@ def main():
                             # Datos extraídos correctamente
                             st.success("✅ Datos extraídos correctamente del documento.")
 
-                            # Mostrar datos extraídos en pantalla
-                            col_a, col_b = st.columns(2)
-                            with col_a:
-                                st.markdown("**📋 Datos Catastrales Extraídos:**")
-                                st.markdown(f"**Referencia Catastral:** {resultado.get('referencia_catastral', 'No detectada')}")
-                                st.markdown(f"**Superficie Gráfica:** {resultado.get('superficie_grafica_m2', 'No detectada')} m²")
-                                st.markdown(f"**Municipio:** {resultado.get('municipio', 'No detectado')}")
+                            # Verificar que tenemos los campos requeridos
+                            if all(key in resultado for key in ["referencia_catastral", "superficie_grafica_m2", "municipio"]):
+                                # Mostrar datos extraídos en pantalla
+                                col_a, col_b = st.columns(2)
+                                with col_a:
+                                    st.markdown("**📋 Datos Catastrales Extraídos:**")
+                                    st.markdown(f"**Referencia Catastral:** {resultado.get('referencia_catastral')}")
+                                    st.markdown(f"**Superficie Gráfica:** {resultado.get('superficie_grafica_m2')} m²")
+                                    st.markdown(f"**Municipio:** {resultado.get('municipio')}")
 
-                            with col_b:
-                                st.markdown("**💾 Preparado para guardar:**")
-                                st.info("Los datos están listos para guardarse en la base de datos database.db")
-                                if st.button("💾 Guardar en Base de Datos"):
-                                    # Preparar datos para guardar
-                                    guardar_datos_catastrales(resultado, tmp_path)
-                                    st.success("✅ Datos guardados correctamente en la base de datos!")
+                                with col_b:
+                                    st.markdown("**💾 Preparado para guardar:**")
+                                    st.info("Los datos están listos para guardarse en la base de datos database.db")
+                                    if st.button("💾 Guardar en Base de Datos"):
+                                        # Preparar datos para guardar
+                                        guardar_datos_catastrales(resultado, save_path)
+                                        st.success("✅ Datos guardados correctamente en la base de datos!")
 
-                            # Guardar en session state para autocompletar
-                            if resultado.get("referencia_catastral"):
+                                # Guardar en session state para autocompletar los campos del formulario
                                 st.session_state["auto_ref"] = resultado["referencia_catastral"]
-                            if resultado.get("superficie_grafica_m2"):
                                 st.session_state["auto_m2"] = resultado["superficie_grafica_m2"]
-                            if resultado.get("municipio"):
                                 st.session_state["auto_municipio"] = resultado["municipio"]
+                                st.session_state["nota_catastral_path"] = save_path  # Guardar ruta del PDF
 
-                    finally:
-                        # Clean up temporary file
-                        if 'tmp_path' in locals():
-                            try:
-                                os.unlink(tmp_path)
-                            except:
-                                pass
+                                st.info("💡 Los campos del formulario se han rellenado automáticamente con los datos extraídos.")
+                            else:
+                                st.warning("⚠️ Algunos datos requeridos no pudieron extraerse. Revisa el documento e intenta de nuevo.")
+
+                    except Exception as e:
+                        st.error(f"❌ Error procesando documento: {e}")
+                        # Si hay error, intentar limpiar el archivo guardado
+                        try:
+                            if os.path.exists(save_path):
+                                os.unlink(save_path)
+                        except:
+                            pass
+
                 except Exception as e:
-                    st.error(f"❌ Error procesando documento: {e}")
+                    st.error(f"❌ Error guardando documento: {e}")
 
         # Usar valores autocompletados
         def_ref = st.session_state.get("auto_ref", "")
@@ -364,7 +374,13 @@ def main():
         submitted_finca = st.button("📢 PUBLICAR FINCA", type="primary")
 
         if submitted_finca:
-            if finca_type == "Rústica (No admitida)":
+            # VALIDACIÓN OBLIGATORIA: Verificar que se extrajeron datos catastrales
+            if not (st.session_state.get("auto_ref") and 
+                    st.session_state.get("auto_m2") and 
+                    st.session_state.get("auto_municipio") and 
+                    st.session_state.get("nota_catastral_path")):
+                st.error("❌ Debes extraer los datos de la Nota Catastral antes de publicar la finca.")
+            elif finca_type == "Rústica (No admitida)":
                 st.error("⛔ Lo sentimos, ARCHIRAPID no opera con suelo rústico. Solo Urbano o Industrial.")
             elif not title or not date_address or surface <= 0 or price <= 0:
                 st.error("Por favor completa todos los campos obligatorios.")
@@ -392,7 +408,7 @@ def main():
                         from geopy.geocoders import Nominatim
                         geolocator = Nominatim(user_agent="archirapid_mvp", timeout=10)
                         # Construir dirección completa: dirección, provincia, España
-                        provincia_name = st.session_state.get("auto_provincia", "Málaga")
+                        provincia_name = st.session_state["auto_municipio"]  # Usar municipio extraído
                         search_address = f"{date_address}, {provincia_name}, España"
                         loc = geolocator.geocode(search_address)
                         if loc:
@@ -407,10 +423,10 @@ def main():
                         st.warning(f"Método 1 (Geocodificación) falló: {str(e)}")
                     
                     # Método 2: Si falla, intentar con referencia catastral
-                    if not geocoded and catastral_ref:
+                    if not geocoded and st.session_state["auto_ref"]:
                         try:
                             from modules.marketplace import catastro_api
-                            cat_data = catastro_api.fetch_by_ref_catastral(catastral_ref)
+                            cat_data = catastro_api.fetch_by_ref_catastral(st.session_state["auto_ref"])
                             if cat_data and cat_data.get("ubicacion_geo"):
                                 lat = cat_data['ubicacion_geo'].get('lat')
                                 lon = cat_data['ubicacion_geo'].get('lng')
@@ -423,9 +439,9 @@ def main():
                         except Exception as e:
                             st.warning(f"Método 2 (Catastro) falló: {str(e)}")
                     
-                    # Método 3: Fallback a ubicación genérica de la provincia (no Madrid genérico)
+                    # Método 3: Fallback a ubicación genérica de la provincia (usar municipio extraído)
                     if not geocoded:
-                        provincia_name = st.session_state.get("auto_provincia", "Málaga")
+                        provincia_name = st.session_state["auto_municipio"]
                         # Coordenadas aproximadas del centro de algunas provincias españolas comunes
                         centro_provincias = {
                             "Málaga": (36.7213, -4.4214),
@@ -440,8 +456,8 @@ def main():
                         st.warning(f"⚠️ No se pudo geocodificar la dirección. Usando coordenadas aproximadas del centro de {provincia_name}. Por favor, valida y corrige manualmente.")
 
 
-                # Guardar archivos
-                pdf_path = save_upload(uploaded_nota, prefix="nota")
+                # Usar la ruta REAL del PDF guardado durante la extracción
+                pdf_path = st.session_state["nota_catastral_path"]
                 photo_paths = []
                 if uploaded_photos:
                     for p in uploaded_photos[:5]: # Max 5
@@ -454,36 +470,40 @@ def main():
                 import json as json_module
                 photo_paths_json = json_module.dumps(photo_paths) if photo_paths else "[]"
                 
-                plot_data = {
+                # --- INTEGRACIÓN FincaMVP ---
+                from src.models.finca import FincaMVP
+                from src.models.geocode_finca import geocode_finca_mvp
+                # 1. Construir dict con los datos del formulario
+                finca_dict = {
                     "id": uuid.uuid4().hex,
-                    "owner_id": st.session_state["owner_id"],
-                    "owner_email": st.session_state["owner_email"],
-                    "owner_name": st.session_state["owner_name"],
-                    "owner_phone": st.session_state.get("owner_phone", ""),
-                    "owner_address": st.session_state.get("owner_address", ""),
-                    "title": title,
-                    "description": description,
-                    "address": date_address,
-                    "lat": lat, 
+                    "titulo": title,
+                    "direccion": date_address,
+                    "provincia": st.session_state["auto_municipio"],  # Usar municipio extraído por IA
+                    "precio": price,
+                    "superficie_parcela": st.session_state["auto_m2"],  # Usar superficie extraída por IA
+                    "referencia_catastral": st.session_state["auto_ref"],  # Agregar referencia catastral
+                    "plano_catastral_path": pdf_path,  # Agregar ruta del PDF guardado
+                    "porcentaje_edificabilidad": 1.0,  # TODO: permitir editar
+                    "superficie_edificable": 0.0,  # Se calcula luego
+                    "lat": lat,
                     "lon": lon,
-                    "m2": surface,
-                    "price": price,
-                    "type": finca_type,
-                    "catastral_ref": catastral_ref,
-                    "services": ",".join(services) if services else "",
-                    "image_path": photo_paths[0] if photo_paths else None,
-                    "photo_paths": photo_paths_json,
-                    "registry_note_path": pdf_path,
-                    "plano_catastral_path": pdf_path,  # El mismo archivo PDF como plano catastral
-                    "vertices_coordenadas": st.session_state.get("auto_vertices"),
-                    "numero_parcela_principal": st.session_state.get("auto_parcela_principal"),
-                    "created_at": str(datetime.now())
+                    "solar_virtual": {
+                        "ancho": st.session_state["auto_m2"] ** 0.5,  # Calcular basado en superficie real
+                        "largo": st.session_state["auto_m2"] ** 0.5,  # Calcular basado en superficie real
+                        "orientacion": "N"
+                    },
+                    "estado": {"publicada": True}
                 }
-                
-                create_plot_record(plot_data)
+                # 2. Crear instancia FincaMVP
+                finca = FincaMVP.desde_dict(finca_dict)
+                # 3. Calcular superficie edificable
+                finca.calcular_superficie_edificable()
+                # 4. Geocodificar si no hay lat/lon
+                finca = geocode_finca_mvp(finca)
+                # 5. Guardar en BD
+                db.insert_plot(finca.a_dict())
+                # 6. Feedback y recarga
                 st.success(f"✅ Finca Publicada. Precio: {price}€ (Comisión est.: {commission_val}€). Disponible en mapa y gestión.")
-                
-                # Redirección manual a "Mis Fincas" (cambiando estado para que al recargar se vea)
                 st.session_state['current_page'] = 'mis_fincas'
                 sleep(1.5)
                 st.rerun()

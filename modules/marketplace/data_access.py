@@ -4,19 +4,7 @@
 # Sustituir por DB real (Postgres, MySQL, etc.) en producción
 
 # === DATOS EN MEMORIA PARA MVP ===
-_fincas = [
-    {
-        "id": 1,
-        "titulo": "Parcela Pozuelo",
-        "direccion": "Calle Mayor 123, Pozuelo de Alarcón",
-        "ref_catastral": "1234567VK4513S0001AB",
-        "superficie_m2": 10500,
-        "ubicacion_geo": {"lat": 40.45, "lng": -3.80},
-        "nota_catastral_raw": "Nota catastral simulada",
-        "propietario_id": 10,
-        "estado_publicacion": "publicada"
-    }
-]
+# _fincas eliminado - ahora usa DB real
 
 _proyectos = [
     {
@@ -61,20 +49,18 @@ _transacciones = []
 
 def get_finca(finca_id: int) -> dict:
     """Devuelve la finca por ID."""
-    for f in _fincas:
-        if f["id"] == finca_id:
-            return f
-    return {}
+    from src import db
+    return db.get_plot_by_id(finca_id)
 
 def list_fincas() -> list:
     """Lista todas las fincas disponibles."""
-    return _fincas
+    from src import db
+    return db.get_all_plots()
 
 def save_finca(finca: dict) -> dict:
     """Guarda una nueva finca."""
-    finca["id"] = len(_fincas) + 1
-    _fincas.append(finca)
-    return finca
+    from src import db
+    return db.insert_plot(finca)
 
 def save_proyecto(proyecto: dict) -> dict:
     """Guarda un nuevo proyecto vinculado a una finca o independiente."""

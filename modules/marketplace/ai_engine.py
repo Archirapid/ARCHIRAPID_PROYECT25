@@ -1,5 +1,6 @@
 import fitz  # PyMuPDF
 import google.genai as genai
+from groq import Groq
 from PIL import Image
 import io
 import os
@@ -424,9 +425,9 @@ No incluyas comentarios, texto adicional ni campos inventados.
 from dotenv import load_dotenv
 import os
 
-def generate_text(prompt: str, model_name: str = 'models/gemini-2.5-flash') -> str:
+def generate_text(prompt: str, model_name: str = 'llama-3.3-70b-versatile') -> str:
     """
-    Genera texto usando Gemini, compatible con Streamlit y con scripts.
+    Genera texto usando Groq, compatible con Streamlit y con scripts.
     """
     try:
         # Cargar .env
@@ -437,29 +438,27 @@ def generate_text(prompt: str, model_name: str = 'models/gemini-2.5-flash') -> s
         # Intentar usar st.secrets SOLO si estamos en Streamlit
         try:
             import streamlit as st
-            if hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
-                api_key = st.secrets["GOOGLE_API_KEY"]
+            if hasattr(st, "secrets") and "GROQ_API_KEY" in st.secrets:
+                api_key = st.secrets["GROQ_API_KEY"]
         except:
             pass
 
         # Fallback a .env
         if not api_key:
-            api_key = os.getenv("GEMINI_API_KEY")
+            api_key = os.getenv("GROQ_API_KEY")
             if not api_key:
-                return "Error: No se encontró la clave GOOGLE_API_KEY en secrets de Streamlit ni GEMINI_API_KEY en .env"
+                return "Error: No se encontró la clave GROQ_API_KEY en secrets de Streamlit ni GROQ_API_KEY en .env"
 
-        # Configurar cliente Gemini
-        client = genai.Client(api_key=api_key)
+        # Configurar cliente Groq
+        client = Groq(api_key=api_key)
 
-        contents = [{"parts": [{"text": prompt}]}]
-
-        response = client.models.generate_content(
+        response = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
             model=model_name,
-            contents=contents,
         )
 
-        if response and response.candidates:
-            return response.candidates[0].content.parts[0].text.strip()
+        if response and response.choices:
+            return response.choices[0].message.content.strip()
         else:
             return "Error: No se pudo generar una respuesta válida"
 
@@ -467,9 +466,9 @@ def generate_text(prompt: str, model_name: str = 'models/gemini-2.5-flash') -> s
         error_msg = str(e).lower()
 
         if 'quota' in error_msg or '429' in error_msg:
-            return "Error: Se ha agotado la cuota de la API de Gemini. Espera unos minutos."
+            return "Error: Se ha agotado la cuota de la API de Groq. Espera unos minutos."
         elif 'key' in error_msg or 'invalid' in error_msg or 'unauthorized' in error_msg:
-            return "Error: La clave API de Gemini no es válida."
+            return "Error: La clave API de Groq no es válida."
         elif 'network' in error_msg or 'connection' in error_msg:
             return "Error: Error de conexión a internet."
         else:

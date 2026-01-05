@@ -7,6 +7,7 @@ import streamlit as st
 import os
 import json
 import base64
+import re
 from pathlib import Path
 from modules.marketplace.utils import calculate_edificability, reserve_plot
 from modules.marketplace.catastro_api import fetch_by_ref_catastral
@@ -187,7 +188,7 @@ def show_plot_detail_page(plot_id: str):
 
         with st.spinner("Generando propuesta arquitectónica con IA..."):
 
-            from modules.marketplace import ai_engine
+            from modules.marketplace import ai_engine_groq as ai_engine
 
             prompt = f"""
             Actúa como un arquitecto experto.
@@ -213,14 +214,26 @@ def show_plot_detail_page(plot_id: str):
             3. Genera una propuesta arquitectónica conceptual (zonas, distribución, orientación).
             4. Explica tus decisiones.
             5. Calcula un presupuesto estimado basado en superficie, estilo y extras.
+            6. Genera un plano SVG simple mostrando la distribución de la vivienda en el solar.
 
-            Responde en formato claro y estructurado.
+            Responde en formato claro y estructurado. Incluye el SVG al final entre <svg> y </svg>.
             """
 
             try:
                 respuesta = ai_engine.generate_text(prompt)
                 st.success("Propuesta generada con éxito")
                 st.markdown("### 🧩 Propuesta Arquitectónica IA")
+
+                # Extraer SVG si existe
+                svg_match = re.search(r'<svg[^>]*>.*?</svg>', respuesta, re.DOTALL)
+                if svg_match:
+                    svg_content = svg_match.group(0)
+                    # Remover SVG del texto
+                    respuesta = re.sub(r'<svg[^>]*>.*?</svg>', '', respuesta, flags=re.DOTALL)
+                    # Mostrar SVG
+                    st.markdown("### 🏗️ Plano Arquitectónico")
+                    st.markdown(svg_content, unsafe_allow_html=True)
+
                 st.write(respuesta)
             except Exception as e:
                 st.error(f"Error generando propuesta IA: {e}")

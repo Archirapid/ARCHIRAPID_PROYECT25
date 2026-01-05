@@ -59,6 +59,19 @@ def show_plot_detail_page(plot_id: str):
     # Convertir row a dict
     plot = dict(row)
     
+    import json
+
+    # Normalizar solar_virtual: si viene como string JSON, convertirlo a dict
+    solar_virtual = plot.get("solar_virtual")
+    if isinstance(solar_virtual, str):
+        try:
+            solar_virtual = json.loads(solar_virtual)
+        except Exception:
+            solar_virtual = {}
+
+    # Guardar de nuevo en plot para que el resto del código lo use correctamente
+    plot["solar_virtual"] = solar_virtual
+    
     # Título principal
     st.title(f"🏡 {plot.get('title', 'Finca sin título')}")
     
@@ -136,8 +149,81 @@ def show_plot_detail_page(plot_id: str):
             mostrar_solar_virtual_svg(finca)
         except Exception as e:
             st.warning(f"No se pudo mostrar el plano 2D del solar virtual: {e}")
+
+    st.markdown("### 🧭 Información del Solar")
+
+    sv = plot.get("solar_virtual", {})
+
+    forma = sv.get("forma", "No especificada")
+    orient = sv.get("orientacion", "No especificada")
+    ancho = sv.get("ancho", "—")
+    largo = sv.get("largo", "—")
+
+    st.write(f"**Forma del solar:** {forma}")
+    st.write(f"**Orientación:** {orient}")
+    st.write(f"**Ancho estimado:** {ancho} m")
+    st.write(f"**Largo estimado:** {largo} m")
     
     st.markdown("---")
+
+    st.markdown("### 🏗️ Configuración de la Casa")
+
+    col_cfg1, col_cfg2 = st.columns(2)
+
+    with col_cfg1:
+        habitaciones = st.slider("Número de habitaciones", 1, 6, 3)
+        banos = st.slider("Número de baños", 1, 4, 2)
+        superficie_deseada = st.number_input("Superficie construida deseada (m²)", min_value=40, max_value=500, value=120)
+
+    with col_cfg2:
+        estilo = st.selectbox("Estilo arquitectónico", ["Moderno", "Mediterráneo", "Minimalista", "Rústico"])
+        extras = st.multiselect("Extras opcionales", ["Piscina", "Garaje", "Sótano", "Terraza", "Porche"])
+        presupuesto_max = st.number_input("Presupuesto máximo (€)", min_value=50000, max_value=2000000, value=250000)
+
+    st.markdown("### 🤖 Validación y Diseño IA (MVP)")
+    st.info("La IA revisará tus requisitos y generará una propuesta arquitectónica conceptual.")
+
+    if st.button("✨ Generar Propuesta IA"):
+
+        with st.spinner("Generando propuesta arquitectónica con IA..."):
+
+            from modules.marketplace import ai_engine
+
+            prompt = f"""
+            Actúa como un arquitecto experto.
+
+            Datos del solar:
+            - Forma: {forma}
+            - Orientación: {orient}
+            - Ancho: {ancho} m
+            - Largo: {largo} m
+            - Superficie total: {plot.get('superficie_parcela')} m²
+
+            Requisitos del usuario:
+            - Habitaciones: {habitaciones}
+            - Baños: {banos}
+            - Superficie deseada: {superficie_deseada} m²
+            - Estilo: {estilo}
+            - Extras: {extras}
+            - Presupuesto máximo: {presupuesto_max} €
+
+            Tareas:
+            1. Valida si los requisitos son coherentes con normativa y con el solar.
+            2. Corrige cualquier parámetro que sea irrealista o no cumpla estándares.
+            3. Genera una propuesta arquitectónica conceptual (zonas, distribución, orientación).
+            4. Explica tus decisiones.
+            5. Calcula un presupuesto estimado basado en superficie, estilo y extras.
+
+            Responde en formato claro y estructurado.
+            """
+
+            try:
+                respuesta = ai_engine.generate_text(prompt)
+                st.success("Propuesta generada con éxito")
+                st.markdown("### 🧩 Propuesta Arquitectónica IA")
+                st.write(respuesta)
+            except Exception as e:
+                st.error(f"Error generando propuesta IA: {e}")
     
     # Descripción
     if plot.get('description'):

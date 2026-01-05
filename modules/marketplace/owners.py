@@ -204,6 +204,20 @@ def main():
             date_address = st.text_input("Dirección Exacta (Calle, Número, Ciudad, CP)", placeholder="Para ubicar en el mapa")
             surface = st.number_input("Superficie Total (m²)", min_value=50.0, step=10.0)
             finca_type = st.selectbox("Tipo de Suelo", ["Urbana", "Industrial", "Rústica (No admitida)"])
+
+            st.markdown("### 🧩 Configuración del Solar")
+
+            forma_solar = st.selectbox(
+                "Forma del solar",
+                ["Rectangular", "Cuadrado", "Irregular simple"],
+                help="La forma del solar ayuda a la IA a generar un diseño más preciso."
+            )
+
+            orientacion_solar = st.selectbox(
+                "Orientación del norte",
+                ["Norte arriba", "Norte derecha", "Norte abajo", "Norte izquierda"],
+                help="La orientación afecta a la luz natural y al diseño arquitectónico."
+            )
         
         with col2:
             price = st.number_input("Precio de Venta deseado (€)", min_value=1000.0, step=500.0)
@@ -488,9 +502,10 @@ def main():
                     "lat": lat,
                     "lon": lon,
                     "solar_virtual": {
-                        "ancho": st.session_state["auto_m2"] ** 0.5,  # Calcular basado en superficie real
-                        "largo": st.session_state["auto_m2"] ** 0.5,  # Calcular basado en superficie real
-                        "orientacion": "N"
+                        "ancho": st.session_state["auto_m2"] ** 0.5,
+                        "largo": st.session_state["auto_m2"] ** 0.5,
+                        "forma": forma_solar,
+                        "orientacion": orientacion_solar
                     },
                     "estado": {"publicada": True},
                     "propietario_nombre": st.session_state.get("owner_name"),

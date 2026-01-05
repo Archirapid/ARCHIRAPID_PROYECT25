@@ -547,6 +547,34 @@ def main():
                         if st.button(f"🔮 Simular Proyecto (Gemelo Digital)", key=f"sim_{row['id']}"):
                              st.session_state["page"] = "gemelo_digital" # Switch page logic (mock)
                              st.info("Para este MVP, accede al menú lateral 'Gemelo Digital' y selecciona esta finca.")
+
+                    # --- Opciones Premium ---
+                    st.markdown("---")
+                    st.subheader("⭐ Destacado Premium")
+
+                    # Estado actual
+                    if row.get("featured", 0) == 1:
+                        st.success("Esta finca es actualmente **Destacada Premium** ⭐")
+                    else:
+                        st.info("Esta finca está en modo **Normal**")
+
+                        # Selector de duración
+                        duracion = st.selectbox(
+                            "Duración del destacado",
+                            ["1 semana - 9,99€", "1 mes - 24,99€", "1 año - 199€"],
+                            key=f"premium_duration_{row['id']}"
+                        )
+
+                        # Botón activar Premium
+                        if st.button("⭐ Activar Destacado Premium", key=f"premium_{row['id']}"):
+                            import sqlite3
+                            conn = sqlite3.connect("database.db")
+                            cur = conn.cursor()
+                            cur.execute("UPDATE plots SET featured = 1 WHERE id = ?", (row['id'],))
+                            conn.commit()
+                            conn.close()
+                            st.success("Tu finca ahora es Destacada Premium ⭐")
+                            st.rerun()
         else:
             st.info("No tienes fincas publicadas todavía. Ve a la pestaña 'Subir Nueva Finca'.")
 

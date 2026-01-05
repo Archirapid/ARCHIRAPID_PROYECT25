@@ -134,21 +134,51 @@ def get_filtered_plots(min_surface, max_surface, search_query):
     return plots_all
 
 def render_featured_plots(plots):
-    """Renderiza la sección de fincas destacadas."""
+    """Renderiza la sección de fincas destacadas (Premium primero, luego últimas publicadas)."""
     st.header("Fincas Destacadas")
+
     if not plots:
         st.info("No hay fincas disponibles con los filtros actuales.")
         return
 
-    # Grid 2x3 para miniaturas (máximo 6)
+    # Separar fincas premium
+    premium = [p for p in plots if p.get("featured") == 1]
+    normal = [p for p in plots if p.get("featured") != 1]
+
+    # Ordenar premium por fecha (más recientes primero)
+    premium_sorted = sorted(
+        premium,
+        key=lambda p: str(p.get("created_at") or ""),
+        reverse=True
+    )
+
+    # Ordenar normales por fecha
+    normal_sorted = sorted(
+        normal,
+        key=lambda p: str(p.get("created_at") or ""),
+        reverse=True
+    )
+
+    # Construir lista final: primero premium, luego normales
+    featured = premium_sorted[:6]
+
+    if len(featured) < 6:
+        needed = 6 - len(featured)
+        featured += normal_sorted[:needed]
+
+    # Renderizar en grid 2 columnas
     cols = st.columns(2)
-    for i, plot in enumerate(plots[:6]):
+    for i, plot in enumerate(featured):
         with cols[i % 2]:
             img_path = get_plot_image_path(plot)
+            st.image(img_path, width=120, caption=f"{plot['title'][:15]}...")
+
+            if plot.get("featured") == 1:
+                st.markdown("⭐ **Destacada Premium**")
+
             if st.button("Ver", key=f"mini_{plot['id']}", help=f"Ver detalles de {plot['title']}"):
                 set_query_param("selected_plot", plot["id"])
                 st.rerun()
-            st.image(img_path, width=120, caption=f"{plot['title'][:15]}...")
 
 def render_map(plots):
     """Renderiza el mapa interactivo con las fincas."""
@@ -347,10 +377,6 @@ def main():
 
     # 4. Obtener fincas filtradas
     plots = get_filtered_plots(min_surface, max_surface, search_query)
-
-    st.write("DEBUG plots:", len(plots))
-    if plots:
-        st.write("DEBUG first plot keys:", list(plots[0].keys()))
 
     # 5. Layout principal: dos columnas
     left_col, right_col = st.columns([1, 2])

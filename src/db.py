@@ -143,6 +143,10 @@ def ensure_tables():
             c.execute("ALTER TABLE plots ADD COLUMN solar_virtual TEXT")
         except Exception:
             pass  # Columna ya existe
+        try:
+            c.execute("ALTER TABLE plots ADD COLUMN featured INTEGER DEFAULT 0")
+        except Exception:
+            pass  # ya existe
         c.execute("""CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
             title TEXT, architect_name TEXT, area_m2 INTEGER, max_height REAL,

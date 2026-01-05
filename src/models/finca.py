@@ -60,6 +60,9 @@ class FincaMVP:
     estado: Dict[str, Any] = field(default_factory=dict)
     referencia_catastral: str = field(default="")  # Nuevo campo: referencia catastral
     plano_catastral_path: str = field(default="")  # Nuevo campo: ruta del PDF catastral
+    propietario_nombre: str = ""
+    propietario_email: str = ""
+    photo_paths: list = field(default_factory=list)
 
     def calcular_superficie_edificable(self) -> None:
         """Calcula y actualiza la superficie edificable."""
@@ -83,7 +86,10 @@ class FincaMVP:
             servicios=data.get("servicios", {}),
             estado=data.get("estado", {}),
             referencia_catastral=data.get("referencia_catastral", ""),  # Nuevo campo
-            plano_catastral_path=data.get("plano_catastral_path", "")  # Nuevo campo
+            plano_catastral_path=data.get("plano_catastral_path", ""),  # Nuevo campo
+            propietario_nombre=data.get("propietario_nombre", ""),
+            propietario_email=data.get("propietario_email", ""),
+            photo_paths=data.get("photo_paths", []),
         )
 
     def a_dict(self) -> dict:

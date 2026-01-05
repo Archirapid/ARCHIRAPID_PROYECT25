@@ -348,6 +348,10 @@ def main():
     # 4. Obtener fincas filtradas
     plots = get_filtered_plots(min_surface, max_surface, search_query)
 
+    st.write("DEBUG plots:", len(plots))
+    if plots:
+        st.write("DEBUG first plot keys:", list(plots[0].keys()))
+
     # 5. Layout principal: dos columnas
     left_col, right_col = st.columns([1, 2])
 

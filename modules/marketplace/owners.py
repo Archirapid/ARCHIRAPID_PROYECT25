@@ -492,7 +492,10 @@ def main():
                         "largo": st.session_state["auto_m2"] ** 0.5,  # Calcular basado en superficie real
                         "orientacion": "N"
                     },
-                    "estado": {"publicada": True}
+                    "estado": {"publicada": True},
+                    "propietario_nombre": st.session_state.get("owner_name"),
+                    "propietario_email": st.session_state.get("owner_email"),
+                    "photo_paths": photo_paths,
                 }
                 # 2. Crear instancia FincaMVP
                 finca = FincaMVP.desde_dict(finca_dict)

@@ -394,9 +394,28 @@ def ensure_tables():
             pass
 
 def insert_plot(data: Dict):
+    print("DEBUG insert_plot data:", data)
     ensure_tables()
     from datetime import datetime
     with transaction() as c:
+        photo_paths = data.get("photo_paths")
+        photo_paths_json = None
+        image_path = data.get("image_path")
+
+        # Normalizar photo_paths: lista -> JSON, string -> mantener
+        if isinstance(photo_paths, list):
+            import json as _json
+            photo_paths_json = _json.dumps(photo_paths) if photo_paths else None
+            # Si no hay image_path explícito, usar la primera foto
+            if photo_paths and not image_path:
+                image_path = photo_paths[0]
+        elif isinstance(photo_paths, str):
+            photo_paths_json = photo_paths
+
+        # Si image_path sigue vacío pero viene en data, respetarlo
+        if not image_path:
+            image_path = data.get("image_path")
+
         c.execute("""
             INSERT OR REPLACE INTO plots (
                 id,
@@ -415,9 +434,11 @@ def insert_plot(data: Dict):
                 plano_catastral_path,
                 owner_name,
                 owner_email,
+                photo_paths,
+                image_path,
                 created_at,
                 status
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             data.get("id"),
             data.get("titulo"),
@@ -433,8 +454,10 @@ def insert_plot(data: Dict):
             json.dumps(data.get("solar_virtual")) if data.get("solar_virtual") else None,
             data.get("referencia_catastral"),
             data.get("plano_catastral_path"),
-            data.get("propietario_nombre"),
-            data.get("propietario_email"),
+            (data.get("propietario_nombre") or data.get("owner_name")),
+            (data.get("propietario_email") or data.get("owner_email")),
+            photo_paths_json,
+            image_path,
             datetime.utcnow().isoformat(),
             "published"
         ))
@@ -517,52 +540,44 @@ def get_plots_by_owner(email: str):
     return df
 
 
-def list_fincas_filtradas(provincia: Optional[str], min_surface: float, max_price: Optional[float]) -> list:
-    """Devuelve fincas (plots) que cumplen los filtros indicados.
-
-    - `provincia`: string (si es None o 'Todas' no filtra por provincia)
-    - `min_surface`: valor mínimo de superficie en m²
-    - `max_price`: precio máximo (si es None o <=0 se ignora)
-
-    Retorna lista de diccionarios.
+def list_fincas_filtradas(provincia: Optional[str], min_surface: float, max_surface: Optional[float]) -> list:
     """
+    Devuelve fincas filtradas por superficie y provincia.
+    Usa las columnas reales del esquema actual:
+    - superficie_parcela
+    - m2
+    - province
+    """
+
     ensure_tables()
     conn = get_conn()
     try:
         cur = conn.cursor()
-        # Detect available column names in `plots` to build a compatible query
-        cur.execute("PRAGMA table_info(plots)")
-        cols_info = cur.fetchall()
-        available_cols = {row[1] for row in cols_info} if cols_info else set()
 
-        # Choose the area column from known candidates
-        area_candidates = ['surface_m2', 'm2', 'area_m2', 'surface']
-        area_col = next((c for c in area_candidates if c in available_cols), None)
-        if not area_col:
-            # fallback to first numeric-ish column if none known
-            area_col = 'm2'  # best-effort; query may still fail if truly absent
-
-        price_col = 'price' if 'price' in available_cols else None
+        # Usar superficie_parcela como columna principal
+        area_col = "superficie_parcela"
 
         sql = f"SELECT * FROM plots WHERE COALESCE({area_col}, 0) >= ?"
         params = [min_surface]
 
-        if provincia and provincia not in ('', 'Todas'):
+        # Filtro por superficie máxima
+        if max_surface is not None and float(max_surface) > 0:
+            sql += f" AND COALESCE({area_col}, 0) <= ?"
+            params.append(float(max_surface))
+
+        # Filtro por provincia real
+        if provincia and provincia not in ("", "Todas"):
             sql += " AND province = ?"
             params.append(provincia)
 
-        if max_price is not None and float(max_price) > 0 and price_col:
-            sql += f" AND ({price_col} IS NOT NULL AND {price_col} <= ?)"
-            params.append(float(max_price))
-
         sql += f" ORDER BY COALESCE({area_col}, 0) ASC"
+
         cur.execute(sql, tuple(params))
         rows = cur.fetchall()
         cols = [d[0] for d in cur.description] if cur.description else []
-        out = []
-        for r in rows:
-            out.append({cols[i]: r[i] for i in range(len(cols))})
-        return out
+
+        return [{cols[i]: r[i] for i in range(len(cols))} for r in rows]
+
     finally:
         conn.close()
 

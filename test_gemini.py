@@ -1,4 +1,4 @@
-import google.genai as genai
+# import google.genai as genai  # Ya no se usa, ahora usamos Groq
 import os
 from dotenv import load_dotenv
 

@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
-import google.genai as genai
+# import google.genai as genai  # Ya no se usa, ahora usamos Groq
 
 def diagnostico_completo():
     """

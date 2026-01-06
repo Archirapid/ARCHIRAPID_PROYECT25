@@ -4,6 +4,7 @@ Página de detalles completa de una finca
 Muestra toda la información necesaria para que el cliente decida comprar
 """
 import streamlit as st
+import streamlit.components.v1 as components
 import os
 import json
 import base64
@@ -13,6 +14,50 @@ from modules.marketplace.utils import calculate_edificability, reserve_plot
 from modules.marketplace.catastro_api import fetch_by_ref_catastral
 from modules.marketplace.marketplace import get_plot_image_path
 from src import db
+
+def generar_svg_solar(superficie_parcela, max_construible):
+    width, height = 250, 200  # Reducido a la mitad para mejor visualización
+    margin = 20
+
+    solar_x = margin
+    solar_y = margin
+    solar_width = width - 2 * margin
+    solar_height = height - 2 * margin
+
+    ratio = max_construible / superficie_parcela if superficie_parcela > 0 else 0
+    factor = ratio ** 0.5
+
+    construible_width = solar_width * factor
+    construible_height = solar_height * factor
+
+    construible_x = solar_x + (solar_width - construible_width) / 2
+    construible_y = solar_y + (solar_height - construible_height) / 2
+
+    svg = f"""
+<svg 
+    width="{width}" 
+    height="{height}" 
+    viewBox="0 0 {width} {height}"
+    xmlns="http://www.w3.org/2000/svg"
+    style="display:block; width:100%; height:auto; max-width:500px; margin:0 auto;">
+
+  <rect width="100%" height="100%" fill="#f8f9fa" />
+
+  <rect x="{solar_x}" y="{solar_y}" width="{solar_width}" height="{solar_height}"
+        fill="#e0e0e0" stroke="#555" stroke-width="2" />
+  <text x="{solar_x + 10}" y="{solar_y + 15}" font-size="12" fill="#333">
+    Solar: {superficie_parcela:.0f} m²
+  </text>
+
+  <rect x="{construible_x}" y="{construible_y}" width="{construible_width}" height="{construible_height}"
+        fill="#b0c4de" stroke="#333" stroke-width="2" />
+  <text x="{construible_x + 10}" y="{construible_y + 15}" font-size="12" fill="#333">
+    Zona construible: {max_construible:.0f} m²
+  </text>
+
+</svg>
+"""
+    return svg
 
 def get_all_plot_images(plot):
     """Obtener todas las imágenes de la finca"""
@@ -182,6 +227,12 @@ def show_plot_detail_page(plot_id: str):
         presupuesto_max = st.number_input("Presupuesto máximo (€)", min_value=50000, max_value=2000000, value=250000)
 
     st.markdown("### 🤖 Validación y Diseño IA (MVP)")
+
+    # Calcular superficie máxima construible
+    superficie_parcela = plot.get("superficie_parcela")
+    max_construible = round(superficie_parcela * 0.33, 2) if superficie_parcela else 0
+    st.write(f"**Superficie máxima construible:** {max_construible} m²")
+
     st.info("La IA revisará tus requisitos y generará una propuesta arquitectónica conceptual.")
 
     if st.button("✨ Generar Propuesta IA"):
@@ -190,51 +241,193 @@ def show_plot_detail_page(plot_id: str):
 
             from modules.marketplace import ai_engine_groq as ai_engine
 
+            # Lógica de corrección de m² construidos
+            m2_deseados = superficie_deseada
+
+            if not m2_deseados or m2_deseados <= 0:
+                m2_correccion = max_construible
+                motivo_correccion = (
+                    "No se especificó superficie construida; se ha usado el máximo permitido por la edificabilidad."
+                )
+            elif m2_deseados > max_construible:
+                m2_correccion = max_construible
+                motivo_correccion = (
+                    f"El usuario solicitó {m2_deseados} m² construidos, pero la edificabilidad máxima es de "
+                    f"{max_construible} m². La propuesta se ha ajustado automáticamente a ese límite."
+                )
+            else:
+                m2_correccion = m2_deseados
+                motivo_correccion = (
+                    f"El usuario solicitó {m2_deseados} m² construidos, dentro del máximo permitido de "
+                    f"{max_construible} m²."
+                )
+
+            # Mostrar en UI
+            st.write(f"**Superficie usada para el diseño:** {m2_correccion} m²")
+            st.write(motivo_correccion)
+
             prompt = f"""
-            Actúa como un arquitecto experto.
+Actúas como arquitecto especializado en vivienda unifamiliar. 
 
-            Datos del solar:
-            - Forma: {forma}
-            - Orientación: {orient}
-            - Ancho: {ancho} m
-            - Largo: {largo} m
-            - Superficie total: {plot.get('superficie_parcela')} m²
+DATOS DEL SOLAR
+- Superficie total de parcela: {superficie_parcela:.0f} m²
+- Superficie máxima construible (33%): {max_construible:.0f} m²
+- Ubicación: {plot.get('localidad')}, {plot.get('provincia')}
+- Tipo de solar: {plot.get('type') or "No especificado"}
+- Referencia catastral: {plot.get('catastral_ref') or "No especificada"}
 
-            Requisitos del usuario:
-            - Habitaciones: {habitaciones}
-            - Baños: {banos}
-            - Superficie deseada: {superficie_deseada} m²
-            - Estilo: {estilo}
-            - Extras: {extras}
-            - Presupuesto máximo: {presupuesto_max} €
+CONFIGURACIÓN DE LA VIVIENDA
+- Superficie deseada por el usuario: {m2_deseados or "No especificada"} m²
+- Superficie sobre la que se diseña el proyecto: {m2_correccion:.0f} m²
+- Motivo de ajuste: {motivo_correccion}
 
-            Tareas:
-            1. Valida si los requisitos son coherentes con normativa y con el solar.
-            2. Corrige cualquier parámetro que sea irrealista o no cumpla estándares.
-            3. Genera una propuesta arquitectónica conceptual (zonas, distribución, orientación).
-            4. Explica tus decisiones.
-            5. Calcula un presupuesto estimado basado en superficie, estilo y extras.
-            6. Genera un plano SVG simple mostrando la distribución de la vivienda en el solar.
+1) PROPUESTA ARQUITECTÓNICA
+Describe de forma clara y profesional:
+- Concepto general de la vivienda. 
+- Número de plantas y reparto aproximado de m² por planta.
+- Distribución básica (zona de día, zona de noche, espacios exteriores).
+- Criterios de orientación, luz natural y ventilación. 
+- Materiales y estilo arquitectónico sugerido. 
+- Consideraciones de sostenibilidad. 
 
-            Responde en formato claro y estructurado. Incluye el SVG al final entre <svg> y </svg>.
-            """
+2) SUPERFICIE Y NORMATIVA
+Explica brevemente:
+- Que el diseño se basa en {m2_correccion:.0f} m² construidos. 
+- Qué pasaría si se intentara superar esa superficie. 
+
+3) ESTIMACIÓN DE PRESUPUESTO
+- Usa un rango de coste por m² razonable (por ejemplo, estándar y calidad media-alta).
+- Calcula un rango aproximado de presupuesto para {m2_correccion:.0f} m²: 
+  - Presupuesto orientativo mínimo. 
+  - Presupuesto orientativo máximo. 
+- Explica claramente que es una estimación orientativa, no vinculante.
+
+4) PLANO DE DISTRIBUCIÓN (SVG DESPUÉS DE ===SVG_DISTRIBUCION===)
+
+Después de la línea: 
+===SVG_DISTRIBUCION===
+
+Genera un SVG que represente la distribución interior de la vivienda siguiendo ESTRICTAMENTE estas reglas: 
+
+**REGLAS OBLIGATORIAS:**
+
+1. **Estructura base:**
+   - Dibuja UN SOLO rectángulo principal (stroke negro, grosor 4) que representa el perímetro exterior de la vivienda
+   - Dimensiones del viewBox: 600x400
+   - Dimensiones del rectángulo principal: ancho=500, alto=300, posición x=50, y=50
+   - Todas las estancias DEBEN estar DENTRO de este rectángulo, sin salirse ni flotar
+
+2. **Organización de estancias (EJEMPLO OBLIGATORIO A SEGUIR):**
+   - Divide el rectángulo principal en rectángulos contiguos (pegados entre sí, sin espacios vacíos)
+   - Distribución típica recomendada: 
+     * FILA SUPERIOR (y=50, altura=150):
+       - Salón:  x=50, width=200 (~40 m²)
+       - Comedor: x=250, width=150 (~25 m²)
+       - Cocina: x=400, width=150 (~20 m²)
+     * FILA INFERIOR (y=200, altura=150):
+       - Habitación 1: x=50, width=150 (~30 m²)
+       - Habitación 2: x=200, width=150 (~30 m²)
+       - Habitación 3: x=350, width=100 (~25 m²)
+       - Baño: x=450, width=100 (~20 m²)
+   
+3. **Proporciones:**
+   - Cada estancia debe ser proporcional a sus m² reales
+   - La suma total de superficies debe aproximarse a {m2_correccion:.0f} m²
+   - Si una estancia ocupa 40m² de 120m² totales, debe ocupar ~33% del área visual
+
+4. **Etiquetado (OBLIGATORIO):**
+   - Dentro de cada rectángulo de estancia, escribe con <text>: 
+     * Formato exacto: "Nombre (XX m²)"
+     * text-anchor="middle"
+     * Posición centrada en el rectángulo
+     * font-size="12" o "14"
+     * fill="black" o "#333"
+
+5. **Elementos arquitectónicos:**
+   - Puerta principal:  rectángulo pequeño (width=10, height=20) en x=295, y=345 (centro inferior), fill="brown"
+   - Texto debajo: "Puerta principal" en y=385
+   - Ventanas: líneas gruesas (stroke="blue", stroke-width="4") en bordes exteriores del perímetro
+     * Ejemplo: <line x1="150" y1="50" x2="200" y2="50" stroke="blue" stroke-width="4"/>
+
+6. **Formato técnico ESTRICTO:**
+   - Comenzar EXACTAMENTE con:  <svg viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
+   - Terminar EXACTAMENTE con: </svg>
+   - Sin comentarios HTML dentro del SVG
+   - Sin texto fuera del SVG
+   - Paredes interiores: stroke="black", stroke-width="2"
+   - Rellenos: tonos de gris (#E8E8E8, #D8D8D8, #C8C8C8, #E0E0E0, #B8B8B8)
+
+**EJEMPLO DE REFERENCIA EXACTO (adapta solo nombres/m², NO la estructura):**
+
+<svg viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
+  <rect x="50" y="50" width="500" height="300" fill="none" stroke="black" stroke-width="4"/>
+  
+  <rect x="50" y="50" width="200" height="150" fill="#E8E8E8" stroke="black" stroke-width="2"/>
+  <text x="150" y="125" text-anchor="middle" font-size="14" fill="#333">Salón (40 m²)</text>
+  
+  <rect x="250" y="50" width="150" height="150" fill="#D8D8D8" stroke="black" stroke-width="2"/>
+  <text x="325" y="125" text-anchor="middle" font-size="14" fill="#333">Comedor (25 m²)</text>
+  
+  <rect x="400" y="50" width="150" height="150" fill="#C8C8C8" stroke="black" stroke-width="2"/>
+  <text x="475" y="125" text-anchor="middle" font-size="14" fill="#333">Cocina (20 m²)</text>
+  
+  <rect x="50" y="200" width="150" height="150" fill="#E0E0E0" stroke="black" stroke-width="2"/>
+  <text x="125" y="275" text-anchor="middle" font-size="14" fill="#333">Habitación 1 (30 m²)</text>
+  
+  <rect x="200" y="200" width="150" height="150" fill="#E0E0E0" stroke="black" stroke-width="2"/>
+  <text x="275" y="275" text-anchor="middle" font-size="14" fill="#333">Habitación 2 (30 m²)</text>
+  
+  <rect x="350" y="200" width="100" height="150" fill="#E0E0E0" stroke="black" stroke-width="2"/>
+  <text x="400" y="275" text-anchor="middle" font-size="12" fill="#333">Hab. 3 (25 m²)</text>
+  
+  <rect x="450" y="200" width="100" height="150" fill="#B8B8B8" stroke="black" stroke-width="2"/>
+  <text x="500" y="275" text-anchor="middle" font-size="14" fill="#333">Baño (20 m²)</text>
+  
+  <rect x="295" y="345" width="10" height="20" fill="brown"/>
+  <text x="300" y="385" text-anchor="middle" font-size="12" fill="black">Puerta principal</text>
+  
+  <line x1="150" y1="50" x2="200" y2="50" stroke="blue" stroke-width="4"/>
+  <line x1="325" y1="50" x2="375" y2="50" stroke="blue" stroke-width="4"/>
+  <line x1="550" y1="150" x2="550" y2="200" stroke="blue" stroke-width="4"/>
+</svg>
+
+**CRÍTICO:** 
+- Adapta SOLO los nombres de estancias y m² al caso específico de {m2_correccion:.0f} m²
+- NO cambies la estructura de rectángulo principal + estancias contiguas dentro
+- NO hagas estancias flotantes ni separadas
+- SIEMPRE respeta el formato exacto del ejemplo
+
+Después del SVG, NO escribas nada más. 
+"""
 
             try:
                 respuesta = ai_engine.generate_text(prompt)
                 st.success("Propuesta generada con éxito")
+
+                # Separar texto y SVG usando el separador
+                parts = respuesta.split("===SVG_DISTRIBUCION===")
+                if len(parts) == 2:
+                    texto_parte = parts[0].strip()
+                    svg_parte = parts[1].strip()
+                else:
+                    texto_parte = respuesta.strip()
+                    svg_parte = None
+
                 st.markdown("### 🧩 Propuesta Arquitectónica IA")
+                st.write(texto_parte)
 
-                # Extraer SVG si existe
-                svg_match = re.search(r'<svg[^>]*>.*?</svg>', respuesta, re.DOTALL)
-                if svg_match:
-                    svg_content = svg_match.group(0)
-                    # Remover SVG del texto
-                    respuesta = re.sub(r'<svg[^>]*>.*?</svg>', '', respuesta, flags=re.DOTALL)
-                    # Mostrar SVG
-                    st.markdown("### 🏗️ Plano Arquitectónico")
-                    st.markdown(svg_content, unsafe_allow_html=True)
+                # Generar SVG determinista del solar
+                svg = generar_svg_solar(superficie_parcela, max_construible)
+                st.subheader("Plano conceptual")
+                components.html(svg, height=550, scrolling=True)
 
-                st.write(respuesta)
+                st.markdown(f"🧱 Distribución esquemática aproximada basada en {m2_correccion:.0f} m² construidos")
+
+                # Mostrar SVG de distribución si existe
+                if svg_parte and "<svg" in svg_parte:
+                    st.subheader("Plano de distribución")
+                    components.html(svg_parte, height=600, scrolling=True)
+
             except Exception as e:
                 st.error(f"Error generando propuesta IA: {e}")
     

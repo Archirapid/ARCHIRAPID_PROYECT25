@@ -1,4 +1,7 @@
-# Configurar página con layout amplio (LÍNEA 1)
+from dotenv import load_dotenv
+load_dotenv()
+
+# Configurar página con layout amplio
 import streamlit as st
 st.set_page_config(layout='wide')
 
@@ -12,10 +15,6 @@ import functools
 import time
 from pathlib import Path
 from src import db as _db
-from dotenv import load_dotenv
-
-# Cargar variables de entorno desde .env
-load_dotenv()
 
 # Detectar si hay una finca seleccionada en los parámetros de consulta
 params = st.query_params

@@ -1,6 +1,6 @@
 import sys
 import fitz
-import google.genai as genai
+# import google.genai as genai  # Ya no se usa, ahora usamos Groq
 import base64
 import json
 from dotenv import load_dotenv

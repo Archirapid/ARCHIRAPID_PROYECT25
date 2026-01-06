@@ -81,4 +81,3 @@ psutil
 pytest-cov
 geopy>=2.4.0
 pycatastro==0.1.3
-ollama==0.3.3

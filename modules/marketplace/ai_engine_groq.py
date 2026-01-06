@@ -27,8 +27,11 @@ def generate_text(prompt: str, model_name: str = 'llama-3.3-70b-versatile') -> s
             if not api_key:
                 return "Error: No se encontró la clave GROQ_API_KEY en secrets de Streamlit ni GROQ_API_KEY en .env"
 
-        # Configurar cliente Groq
-        client = Groq(api_key=api_key)
+        # Inyectar clave en el entorno para que Groq la detecte
+        os.environ["GROQ_API_KEY"] = api_key
+
+        # Inicializar cliente sin parámetros (Groq leerá la clave del entorno)
+        client = Groq()
 
         response = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],

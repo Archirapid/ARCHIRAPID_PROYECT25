@@ -1,5 +1,5 @@
 import fitz  # PyMuPDF
-import google.genai as genai
+# import google.genai as genai  # Ya no se usa, ahora usamos Groq
 from groq import Groq
 from PIL import Image
 import io

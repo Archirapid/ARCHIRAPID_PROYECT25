@@ -136,52 +136,53 @@ def show_buyer_panel(client_email):
     conn = db_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT r.id, r.plot_id, r.buyer_name, r.amount, r.kind, r.created_at, 
-               p.title, p.surface_m2, p.price, p.photo_paths
-        FROM reservations r
-        LEFT JOIN plots p ON r.plot_id = p.id
-        WHERE r.buyer_email = ?
-        ORDER BY r.created_at DESC
-    """, (client_email,))
-    
+    SELECT r.id, r.plot_id, r.buyer_name, r.amount, r.kind, r.created_at, 
+           p.title, p.m2, p.price, p.photo_paths
+    FROM reservations r
+    JOIN plots p ON r.plot_id = p.id
+    WHERE r.buyer_email = ?
+    ORDER BY r.created_at DESC
+""", (client_email,))
+
     transactions = cursor.fetchall()
     conn.close()
-    
+
     if not transactions:
-        st.warning("No tienes transacciones registradas")
+        st.info("No se encontraron transacciones para este cliente.")
         return
-    
+
+    # Mostrar tabla general
+    st.dataframe(transactions)
+
     # Mostrar resumen de transacciones
     for trans in transactions:
-        trans_id, plot_id, buyer_name, amount, kind, created_at, plot_title, surface_m2, price, photo_paths = trans
-        
+        trans_id, plot_id, buyer_name, amount, kind, created_at, plot_title, m2, price, photo_paths = trans
+
         with st.expander(f"🏠 {plot_title} - {kind.upper()}", expanded=True):
             col1, col2 = st.columns([1, 2])
-            
+
+            # 📸 Columna izquierda: imagen
             with col1:
-                # Mostrar imagen de la finca
                 if photo_paths:
                     try:
                         paths = json.loads(photo_paths)
                         if paths and isinstance(paths, list):
-                            img_path = f"uploads/{paths[0]}"
-                            if os.path.exists(img_path):
-                                st.image(img_path, width=200)
-                    except:
-                        st.image("assets/fincas/image1.jpg", width=200)
-                else:
-                    st.image("assets/fincas/image1.jpg", width=200)
-            
+                            image_paths = [f"uploads/{path}" for path in paths]
+                            st.image(image_paths, caption=["Foto " + str(i+1) for i in range(len(image_paths))], use_column_width=True)
+                    except Exception as e:
+                        st.warning(f"No se pudo cargar la imagen: {e}")
+
+            # 📋 Columna derecha: detalles
             with col2:
                 st.markdown(f"**📋 ID Transacción:** `{trans_id}`")
                 st.markdown(f"**🏠 Finca:** {plot_title}")
-                st.markdown(f"**📏 Superficie:** {surface_m2} m²")
+                st.markdown(f"**📏 Superficie:** {m2} m²")
                 st.markdown(f"**💰 Precio Total:** €{price}")
                 st.markdown(f"**💵 Cantidad Pagada:** €{amount}")
                 st.markdown(f"**📅 Fecha:** {created_at}")
                 st.markdown(f"**✅ Tipo:** {kind.upper()}")
-    
-    show_common_actions()  # Acciones comunes para compradores
+
+        show_common_actions()  # Acciones comunes para compradores
 
 def show_owner_panel_v2(client_email):
     """Panel para propietarios con fincas"""

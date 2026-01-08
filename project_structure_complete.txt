@@ -1,0 +1,757 @@
+ARCHIRAPID_PROYECT25/
+├── .coverage
+├── .env
+├── .gitignore
+├── analizar_pdf.py
+├── app.py
+├── AUDITORIA_COMPLETA_ARCHIRAPID.md
+├── check_db_plots.py
+├── critical_verification.py
+├── database.db
+├── db_setup.py
+├── DEPLOYMENT_GUIDE.md
+├── diagnostico_api.py
+├── ejemplo_uso.py
+├── export_ops.py
+├── install_critical_libs.py
+├── project_structure.txt
+├── project_tree.pdf
+├── project_tree.txt
+├── README.md
+├── requirements_actual.txt
+├── requirements.txt
+├── setup_api_key.py
+├── streamlit.err
+├── streamlit.log
+├── technical_verification.py
+├── test_debug.py
+├── test_diseno_ia.py
+├── test_finca_mvp.py
+├── test_gemini.py
+├── test_gps_functionality.py
+├── test_pdf.py
+├── tmp_check_plots.py
+├── tmp_test_memoria.pdf
+├── verificar_bd.py
+├── verify_plot.py
+├── .pytest_cache/
+├── .vscode/
+├── archirapid_extract/
+│   ├── __init__.py
+│   ├── Catastro.pdf
+│   ├── check_db.py
+│   ├── check_images.py
+│   ├── compute_edificability_old.py
+│   ├── compute_edificability.py
+│   ├── create_test_pdf.py
+│   ├── export_dxf.py
+│   ├── extract_pdf.py
+│   ├── generate_design.py
+│   ├── ocr_and_preprocess.py
+│   ├── parcela_catastral.dxf
+│   ├── parse_project_memoria.py
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── run_pipeline_simple.py
+│   ├── run_pipeline.py
+│   ├── setup_windows.ps1
+│   ├── streamlit_design.py
+│   ├── vectorize_plan.py
+│   ├── verify_extraction.py
+│   ├── catastro_output/
+│   │   ├── edificability.json
+│   │   ├── page_1.png
+│   │   ├── page_10.png
+│   │   ├── page_11.png
+│   │   ├── page_12.png
+│   │   ├── page_13.png
+│   │   ├── page_14.png
+│   │   ├── page_15.png
+│   │   ├── page_16.png
+│   │   ├── page_17.png
+│   │   ├── page_18.png
+│   │   ├── page_19.png
+│   │   ├── page_2.png
+│   │   ├── page_20.png
+│   │   ├── page_21.png
+│   │   ├── page_22.png
+│   │   ├── page_23.png
+│   │   ├── page_24.png
+│   │   ├── page_25.png
+│   │   ├── page_26.png
+│   │   ├── page_27.png
+│   │   ├── page_28.png
+│   │   ├── page_29.png
+│   │   ├── page_3.png
+│   │   ├── page_30.png
+│   │   ├── page_31.png
+│   │   ├── page_32.png
+│   │   ├── page_33.png
+│   │   ├── page_34.png
+│   │   ├── page_35.png
+│   │   ├── page_36.png
+│   │   ├── page_37.png
+│   │   ├── page_38.png
+│   │   ├── page_39.png
+│   │   ├── page_4.png
+│   │   ├── page_40.png
+│   │   ├── page_41.png
+│   │   ├── page_42.png
+│   │   ├── page_43.png
+│   │   ├── page_44.png
+│   │   ├── page_45.png
+│   │   ├── page_46.png
+│   │   ├── page_47.png
+│   │   ├── page_48.png
+│   │   ├── page_49.png
+│   │   ├── page_5.png
+│   │   ├── page_50.png
+│   │   ├── page_51.png
+│   │   ├── page_52.png
+│   │   ├── page_53.png
+│   │   ├── page_54.png
+│   │   ├── page_55.png
+│   │   ├── page_56.png
+│   │   ├── page_57.png
+│   │   ├── page_58.png
+│   │   ├── page_59.png
+│   │   ├── page_6.png
+│   │   ├── page_60.png
+│   │   ├── page_61.png
+│   │   ├── page_62.png
+│   │   ├── page_63.png
+│   │   ├── page_64.png
+│   │   ├── page_65.png
+│   │   ├── page_66.png
+│   │   ├── page_67.png
+│   │   ├── page_68.png
+│   │   ├── page_69.png
+│   │   ├── page_7.png
+│   │   ├── page_70.png
+│   │   ├── page_71.png
+│   │   ├── page_72.png
+│   │   ├── page_73.png
+│   │   ├── page_74.png
+│   │   ├── page_8.png
+│   │   ├── page_9.png
+│   │   ├── plot_polygon.geojson
+│   │   ├── process_summary.json
+│   │   ├── surface_candidates.json
+│   │   ├── validation_report.json
+│   │   └── validation_report.txt
+│   └── design_output/
+│       ├── design_manifest.json
+│       ├── design_model.glb
+│       └── design_plan.png
+├── assets/
+│   ├── branding/
+│   │   ├── Logo_Archirapid_proyect25.png
+│   │   ├── logo.png
+│   │   └── README.md
+│   ├── fincas/
+│   │   ├── finca1_1.png
+│   │   ├── finca1_2.png
+│   │   ├── finca2_1.png
+│   │   ├── finca2_2.png
+│   │   ├── finca3_1.png
+│   │   ├── finca3_2.png
+│   │   ├── image1.jpg
+│   │   ├── image2.jpg
+│   │   └── image3.jpg
+│   └── projects/
+│       ├── project1.png
+│       ├── project2.png
+│       └── project3.png
+├── backend/
+│   ├── services/
+│   │   ├── __init__.py
+│   │   └── planGenerator.py
+│   ├── tmp/
+│   ├── __init__.py
+│   ├── api.py
+│   ├── main_backup.py
+│   ├── main.py
+│   ├── requirements_backend_obsolete.txt
+│   ├── seed.py
+│   ├── start_server.py
+│   └── test_server.py
+├── backups/
+│   └── dbs_pre_consolidation/
+│       └── archirapid.db
+├── catastro_output/
+│   ├── edificability.json
+│   └── validation_report.json
+│   └── validation_report.txt
+├── components/
+│   ├── header.py
+│   ├── landing.py
+│   └── footer.py
+├── data/
+│   ├── notas_catastrales/
+│   │   └── Finca_Carolina3.jpg
+│   ├── fincas.json
+│   ├── proyectos.json
+│   ├── transacciones.json
+│   └── usuarios.json
+├── docs/
+│   └── domain_model.md
+├── logs/
+│   └── app.log
+├── MODELOS/
+│   └── Nota_Catastral_ejemplo.pdf
+├── modules/
+│   └── marketplace/
+│       ├── __init__.py
+│       ├── ai_engine_groq.py
+│       ├── ai_engine.OLD.py
+│       ├── ai_engine.py
+│       ├── api.py
+│       ├── architects.py
+│       ├── catastro_api.py
+│       ├── client_panel_fixed.py
+│       ├── client_panel_old.py
+│       ├── client_panel.py
+│       ├── compatibilidad.py
+│       ├── data_access.py
+│       ├── disenador_vivienda.py
+│       ├── documentacion.py
+│       ├── gemelo_digital_vis.py
+│       ├── gemelo_digital.py
+│       ├── gemelo_editor.py
+│       ├── inmobiliaria_mapa.py
+│       ├── intranet.py
+│       ├── marketplace_legacy.py
+│       ├── marketplace_upload.py
+│       ├── marketplace.py
+│       ├── mvp_demo.py
+│       ├── owners.py
+│       ├── pago_simulado.py
+│       ├── plot_detail.py
+│       ├── plots_table.py
+│       ├── prompts.py
+│       ├── utils.py
+│       └── validacion.py
+├── Nueva carpeta/
+├── scripts/
+│   ├── check_and_create_projects_table.py
+│   ├── check_last_project_files.py
+│   ├── check_last_project.py
+│   ├── convert_project_tree_to_pdf.py
+│   ├── copy_plots_from_data_db.py
+│   ├── find_project_pdfs.py
+│   ├── find_vr_projects.py
+│   ├── insert_demo_plots.py
+│   ├── inspect_db_schema.py
+│   ├── list_updated_projects.py
+│   ├── print_featured.py
+│   ├── print_last_characteristics.py
+│   ├── set_model_glb.py
+│   ├── start_static_cors.py
+│   └── sync_all_projects.py
+│   └── sync_characteristics_to_columns_fixed.py
+│   └── sync_characteristics_to_columns.py
+│   └── test_filtros.py
+├── src/
+│   ├── models/
+│   │   ├── finca.py
+│   │   ├── generar_diseno_ia.py
+│   │   ├── geocode_finca.py
+│   │   └── vivienda.py
+│   ├── db.py
+│   └── solar_virtual_svg.py
+├── static/
+│   ├── modelos/
+│   │   └── design_model.glb
+│   └── vr_viewer.html
+├── tmp/
+│   ├── check_db.py
+│   └── import_check.py
+├── uploads/
+│   └── proyectos_arquitectos/
+│       ├── arquitecto_1_0/
+│       │   ├── AR-Code-1637477629846.glb
+│       │   ├── D_ARCHIRAPID_PROYECT25uploadsdwg_dba84c9cb0a444ae83995832fb5a84aa.dwg
+│       │   ├── LA_PRUEBA_2_memoria.pdf
+│       │   ├── Screenshot_2025-12-16_at_10-36-29_ARCHIRAPID.png
+│       │   ├── arquitecto_1000_1765967213/
+│       │   ├── arquitecto_1000_1765968355/
+│       │   ├── arquitecto_1000_1765969447/
+│       │   ├── arquitecto_1000_1765969455/
+│       │   ├── arquitecto_1000_1765969835/
+│       │   ├── arquitecto_1000_1765970096/
+│       │   ├── arquitecto_1000_1765971262/
+│       │   ├── arquitecto_1000_1765971566/
+│       │   ├── arquitecto_1000_1765972295/
+│       │   ├── arquitecto_1000_1765972303/
+│       │   ├── arquitecto_1000_1765972304/
+│       │   ├── arquitecto_1000_1765972305/
+│       │   ├── arquitecto_1000_1765972306/
+│       │   ├── arquitecto_1000_1765974453/
+│       │   ├── arquitecto_1000_1765975415/
+│       │   ├── arquitecto_1000_1765975420/
+│       │   ├── arquitecto_1000_1765976451/
+│       │   └── arquitecto_1000_1765977575/
+│       ├── 15252cba-a3c4-4019-9025-58b652864701_memoria.json
+│       ├── 255f8d3c-81df-4b25-8d7f-9de5c45de9ec_memoria.json
+│       ├── 361f69a9-34ed-4d24-ba0a-d9719b347268_memoria.json
+│       ├── b620c4ff-8960-4ea6-80fd-a4287936e68a_memoria.json
+│       ├── e7dc4c82-ffed-471f-99a0-8fed8bdeb501_memoria.json
+│       ├── dwg_dba84c9cb0a444ae83995832fb5a84aa.dwg
+│       ├── finca_00ea432213854460a73beb925e3caf8b.png
+│       ├── finca_07b9cbd1e0ae4d53a9384e8f55d1fc2e.jpg
+│       ├── finca_0acb39e7fb1145f4ac301ed739690471.jpg
+│       ├── finca_0f65fcd2ba2b4e948f70336a1d50fcaf.jpg
+│       ├── finca_143ee03289d94658afe9b95f81483062.jpg
+│       ├── finca_177a0375943340ebb33d7c8842b8936e.jpg
+│       ├── finca_1d9cb31577f44a7ea059bc21329feac7.jpg
+│       ├── finca_1dbf9fee14884eb18c9c0d132c7e9182.png
+│       ├── finca_220cbdeebff447988fc4ab3a0aa0afc6.png
+│       ├── finca_3c7d458cad6544bb8f737efab10aa607.jpg
+│       ├── finca_4132d32be2c443bd900c00203e335328.jpg
+│       ├── finca_46e3f25973544dd78c15fe488ebd4068.jpg
+│       ├── finca_4e69b6cbf1374a59b3ed1e889c230496.png
+│       ├── finca_4f3cf3b590324a2fb17776286c4de532.jpg
+│       ├── finca_54b5b12f7f2e4a7284a09df7b7c4e573.png
+│       ├── finca_584745c375fb4ad58afa56c65067a526.jpg
+│       ├── finca_5f107ce35f4840d285a6110c7d4e6abb.jpg
+│       ├── finca_5f147b2c93fe44e8b687598251b4b2bd.png
+│       ├── finca_641cfbcfa80a463d92df91e9697f04b6.png
+│       ├── finca_6488fbbf56824bf182076a986fa6d2ae.jpg
+│       ├── finca_69b3cc44018d4c6f8d1a7630e939dc1f.png
+│       ├── finca_6d37d06f999e410eba3852b0fc4a81cf.jpg
+│       ├── finca_81af3132431b46de92d12f6f2c36a375.jpg
+│       ├── finca_83c815f5a9f64dca9731ad85d1bedf40.jpg
+│       ├── finca_86785238e34343d4a74b44013a7701cc.jpg
+│       ├── finca_88ae5ee7e005435591c18cc90bb26f02.jpg
+│       ├── finca_8d6c38db12f448b797cdb5d870e61ccb.jpg
+│       ├── finca_8f1d0fc491de4ef187620043dd92cd8b.jpg
+│       ├── finca_97f9d0bc2459400a94d8ccfc9e7bf331.jpg
+│       ├── finca_99f01138626741c5873fa1fb9f533c8d.jpg
+│       ├── finca_9d121cc321454153bc8beec5953c9796.jpg
+│       ├── finca_9eb24f6b3c2b439e8abd5c9d19abe4df.jpg
+│       ├── finca_9f669e581e354a50aa125d46318519c2.jpg
+│       ├── finca_a48b09473f1c4020bf8fafc439922186.jpg
+│       ├── finca_ac60804b40c3478a876f505a7206b4ac.jpg
+│       ├── finca_bcdd1933d73344e594ec3df16b6551c7.png
+│       ├── finca_ccb2cc4fdd6342b38362acc88459a75b.jpg
+│       ├── finca_ce6bfb2ba3d14a31ac16dcb36f924d4e.png
+│       ├── finca_d29eb8d2f8fa48918c369dd3cca7490d.jpg
+│       ├── finca_dcfc3f965b0e48649b951a69e8b87d58.jpg
+│       ├── finca_photo_01782477003a47db964433ec81418d64.jpg
+│       ├── finca_photo_03f386b00b3e4981be78f33e55def2ce.jpg
+│       ├── finca_photo_1f54010dfd1443b78ef1a4d846c42183.png
+│       ├── finca_photo_20359894eb0a4c2ea2b53e17542d45a2.jpg
+│       ├── finca_photo_2306ac24545b48f9a2dc17e92a48a6ca.png
+│       ├── finca_photo_2662db896784435b84a802f8e535612a.jpg
+│       ├── finca_photo_293ffb9a0334479cb290e9a3d76766bf.jpg
+│       ├── finca_photo_2d5fa126502643e1b28ef830d974f05f.jpg
+│       ├── finca_photo_3aa38d03d3c64cacb5a77126f426951a.jpg
+│       ├── finca_photo_3e1e022d496a42d6a019b1a59206ff3a.jpg
+│       ├── finca_photo_415971d0762f4b98b0f6f1eb4eb3b70c.jpg
+│       ├── finca_photo_47d4a367a8a94a609e497ab08b553069.jpg
+│       ├── finca_photo_47f81f83e23642b19e4caeb5f70a1c55.png
+│       ├── finca_photo_4f7c7559b30c4e8db306b4d7828ce5e1.jpg
+│       ├── finca_photo_576d043a0e56434c867ce41502a161fa.jpg
+│       ├── finca_photo_5d68500eaa5249bdb6424fe609448b9b.jpg
+│       ├── finca_photo_62239f21906d4b29bbe8971b3ca2eb37.jpg
+│       ├── finca_photo_67fb51b00fc349e1b8de94d6e315ddfc.jpg
+│       ├── finca_photo_69e740b8f5cc42cabcebe0ceb9f881a3.jpg
+│       ├── finca_photo_762bdece3e1e493f867e4b0d73ff6999.jpg
+│       ├── finca_photo_7a7385aec1bd420592c5d042f1307bd2.jpg
+│       ├── finca_photo_7ab397204d8a4df3bcebe5cd8b18af34.jpg
+│       ├── finca_photo_7fec88bc0bf549fc875967faa1a78791.jpg
+│       ├── finca_photo_8fe8f050b67c435a8a363c04eeccf581.jpg
+│       ├── finca_photo_9f44473d532e49caa01ed5e103ab3679.png
+│       ├── finca_photo_a07dc9e1a69143d7bfc588d9b9e3627f.jpg
+│       ├── finca_photo_a43ad84583744b28ae64ba6bb592e000.jpg
+│       ├── finca_photo_b0f5b994d9604b34a60acad1db5720bb.jpg
+│       ├── finca_photo_c205684cbce64434b214fc6f7a6592eb.jpg
+│       ├── finca_photo_c366bdade62246bdb37771fcf4c9ba91.jpg
+│       ├── finca_photo_c8f95b30843d47c29bd82c6bf87d168f.jpg
+│       ├── finca_photo_d1af9754907647d1b18b49354c75e2c1.png
+│       ├── finca_photo_dc5fe6df27bd432f842ffa23e4eea641.jpg
+│       ├── finca_photo_dcec2b739b6c4d31a71779c617e09313.jpg
+│       ├── finca_photo_df67503f7a4f407c91ed53455f65a3d1.jpg
+│       ├── finca_photo_e02bc765dd2e4a8fabb089f473b0c775.jpg
+│       ├── finca_photo_f4b40cabf27a4959a10f19841a761732.jpg
+│       ├── finca_photo_f8063ffa7c9d4568983ee80fc5a0c51a.jpg
+│       ├── finca_photo_f851998e0bdc428a8b8cd5228bf6b6fa.png
+│       ├── finca_photo_f9472a1cf8414ef3bf2507a388c8b73e.jpg
+│       ├── foto_5d46f70dfa5f490193053923dea3f249.jpg
+│       ├── foto_930abbe4bb754838a9a41c8278c4bdf5.jpg
+│       ├── foto_a5d9bd2281e64524947e775c66806f0f.jpg
+│       ├── foto_a870766fc3bc417ea242494fe2fc9d28.png
+│       ├── foto_b589cbf547994a8d86005788e4c46d12.jpg
+│       ├── foto_efe5ea1acd8f453a8de9b6147b5c9e29.jpg
+│       ├── glb_711caf2882954e158dfb0b668a1d10c7.glb
+│       ├── memoria_8ea358b724d44e3695c7953c03fce7fd.pdf
+│       ├── nota_03d6ecd5f3bb49b69df87fbb27b2f24f.pdf
+│       ├── nota_170ba538a9c04a018dc583857ff2b90f.pdf
+│       ├── nota_1d859010cf7f4e68bb92ff0d2ec06a21.pdf
+│       ├── nota_1f582e601fef4a7da38623ec47142c3f.pdf
+│       ├── nota_2fe7a4a8f176401da2a1da2e1689f953.pdf
+│       ├── nota_31e1347b4db046e5888042aeec7a318f.pdf
+│       ├── nota_34e0eeb2f9874b7ea0f376ef1d6ca6ef.pdf
+│       ├── nota_38dc50bbe7984fd185bd82a20da4773a.pdf
+│       ├── nota_46fcca04b51a441d89c2ae5df28141b6.pdf
+│       ├── nota_4bc6cf0ca2c34313a667b07343a9f784.pdf
+│       ├── nota_52045b4c566e48e0a7b2ea1902525188.pdf
+│       ├── nota_59e21a5517aa4d29baf0f41ec2e1997b.pdf
+│       ├── nota_5c1f7d9ef7f24888a00c83f470ba0e8b.pdf
+│       ├── nota_5e3f71daa467439cb0fb5f0617dc99c8.pdf
+│       ├── nota_6690c0b036eb49efa49e3408980fc8e1.pdf
+│       ├── nota_6a8ca83a31e242dbb08027622dc4df78.pdf
+│       ├── nota_7666fb54cb3b4ba08dabfbaa05bf776c.pdf
+│       ├── nota_82f5f73b715e4216a1fc33c21c30840d.pdf
+│       ├── nota_8f2bfcece02a43b386449f1ce5f45cb7.pdf
+│       ├── nota_ad26e763306d40eb971a1e633fb531e2.pdf
+│       ├── nota_api_00a7986f82ea494098d3ca59434ad89f
+│       ├── nota_b0aa228b904b495885f1fb31656c8c6f.pdf
+│       ├── nota_b4337b8b4bc5463eab90b0ab290a0650.pdf
+│       ├── nota_b85d457d832f41cf8d32a00411b8fecc.pdf
+│       ├── nota_bb7b41134f8a4979a098344c93fd8d02.pdf
+│       ├── nota_bf8ddc32488c4a7589e76064c1020828.pdf
+│       ├── nota_bfc6261ed77c4dde819acb82fb788ad0.pdf
+│       ├── nota_c2401ae8ac724ef5949efd0df1bf8bd1.pdf
+│       ├── nota_c469493f437c4058b900a369024288e7.pdf
+│       ├── nota_cde63f5cffc943e196a8069dd64d1f74.pdf
+│       ├── nota_dedccfa984b343e3a9c9ff4f743df58a.pdf
+│       ├── nota_dfaaed0b1df24826a4a2d71934721850.pdf
+│       ├── nota_e31b15211c4b4fa2b5af4e3f34f4c931.pdf
+│       ├── nota_ed43b663ded247cd92dd56aaa7b1bfd3.pdf
+│       ├── nota_efa0397230f94403be493daebcbfa74e.pdf
+│       ├── nota_f2bf3ee2897a4e8f92ff35ff5c232407.pdf
+│       ├── nota_fabc89db5f1048ed845f04841ae5f68f.pdf
+│       ├── Plano_Finca_Catastral.png
+│       ├── plano_finca.png
+│       ├── plot_6332720bb56b48d490812dbaff0f4b98.png
+│       ├── plot_79224e65e3834f358f229bfca008a2a7.jpg
+│       ├── plot_7afe19f789c04b8d955f53591a4e5778.png
+│       ├── plot_83b619c837b54aa3ae80b1504749b065.jpg
+│       ├── plot_a71d933f9e4a44208c836f1b7724094e.png
+│       ├── plot_b5d9550570374015b2f9024443908c15.jpg
+│       ├── plot_c32a36f354b64f7d90d722bc4f35a3f0.jpg
+│       ├── plot_c58834f0346c4dfc856964550f31f8fb.jpg
+│       ├── plot_e7beeb0e043549b9914f36e6d385f97b.jpg
+│       ├── plot_f7c739faa76c4f0ca9f5f61eb399114a.jpg
+│       ├── project_gallery_04e8fe103d7c4d108de4c6047b0dd545.jpg
+│       ├── project_gallery_0716ce9ac9ad465e996edce5b5f88962.jpg
+│       ├── project_gallery_08ca31adcf8b44b5b2ab339b5a1bc3d5.png
+│       ├── project_gallery_0ae19601a7af4c5399910f8e986bd8ad.jpg
+│       ├── project_gallery_0b4e5524b1914df2bd5b176616ab363c.jpg
+│       ├── project_gallery_0c40f41055d7485bb28e5824b32864ed.jpg
+│       ├── project_gallery_0c8bc0d6e95b4dc3a54008a7833d71d3.jpg
+│       ├── project_gallery_0e2eb5ac974641f5b4469da6adf79eb7.jpg
+│       ├── project_gallery_16e07a8e0ab6494abd879d4dae38ca77.jpg
+│       ├── project_gallery_18faecbc22f3474b8e054fa694e93d33.jpg
+│       ├── project_gallery_19fe822b34f549b380455e94ecb83c06.jpg
+│       ├── project_gallery_1a2c434d36064049a9ad000a4ae4148c.jpg
+│       ├── project_gallery_1d6af41042304e95981c160182fe0f7e.jpg
+│       ├── project_gallery_21fe74566cb848f4af95d90225fc3f3f.jpg
+│       ├── project_gallery_2bf425026a0341de8f209946bef0f86f.jpg
+│       ├── project_gallery_2c0afddda8a945829fc96002e6e47c81.jpg
+│       ├── project_gallery_2d6929dfce904273a0dd66603e5e9317.jpg
+│       ├── project_gallery_32dda30fdfa34b73af6ddb0e938c0ab8.png
+│       ├── project_gallery_335eee5a5903465186e81a37d85498ec.jpg
+│       ├── project_gallery_347544624edd4fad83840c41bc4970be.jpg
+│       ├── project_gallery_39ff045032824ea4b83588cbe4712e5a.jpg
+│       ├── project_gallery_3af2c842ab14468d88388efd2b997ce2.jpg
+│       ├── project_gallery_3d21e8226a0f42c3bfa2abdd2e8297d8.jpg
+│       ├── project_gallery_40e00a21e1704647897ff3ab992a8ab0.png
+│       ├── project_gallery_4236623ac534465187e2e6e9e284fdf1.jpg
+│       ├── project_gallery_42537a01aed84654ad23514c569a731a.jpg
+│       ├── project_gallery_437d1fa1b3b24cba93d5a665f2636683.jpg
+│       ├── project_gallery_4484b4ca4cda4fc1a7ed221755e55430.jpg
+│       ├── project_gallery_45922becb181400c9baec1e4731bb819.png
+│       ├── project_gallery_4867cb7258f644808aef72f146c26abb.jpg
+│       ├── project_gallery_490139661d3a4d9d8fdc9a0980b3a71a.jpg
+│       ├── project_gallery_4e8fc7b3eddd42b7806f00fd6a1d3204.jpg
+│       ├── project_gallery_52636fbb76c945b2a79b5a50021951f5.jpg
+│       ├── project_gallery_54ad4845495a4517a4759127e13bb0af.jpg
+│       ├── project_gallery_569b7dd6ed034793acabb9bb8319dcdf.jpg
+│       ├── project_gallery_575da74dc42845458a580582858cf6e2.jpg
+│       ├── project_gallery_5b1221780ff94c44abb51ea6f726d56f.jpg
+│       ├── project_gallery_5fb5b75147624d2fa65eab3b7e7464ee.jpg
+│       ├── project_gallery_6207383ede1c45368e9059874666e0ce.jpg
+│       ├── project_gallery_62f7232ff4f14d12b672bdbd5e7e1313.jpg
+│       ├── project_gallery_6515911335f94190843b2091b3865896.jpg
+│       ├── project_gallery_65bb631db95d49b985c10c1390c6b986.png
+│       ├── project_gallery_69db68d4b4974a138c14c90f1697a5c9.png
+│       ├── project_gallery_69ecf2b80b3a48b4987867f110dbb82b.jpg
+│       ├── project_gallery_6bbf082aa2004bf68e0113bd63bf2c26.png
+│       ├── project_gallery_6eaa3274efdc4bdea7fa153747b231fa.jpg
+│       ├── project_gallery_702404e14d7c4c45813cca4d763d9eff.jpg
+│       ├── project_gallery_70a3eda4d7c9490e8ac3cb5acfc700e2.jpg
+│       ├── project_gallery_7114b1fdeccd4c168e86d328e6e90780.png
+│       ├── project_gallery_74610840394a48ab863a78c76de1d009.jpg
+│       ├── project_gallery_77b4dc51c9de45819a6e242a523da8a8.jpg
+│       ├── project_gallery_799cb24cd7f5422db16c984245b6fec7.png
+│       ├── project_gallery_80c1815a2c0a4addb6e08e01cbccabf1.jpg
+│       ├── project_gallery_853b7f8a7cf94274863f0cebb4028688.jpg
+│       ├── project_gallery_87aaef81c9a54cde975dcd6d37e36507.jpg
+│       ├── project_gallery_88933f70502e423a9565685fa9731d0c.png
+│       ├── project_gallery_88d15e5357be46d28afd21aa7cc019a0.png
+│       ├── project_gallery_89e7f9e680e9472dbe447e27210e080c.jpg
+│       ├── project_gallery_8a2c91d29dbe47a58eeefbdbd2f1d54f.jpg
+│       ├── project_gallery_8ea7d0ed78bc4c35b4543c1753158973.jpg
+│       ├── project_gallery_90891c194441441f9ec6f999f2fc495c.jpg
+│       ├── project_gallery_90d5d846162f4360ad754e28c1fa4f92.jpg
+│       ├── project_gallery_911e01ba785649d9b989fbda1a882dba.jpg
+│       ├── project_gallery_92f8554b902f4163b592ba305ff4a01d.jpg
+│       ├── project_gallery_954e6074f80347c9b98e943989990d65.jpg
+│       ├── project_gallery_9a0d495b78fc4e74ba76ada692890f05.png
+│       ├── project_gallery_9b2b63ac212b4a53913e718db798d5f2.jpg
+│       ├── project_gallery_a19acf8d1efe447f942af9c26ec493f4.png
+│       ├── project_gallery_a275fb773dd84b9dbb4029ad44bb78e9.jpg
+│       ├── project_gallery_a71436a1b5ac4ebab632e7630ca1baf1.jpg
+│       ├── project_gallery_aa20bcd9fe754a7ca3449d958c615a9d.jpg
+│       ├── project_gallery_aba6170e69634062982c33416bff8401.jpg
+│       ├── project_gallery_ac0afe43edcd46e48285f0907b9787c8.jpg
+│       ├── project_gallery_b0266690d96843f79ed544640db1427e.jpg
+│       ├── project_gallery_b1ed87d1cd3f4f7fbdc1176f7cfcb1ee.jpg
+│       ├── project_gallery_b5ceeececbb442cfaf593f4f8fdb1ae9.jpg
+│       ├── project_gallery_b77ee29dd4224c1898f6d5c5742bb87b.jpg
+│       ├── project_gallery_ba27cbf86567402a81473401e23a4978.jpg
+│       ├── project_gallery_bcad23f2b9d94d6d8581da957d2077ca.jpg
+│       ├── project_gallery_bee88d48a53b485485f1d4a17648987b.jpg
+│       ├── project_gallery_c112e466dae74d4691b011daeb992315.png
+│       ├── project_gallery_c1f9b83ee6884793910a0e390dd2836c.jpg
+│       ├── project_gallery_c23ce4b86ed043b4a18869ce8db617a9.jpg
+│       ├── project_gallery_c2d19946e45d4a08a76ec84b09ad4ddc.png
+│       ├── project_gallery_c3bf8464b087420ea743c7196cd46c06.jpg
+│       ├── project_gallery_c626640148b64820b6b1592fa1ad4c91.jpg
+│       ├── project_gallery_c704ed09bb4643f1b396adaadf2f1333.jpg
+│       ├── project_gallery_cc398ff9bdec4dda895254eb643595e4.jpg
+│       ├── project_gallery_d42048957a2747029ceffe0914ab8234.jpg
+│       ├── project_gallery_d4a16131f2e047af9b107ecb7eb29e1e.jpg
+│       ├── project_gallery_dbdb28df635646e8b2368de9468b8a46.jpg
+│       ├── project_gallery_dd9c987e927c46a7a9180e4be78f0b4a.jpg
+│       ├── project_gallery_ddf9ce49b5f14cb48a57cbd0ee2e14a7.png
+│       ├── project_gallery_e10ff541dd9a40cd949050fd4872c611.jpg
+│       ├── project_gallery_e1fca983ecd64f888f6cb57dff2bbdd09.jpg
+│       ├── project_gallery_e2b6149fd3f14ba6a5fd51285d4ef740.jpg
+│       ├── project_gallery_e54442afd3e24648b654494579d73222.jpg
+│       ├── project_gallery_e549d7dcbdbd4165b175c0ba190e4898.jpg
+│       ├── project_gallery_e774a5f27a0547a088f0583e5d497743.png
+│       ├── project_gallery_e9ffb61ed0d147d09d0e04de074cb27f.jpg
+│       ├── project_gallery_ec8619806c26420998639ef113c0e942.jpg
+│       ├── project_gallery_ed3b2598d82543418a96b34f1c6aae7f.png
+│       ├── project_gallery_f18781b751764a29879e585b141aae40.jpg
+│       ├── project_gallery_f2384ddcad0a45df8ffcb926f438fa80.jpg
+│       ├── project_gallery_f24668de775f4fe98c42cd3da6bb5445.jpg
+│       ├── project_gallery_f2ddac75f21c4d6284564f635c7bc4b5.jpg
+│       ├── project_gallery_f3de1c5f423748d79a3d9a254b213ee9.png
+│       ├── project_gallery_f7ab3ec92500415a90ff3dc68177d31e.jpg
+│       ├── project_gallery_f944dab92bb44f8691e40ba60540bfc7.jpg
+│       ├── project_gallery_fbc28e30b80048b38cf8dd00b8f92a4a.jpg
+│       ├── project_gallery_feec2364d53d4ba7b6b842113963271e.jpg
+│       ├── project_main_044ee2d182cd498d9fb6678b42a8840e.png
+│       ├── project_main_069728a51ae9477e8fff867d629f67d5.png
+│       ├── project_main_0b47d91fcdec4089b16154206ef287bc.png
+│       ├── project_main_128537a7acf14c0395d5700897ce0b33.png
+│       ├── project_main_1321d025753b4c25b295ab6f8a84ce4c.jpg
+│       ├── project_main_1c5fb0270fd74e43a20e7d6bc87dd485.jpg
+│       ├── project_main_267ae64af72f4da49a2ca7dcddadfc98.png
+│       ├── project_main_278feb568d6a4621a408a554afa99bbf.jpg
+│       ├── project_main_2f4520176ba34dcf9932463abddf98ed.png
+│       ├── project_main_3150c3c8cc7a46f29550c5b06f5995e0.jpg
+│       ├── project_main_3ae6ff78f57649ecbc03ad07ccad1968.jpg
+│       ├── project_main_43052222e23d4f6da92b2fc7ccf3124e.jpg
+│       ├── project_main_43babb3fb6cb4eb099cef5ad89cb70c5.jpg
+│       ├── project_main_4cd101e115ff49b88c41d195af5cf753.png
+│       ├── project_main_548c0ca8ffcd4c0d9a9fd2d48ba18e88.jpg
+│       ├── project_main_61e9237ce7594272b51e6ae1c68b4b46.png
+│       ├── project_main_6569b48852a74caea7a8e432a44e3876.png
+│       ├── project_main_6f7cd9f2ac724613ab92b7cd0ad05ebd.png
+│       ├── project_main_6fdeea6d47564d32ab128244855a2f78.png
+│       ├── project_main_7272ed8ae169476ba79b54643e46842e.jpg
+│       ├── project_main_72f0e17511774282b84de55bb738fefb.jpg
+│       ├── project_main_785ac472a3544cb7ba185df40b976210.jpg
+│       ├── project_main_7ddb349901c24fccb2d68cce3a38e3c6.png
+│       ├── project_main_819431b9ecc74d11acb00eb87f99abd7.png
+│       ├── project_main_8196eb3d304d4321b5172ee8e0d1543c.jpg
+│       ├── project_main_8a062ff2cf454d658d04e3937826b249.png
+│       ├── project_main_8d377279b7854f4ca6e599842831f96f.jpg
+│       ├── project_main_8db2dc626acc4b8a8e2c706714d2d7ee.png
+│       ├── project_main_92c1e7bda1b1471aa51af66db4b603a8.jpg
+│       ├── project_main_949b677a22e048398ea52a8bcf830825.jpg
+│       ├── project_main_95240f8b02e547dcab9b9c7de8cb1340.png
+│       ├── project_main_970e041dea2742b1b4daca830da39614.png
+│       ├── project_main_99fe84d0514a4078b5e4bbcb5ceb5fd2.png
+│       ├── project_main_abdfb6ff9a32456badf8be3d2c84decd.png
+│       ├── project_main_beb0a6100c9f43069efd9e1a755031b0.png
+│       ├── project_main_c437419045614bd5878e7126b51bf95b.jpg
+│       ├── project_main_c7915246408e469da97ff1de259d5bd7.png
+│       ├── project_main_cfba36b880ee4a0ea5340017c56ddc57.png
+│       ├── project_main_d474c9c2c065449291c308d1933945df.png
+│       ├── project_main_deed36acb26b456b9f92029eb853f573.jpg
+│       ├── project_main_e963f90b96fa4fd19070874c6c980b69.jpg
+│       ├── project_main_f4bca76223634944989a665d71e44f49.jpg
+│       ├── project_main_fb655dc68bcc4639a5783567ceddaf23.png
+│       ├── project_main_fdb2433bb3fe407c91ed53455f65a3d1.jpg
+│       ├── project_memoria_00b33bd7d44241969884d99de4040f44.pdf
+│       ├── project_memoria_3fcaae85eb6c484e84067fe1cc75c7f4.pdf
+│       ├── project_memoria_4207f0f3ea684b51b64b1e55913a75d1.pdf
+│       ├── project_memoria_4280a8438a4140618a9b7136d921c6be.pdf
+│       ├── project_memoria_443963f0d44e47ae94537804fdbfa9a7.pdf
+│       ├── project_memoria_4b777b483aa04cdc84778993383c66e3.pdf
+│       ├── project_memoria_4c1b1cfb8fb04f2fb0b51bea009d59d4.pdf
+│       ├── project_memoria_5a5af78a060f4b4bade73b228314c6be.pdf
+│       ├── project_memoria_62fde690c4b344e890662e8df3e037b5.pdf
+│       ├── project_memoria_727d676f0f454708b3c1b933ec098c00.pdf
+│       ├── project_memoria_77a65fc941e747f0a789f4da1e493aa0.pdf
+│       ├── project_memoria_7f4953f15ef048deb5f2750da7789345.pdf
+│       ├── project_memoria_8b9f30bb330e470a87abbf8f228e34c73.pdf
+│       ├── project_memoria_9e1f4640447f435d8d178862cb315639.pdf
+│       ├── project_memoria_acc9bb66582f47eca9c3650ffa69ba1f.pdf
+│       ├── project_memoria_ad3953c096f84d05b96b89385c078b2e.pdf
+│       ├── project_memoria_c1dad77b85864720af57185deeffc100.pdf
+│       ├── project_memoria_c58ab3af4bba438789f38fead4a8d5d3.pdf
+│       ├── project_memoria_cb5b30f392924e5f8cada64ec3f54448.pdf
+│       ├── project_memoria_cd56b353f3bb49a2a7954a0abc781966.pdf
+│       ├── project_memoria_ce7fc0c92f664d97bf9467d1b6de2967.pdf
+│       ├── project_memoria_d41ade9a1dab4d2195bf839873bd00f7.pdf
+│       ├── project_memoria_d6dc038e10104e6cadb51597fd6f7295.pdf
+│       ├── project_memoria_db4386abcc504bc38d4da876b65e73ac.pdf
+│       ├── project_memoria_eb5e512449734d1eabf0009e854f8544.pdf
+│       ├── project_memoria_f5f8f85affc94574831061f76284a35a.pdf
+│       ├── project_memoria_fae2a8e1e3a6452e8ebcfd4f14736a2f.pdf
+│       ├── project_memoria_fdbae0ad982f470086cf39b5c759a4bf.pdf
+│       ├── project_memoria_feb2dfd5e79e432ab325e152b6be4aa9.pdf
+│       ├── project_memoria_ffc3b38c399f4805bc3656cb9cfdc872.pdf
+│       ├── project_model_00d1cdb61e074033b92573da2c4aa072.glb
+│       ├── project_model_074291452b134363970907abe916b513.glb
+│       ├── project_model_0afa7df42821445b90facbbbde8817a2.glb
+│       ├── project_model_122756b896a14dcdbbb06dae15a97127.glb
+│       ├── project_model_2605a33c2fda45b6bce2230bf2a4dbec.glb
+│       ├── project_model_367c4813e5d34c28a5e99580fd60cd59.glb
+│       ├── project_model_3b5c74d79ea54477824dabc43173f425.glb
+│       ├── project_model_3fff0a2dd8294b02a70e05b7ef291def.glb
+│       ├── project_model_55806ee4959b41709abc6edb2c47948d.glb
+│       ├── project_model_55a20d4c57604324b8c026fdc6cdcdbc.glb
+│       ├── project_model_595c5bee5f094ce193b629bb0267982a.glb
+│       ├── project_model_65857a65033443a9bbe310663e59e5ad.glb
+│       ├── project_model_6997046e0408416e8be7f3fa4c98a2bb.glb
+│       ├── project_model_82d33243c638411789a621883ab80f83.glb
+│       ├── project_model_922fe8c713c24fb6a18d4fba3a13c699.glb
+│       ├── project_model_a09e99d516a34a0ca61254a314e84026.glb
+│       ├── project_model_a908d18452ef4614a3a73f9423481104.glb
+│       ├── project_model_c4e309e7517541aa9df820a22c93c958.glb
+│       ├── project_model_c8b448e6db5f4e9e900a860b4f4bf075.glb
+│       ├── project_model_dacf404f19334e5aba262bd47327fdaa.glb
+│       ├── project_model_dba1acf6469c4a8caea039ac9b5e70d9.glb
+│       ├── project_model_e0790374a14f49aaa6cd3f9285f5afd0.glb
+│       ├── project_model_e87b7723b59d413b907d43cd3dedb404.glb
+│       ├── project_model_ef6e542971764296a9d537e02120e0ac.glb
+│       ├── project_model_fc6db34651e94d568785821f5dc2691b.glb
+│       ├── project_plans_dwg_01cc08a5caf44f2bae56ad38eeecc3e7.dwg
+│       ├── project_plans_dwg_1567a435df5b44edbcfc70e61312362a.dwg
+│       ├── project_plans_dwg_1801e483324344c083ea6cce3dbaad1f.dwg
+│       ├── project_plans_dwg_20d3dcd317354359a96cacf13d27c2d3.dwg
+│       ├── project_plans_dwg_22f7bca50d7a4175a0e12027f9a49016.dwg
+│       ├── project_plans_dwg_2ec0b15b69da45e5ab90b55143ddef1e.dwg
+│       ├── project_plans_dwg_2fec62b7d9b142cfba335041d748d89e.dwg
+│       ├── project_plans_dwg_323004ab0fb9424b9e25c3ebcbe8f8ac.dwg
+│       ├── project_plans_dwg_508fb98bd4264e97b6c770250091bc99.dwg
+│       ├── project_plans_dwg_545e47a35ada4744841b2c2627900968.dwg
+│       ├── project_plans_dwg_63cc8c2626644d86b8898cf3857cf612.dwg
+│       ├── project_plans_dwg_6d41e51400cf44ac9c4e3378b3e0882a.dwg
+│       ├── project_plans_dwg_7566a49decfd462aa723f106b3fa1502.dwg
+│       ├── project_plans_dwg_78631ec6e1594485be6c788ff471dd6b.dwg
+│       ├── project_plans_dwg_7c95469e9d0a4a7a94d5eeb779d541ba.dwg
+│       ├── project_plans_dwg_82011906abe049d8971f530503910666.dwg
+│       ├── project_plans_dwg_aa946fdfa80f4647b646e571626b6a3b.dwg
+│       ├── project_plans_dwg_b398ab2f0a1c4e5fbfb87f2707a5522b.dwg
+│       ├── project_plans_dwg_b399ae3c489b445fa0c2623bc7e0eeb9.dwg
+│       ├── project_plans_dwg_b742bfa928d0452ca820a739af895c2e.dwg
+│       ├── project_plans_dwg_bcd4fa45f12c4d4daf60588ccc259378.dwg
+│       ├── project_plans_dwg_c8f7091669874796a5cea863c2b9de76.dwg
+│       ├── project_plans_dwg_e995cf5540ef48068d2c287547589406.dwg
+│       ├── project_plans_dwg_eb3b000c6f464657b184cd35b6effa48.dwg
+│       ├── project_plans_pdf_01a89520e9b14fbd95bed70088e54736.pdf
+│       ├── project_plans_pdf_02b8ff541dc049eaa93aabbd2d51e70f.pdf
+│       ├── project_plans_pdf_06cfc4b9cb254cc8946c4927cf709cd9.pdf
+│       ├── project_plans_pdf_1008730336584eb0ae419230594c6f42.pdf
+│       ├── project_plans_pdf_21bfbe1fb1e442459658b475bc758234.pdf
+│       ├── project_plans_pdf_2e313f9fac8447b2a29503a9e48c718f.pdf
+│       ├── project_plans_pdf_2ef396889efb47dcb8c041623b27ba21.pdf
+│       ├── project_plans_pdf_380daffd95af4bdebe31a575030dc95c.pdf
+│       ├── project_plans_pdf_39ba23e239de4d9ba1ecc4a914d5b005.pdf
+│       ├── project_plans_pdf_47593f635a8147bcbb98c553aa43a0f4.pdf
+│       ├── project_plans_pdf_49c63edb3f41449d9c8ccc60659b1b86.pdf
+│       ├── project_plans_pdf_4a2e5022e9904233b124286b3423a8e6.pdf
+│       ├── project_plans_pdf_55df868b27d446f0b58980932230c2b7.pdf
+│       ├── project_plans_pdf_6091308eadb945f3bdeef946214b8e0b.pdf
+│       ├── project_plans_pdf_6fc4e359cc2549888c0e0a0b2c7b92e2.pdf
+│       ├── project_plans_pdf_7263fb3398b64f7a9b0872c5983f4882.pdf
+│       ├── project_plans_pdf_83a97082284f411eace6d7432cd2676a.pdf
+│       ├── project_plans_pdf_8ddb8dc94968407485383c821893950c.pdf
+│       ├── project_plans_pdf_9544f64d5392408786ecd71ba83e52d6.pdf
+│       ├── project_plans_pdf_95e3c78d65a541e084d91f79e34065c2.pdf
+│       ├── project_plans_pdf_9ec7ba60265a40db97229858d2c2b862.pdf
+│       ├── project_plans_pdf_9f803303b71f4ccebd55349eccab2b6b.pdf
+│       ├── project_plans_pdf_ac669c8db22e43c4b9c91497c36fb188.pdf
+│       ├── project_plans_pdf_aef73bfa70fa464287083c762945dec9.pdf
+│       ├── project_plans_pdf_b3d03606b389464d9e45c83e12875b60.pdf
+│       ├── project_plans_pdf_c80d29a95e914049a57d2c1fb3bd29f9.pdf
+│       ├── project_plans_pdf_cb246bba1788445b8e63bb907b5e893f.pdf
+│       ├── project_plans_pdf_d856fb01541e45e4bfafe56a861af38f.pdf
+│       ├── project_plans_pdf_db8595b416bb43019d0d113d145d92a5.pdf
+│       ├── project_plans_pdf_e2416c81f61f48a3a2cf927922451716.pdf
+│       ├── project_plans_pdf_e420718d7cae41f28d2120c62fca9d35.pdf
+│       ├── project_plans_pdf_ecd4e0df6ce846fdbd70466f4c336b6e.pdf
+│       ├── project_plans_pdf_fb28e08cb9ea470c9fb1cac124acafac.pdf
+│       ├── project_plans_pdf_fda93c1df30645f0a0ab1d37c9bf5332.pdf
+│       ├── project_vr_01d03dc31e9647209564ec7f0b6adf99.zip
+│       ├── project_vr_1ff9d15dfa664f7b8551e2fb54cdc389.zip
+│       ├── project_vr_4ad62f7aa08340f4a14a03630dcee8ef.zip
+│       ├── project_vr_a328e3ac1b664ffea811dc4af1e59080.glb
+│       ├── project_vr_ac1ec6fd0bb34b9e99ff235bfbf6edb5.zip
+│       ├── project_vr_ed9c461fc79341f2b9d46d586c9b7fc8.zip
+│       ├── proyecto_07d4bb839ab448019c0798c1e9b5b62c.zip
+│       ├── registry_0f61bd042f4e425a9db5ebbb927eed7d.pdf
+│       ├── registry_42b422fb5a2c4860bd26fc6c8b7a6e0a.pdf
+│       ├── registry_488b080d61904da89d0275b30e9dca9c.pdf
+│       ├── registry_62a00fd4cb14406195c255d3234fa3ca.pdf
+│       ├── registry_672263da06db4fb2be75dd8b8bf46559.pdf
+│       ├── registry_7a9b8afd74754cb7b49612a23b02913c.pdf
+│       ├── registry_8f2c31dd43b94d71ac40c8b8a461a2ad.pdf
+│       ├── registry_bb84ba87a8604de18060951379b031ca.pdf
+│       ├── registry_ede95556040a4589b8335bf5e045d1a7.pdf
+│       ├── registry_ffc2622ac1b94ab08d4fd696b0b27843.pdf
+│       ├── rv_9747a1ca36b540b887094328840b10f4.zip
+│       ├── test_pdf.pdf
+views/
+  arquitectos_portal.py
+  arquitectos_registro.py
+  intranet_crm.py
+  subir_proyecto.py
+Z_OLD/
+  src_backup/
+    architect_manager.py
+    asset_manager.py
+    catastro_manager.py
+    client_manager.py
+    compatibility_engine.py
+    contractor_manager.py
+    logger.py
+    main.py
+    map_manager.py
+    matching_engine.py
+    payment_flow.py
+    payment_simulator.py
+    preflight.py
+    property_manager.py
+    query_params.py
+    ui_manager.py
+    utils_validation.py
+  catastro_extractor.py
+  ia_manager_new.py
+  test_ai.py
+  test_api_key.py
+  test_env.py
+  test_final.py
+  test_guardar_datos.py
+  test_motor_optimizado.py
+  test_verification.py
+  validate_extraction_system.py

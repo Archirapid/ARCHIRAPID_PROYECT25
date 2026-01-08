@@ -13,6 +13,7 @@ from pathlib import Path
 from modules.marketplace.utils import calculate_edificability, reserve_plot
 from modules.marketplace.catastro_api import fetch_by_ref_catastral
 from modules.marketplace.marketplace import get_plot_image_path
+from modules.marketplace.compatibilidad import get_proyectos_compatibles
 from src import db
 
 def generar_svg_solar(superficie_parcela, max_construible):
@@ -458,6 +459,67 @@ Después del SVG, NO escribas nada más.
         # Mostrar coordenadas GPS si están disponibles
         if plot.get('lat') and plot.get('lon'):
             st.markdown(f"**Coordenadas GPS:** {float(plot['lat']):.6f}, {float(plot['lon']):.6f}")
+    
+    st.markdown("---")
+    
+    # 🏗️ PROYECTOS ARQUITECTÓNICOS DISPONIBLES
+    st.subheader("🏗️ Proyectos Arquitectónicos Disponibles")
+    
+    proyectos = get_proyectos_compatibles(plot_id)
+    
+    if not proyectos:
+        st.info("No hay proyectos arquitectónicos compatibles disponibles para esta finca en este momento.")
+    else:
+        st.markdown(f"**Encontrados {len(proyectos)} proyecto(s) compatible(s) con esta finca**")
+        st.caption("Estos proyectos están diseñados para superficies similares a la edificabilidad máxima de tu finca.")
+        
+        for proyecto in proyectos:
+            with st.container():
+                col_img, col_info, col_action = st.columns([1, 2, 1])
+                
+                with col_img:
+                    # Imagen principal del proyecto
+                    img_path = proyecto.get("imagen_principal")
+                    if img_path and os.path.exists(f"assets/projects/{img_path}"):
+                        st.image(f"assets/projects/{img_path}", width=120, caption="")
+                    else:
+                        st.image("assets/fincas/image1.jpg", width=120, caption="Imagen no disponible")
+                
+                with col_info:
+                    # Información del proyecto
+                    nombre = proyecto.get("nombre", "Proyecto sin nombre")
+                    total_m2 = proyecto.get("total_m2", 0)
+                    precio_estimado = proyecto.get("precio_estimado", 0)
+                    
+                    st.markdown(f"**🏠 {nombre}**")
+                    st.markdown(f"**📏 Superficie:** {total_m2} m²")
+                    if precio_estimado > 0:
+                        st.markdown(f"**💰 Coste estimado:** €{precio_estimado:,.0f}")
+                    else:
+                        st.markdown("**💰 Coste estimado:** Consultar")
+                    
+                    # Mostrar etiquetas si existen
+                    etiquetas = proyecto.get("etiquetas", [])
+                    if etiquetas:
+                        tags_text = " • ".join(etiquetas)
+                        st.caption(f"🏷️ {tags_text}")
+                
+                with col_action:
+                    # Botón para ver proyecto completo
+                    if st.button("👁️ Ver proyecto", key=f"ver_proyecto_{proyecto.get('id', nombre)}", use_container_width=True):
+                        # Verificar si el usuario está logueado
+                        buyer_email = st.session_state.get('buyer_email')
+                        buyer_name = st.session_state.get('buyer_name')
+                        
+                        if buyer_email and buyer_name:
+                            st.success(f"✅ Redirigiendo a detalles del proyecto: {nombre}")
+                            st.info("Aquí podrás ver todos los planos, especificaciones técnicas y contactar con el arquitecto.")
+                            # TODO: Implementar navegación a página de detalles del proyecto
+                        else:
+                            st.warning("🔐 Para ver los detalles completos del proyecto necesitas estar registrado.")
+                            st.info("Regístrate abajo para acceder a toda la información del proyecto.")
+                
+                st.markdown("---")
     
     # Información adicional de IA si está disponible
     if plot.get('plano_catastral_path') and os.path.exists(plot['plano_catastral_path']):

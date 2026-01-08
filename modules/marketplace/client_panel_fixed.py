@@ -3,6 +3,7 @@ import streamlit as st
 from modules.marketplace.utils import db_conn
 import json
 import os
+from modules.marketplace.compatibilidad import get_proyectos_compatibles
 
 def main():
     st.title("👤 Panel de Cliente - ARCHIRAPID")
@@ -181,6 +182,23 @@ def show_buyer_panel(client_email):
                 st.markdown(f"**💵 Cantidad Pagada:** €{amount}")
                 st.markdown(f"**📅 Fecha:** {created_at}")
                 st.markdown(f"**✅ Tipo:** {kind.upper()}")
+
+        # 🔍 PROYECTOS COMPATIBLES
+        st.markdown("### 📐 Proyectos Compatibles")
+
+        proyectos = get_proyectos_compatibles(plot_id)
+
+        if not proyectos:
+            st.info("No hay proyectos compatibles para esta finca.")
+        else:
+            for p in proyectos:
+                st.markdown(f"**🏗️ {p.get('nombre', 'Proyecto sin nombre')}** — {p.get('total_m2', '?')} m²")
+
+                img = p.get("imagen_principal")
+                if img:
+                    st.image(f"assets/projects/{img}", use_container_width=True)
+
+                st.markdown("---")
 
         show_common_actions(context=f"buyer_{trans_id}")  # Acciones comunes para compradores
 

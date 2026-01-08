@@ -420,7 +420,7 @@ def main():
                         st.success(f"Bienvenido {architect_data.get('nombre', 'Arquitecto')}!")
                         st.session_state['arquitecto_id'] = aid
                         st.session_state.setdefault('arquitecto_plan', None)
-                        st.experimental_rerun()
+                        st.rerun()
                     else:
                         # Registro nuevo
                         import time
@@ -428,7 +428,7 @@ def main():
                         st.session_state['arquitecto_id'] = new_id
                         st.session_state.setdefault('arquitecto_plan', None)
                         st.success(f"Cuenta creada para {name or email} (ID: {new_id})")
-                        st.experimental_rerun()
+                        st.rerun()
                 except Exception as e:
                     st.error(f"Error: {e}")
         return
@@ -453,7 +453,7 @@ def main():
             else:
                 st.session_state['arquitecto_plan'] = 'pro'
             st.success(f"Plan {selected_plan.split(' (')[0]} activado!")
-            st.experimental_rerun()
+            st.rerun()
         
         # Mostrar proyectos existentes aunque no pueda subir
         st.markdown("---")
@@ -509,4 +509,4 @@ def main():
             result = show_project_upload_form(architect_id)
             if result:
                 st.success("Proyecto subido correctamente. Recargando...")
-                st.experimental_rerun()
+                st.rerun()

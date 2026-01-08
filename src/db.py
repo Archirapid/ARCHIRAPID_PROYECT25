@@ -304,6 +304,42 @@ def ensure_tables():
         except Exception:
             pass
         
+        # Campos para matching y monetización
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN estimated_cost REAL")
+        except sqlite3.OperationalError:
+            pass  # Ya existe
+
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN price_memoria REAL DEFAULT 1800")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN price_cad REAL DEFAULT 2500")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN property_type TEXT DEFAULT 'residencial'")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN energy_rating TEXT")
+        except sqlite3.OperationalError:
+            pass
+
+        try: 
+            c.execute("ALTER TABLE projects ADD COLUMN vr_tour TEXT")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN is_active INTEGER DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass
+        
         # Índices para mejorar filtrado futuro (creación defensiva)
         try:
             c.execute("CREATE INDEX IF NOT EXISTS idx_plots_province ON plots(province)")

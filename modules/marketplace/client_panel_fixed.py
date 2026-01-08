@@ -168,7 +168,7 @@ def show_buyer_panel(client_email):
                         paths = json.loads(photo_paths)
                         if paths and isinstance(paths, list):
                             image_paths = [f"uploads/{path}" for path in paths]
-                            st.image(image_paths, caption=["Foto " + str(i+1) for i in range(len(image_paths))], use_column_width=True)
+                            st.image(image_paths, caption=["Foto " + str(i+1) for i in range(len(image_paths))], use_container_width=True)
                     except Exception as e:
                         st.warning(f"No se pudo cargar la imagen: {e}")
 
@@ -191,7 +191,7 @@ def show_owner_panel_v2(client_email):
     # Obtener fincas del propietario
     conn = db_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, owner_id, title, cadastral_ref, surface_m2, buildable_m2, is_urban, vector_geojson, registry_note_path, price, lat, lon, status, created_at, photo_paths, owner_name, owner_email, owner_phone, sanitation_type, plot_type, propietario_direccion FROM plots WHERE owner_email = ? ORDER BY created_at DESC", (client_email,))
+    cursor.execute("SELECT id, title, cadastral_ref, surface_m2, buildable_m2, is_urban, vector_geojson, registry_note_path, price, lat, lon, status, created_at, photo_paths, owner_name, owner_email, owner_phone, sanitation_type, plot_type, propietario_direccion FROM plots WHERE owner_email = ? ORDER BY created_at DESC", (client_email,))
     
     properties = cursor.fetchall()
     conn.close()
@@ -203,14 +203,14 @@ def show_owner_panel_v2(client_email):
     # Mostrar propiedades
     for prop in properties:
         prop_id = prop[0]
-        title = prop[2]
-        surface_m2 = prop[4]
-        price = prop[9]
-        status = prop[12]
-        created_at = prop[13]
-        photo_paths = prop[14]
-        owner_name = prop[15]
-        owner_phone = prop[17]
+        title = prop[1]
+        surface_m2 = prop[3]
+        price = prop[8]
+        status = prop[11]
+        created_at = prop[12]
+        photo_paths = prop[13]
+        owner_name = prop[14]
+        owner_phone = prop[16]
         
         status_emoji = "✅" if status == "published" else "⏳" if status == "pending" else "❌"
         
@@ -290,7 +290,7 @@ def show_buyer_actions():
     with col1:
         st.markdown("#### 🏡 DISEÑAR VIVIENDA")
         st.write("Crea tu casa ideal con nuestros arquitectos")
-        if st.button("🚀 Ir al Diseñador", key="go_designer_panel", use_container_width=True, type="primary"):
+        if st.button("🚀 Ir al Diseñador", key="go_designer_panel_1", use_container_width=True, type="primary"):
             st.success("🎨 Redirigiendo al Diseñador de Vivienda...")
             st.info("En esta sección podrás diseñar tu vivienda personalizada")
     
@@ -338,7 +338,7 @@ def show_common_actions():
     with col1:
         st.markdown("#### 🏡 DISEÑAR VIVIENDA")
         st.write("Crea tu casa ideal con nuestros arquitectos")
-        if st.button("🚀 Ir al Diseñador", key="go_designer_panel", use_container_width=True, type="primary"):
+        if st.button("🚀 Ir al Diseñador", key="go_designer_panel_2", use_container_width=True, type="primary"):
             st.success("🎨 Redirigiendo al Diseñador de Vivienda...")
             st.info("En esta sección podrás diseñar tu vivienda personalizada")
     

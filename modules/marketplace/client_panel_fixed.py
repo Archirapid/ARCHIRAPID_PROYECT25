@@ -182,7 +182,7 @@ def show_buyer_panel(client_email):
                 st.markdown(f"**📅 Fecha:** {created_at}")
                 st.markdown(f"**✅ Tipo:** {kind.upper()}")
 
-        show_common_actions()  # Acciones comunes para compradores
+        show_common_actions(context=f"buyer_{trans_id}")  # Acciones comunes para compradores
 
 def show_owner_panel_v2(client_email):
     """Panel para propietarios con fincas"""
@@ -276,7 +276,7 @@ def show_owner_panel_v2(client_email):
             st.success("🏠 Redirigiendo a subida de fincas...")
             st.info("Accede desde el menú lateral 'Propietarios (Subir Fincas)'")
     
-    show_common_actions()  # Acciones comunes para todos
+    show_common_actions(context="owner")  # Acciones comunes para todos
 
 def show_buyer_actions():
     """Acciones comunes para compradores"""
@@ -326,7 +326,7 @@ def show_buyer_actions():
 
 # Añadir import necesario
 import os
-def show_common_actions():
+def show_common_actions(context="common"):
     """Acciones comunes para compradores y propietarios"""
     st.markdown("---")
     
@@ -338,14 +338,14 @@ def show_common_actions():
     with col1:
         st.markdown("#### 🏡 DISEÑAR VIVIENDA")
         st.write("Crea tu casa ideal con nuestros arquitectos")
-        if st.button("🚀 Ir al Diseñador", key="go_designer_panel_2", use_container_width=True, type="primary"):
+        if st.button("🚀 Ir al Diseñador", key=f"go_designer_panel_2_{context}", use_container_width=True, type="primary"):
             st.success("🎨 Redirigiendo al Diseñador de Vivienda...")
             st.info("En esta sección podrás diseñar tu vivienda personalizada")
     
     with col2:
         st.markdown("#### 📐 VER PROYECTOS")
         st.write("Explora proyectos compatibles con tu finca")
-        if st.button("📋 Ver Proyectos", key="go_projects_panel", use_container_width=True, type="primary"):
+        if st.button("📋 Ver Proyectos", key=f"go_projects_panel_{context}", use_container_width=True, type="primary"):
             st.success("📐 Mostrando proyectos disponibles...")
             st.info("Aquí verás todos los proyectos arquitectónicos compatibles")
     
@@ -357,18 +357,18 @@ def show_common_actions():
     col_a, col_b, col_c = st.columns(3)
     
     with col_a:
-        if st.button("🗺️ Volver al Marketplace", key="back_to_marketplace", use_container_width=True):
+        if st.button("🗺️ Volver al Marketplace", key=f"back_to_marketplace_{context}", use_container_width=True):
             st.success("🏠 Volviendo al marketplace...")
             st.info("Puedes seguir explorando más fincas y proyectos")
     
     with col_b:
-        if st.button("📧 Contactar Soporte", key="contact_support_panel", use_container_width=True):
+        if st.button("📧 Contactar Soporte", key=f"contact_support_panel_{context}", use_container_width=True):
             st.info("📧 Contacto con soporte:")
             st.write("**Email:** soporte@archirapid.com")
             st.write("**Teléfono:** +34 900 123 456")
     
     with col_c:
-        if st.button("📄 Descargar Documentación", key="download_docs", use_container_width=True):
+        if st.button("📄 Descargar Documentación", key=f"download_docs_{context}", use_container_width=True):
             st.info("📄 Descarga disponible próximamente")
             st.write("Pronto podrás descargar todos los documentos de tu transacción")
 

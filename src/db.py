@@ -1149,10 +1149,12 @@ def get_featured_projects(limit=6):
             architect_name,
             price,
             area_m2,
-            file_path,
+            foto_principal,
+            galeria_fotos,
             characteristics_json,
             created_at
         FROM projects
+        WHERE is_active = 1 OR is_active IS NULL
         ORDER BY created_at DESC
         LIMIT ?
         """
@@ -1162,6 +1164,20 @@ def get_featured_projects(limit=6):
         
         projects = []
         for row in rows:
+            # Procesar galeria_fotos si es JSON
+            galeria = []
+            if row['galeria_fotos']:
+                try: 
+                    galeria = json.loads(row['galeria_fotos']) if isinstance(row['galeria_fotos'], str) else row['galeria_fotos']
+                except: 
+                    galeria = [row['galeria_fotos']] if row['galeria_fotos'] else []
+            
+            # Construir lista de fotos: principal + galería
+            fotos = []
+            if row['foto_principal']:
+                fotos.append(row['foto_principal'])
+            fotos.extend(galeria)
+            
             project = {
                 'id': row['id'],
                 'title': row['title'],
@@ -1170,7 +1186,7 @@ def get_featured_projects(limit=6):
                 'company': '',  # No existe en la tabla
                 'price': row['price'],
                 'area_m2': row['area_m2'],
-                'files': {'fotos': [row['file_path']] if row['file_path'] else []},
+                'files': {'fotos': fotos},
                 'characteristics': json.loads(row['characteristics_json']) if row['characteristics_json'] else {},
                 'created_at': row['created_at']
             }

@@ -31,6 +31,15 @@ if "selected_plot" in params:
     except Exception as e:
         st.error(f"Error mostrando detalles de la finca: {e}")
 
+if "selected_project" in params:
+    try:
+        project_id = params["selected_project"]
+        from modules.marketplace.project_detail import show_project_detail_page
+        show_project_detail_page(project_id)
+        st.stop()  # Detener la ejecución para no mostrar el resto de la app
+    except Exception as e:
+        st.error(f"Error mostrando detalles del proyecto: {e}")
+
 @st.cache_resource
 def three_html_for(url_3d: str, project_id: str = "") -> str:
     three_html = """
@@ -421,15 +430,24 @@ if selected_page == "Home":
             cols = st.columns(3)
             for idx, p in enumerate(projects):
                 with cols[idx % 3]:
-                    files = p.get('files', {})
-                    fotos = files.get('fotos', [])
-                    thumbnail = f"uploads/{os.path.basename(fotos[0])}" if fotos else "assets/fincas/image1.jpg"
+                    # Usar la misma lógica que en plot_detail.py para obtener imágenes válidas
+                    from modules.marketplace.plot_detail import get_project_images
+                    
+                    # Convertir el formato del proyecto para que sea compatible con get_project_images
+                    proyecto_compat = {
+                        'foto_principal': p.get('files', {}).get('fotos', [])[0] if p.get('files', {}).get('fotos') else None,
+                        'galeria_fotos': p.get('files', {}).get('fotos', [])[1:] if p.get('files', {}).get('fotos') else []
+                    }
+                    
+                    project_images = get_project_images(proyecto_compat)
+                    thumbnail = project_images[0] if project_images else "assets/fincas/image1.jpg"
                     
                     st.image(thumbnail, width=250)
                     st.subheader(p.get('title', 'Proyecto'))
                     st.write(f"**€{p.get('price', 0):,.0f}** | {p.get('area_m2', 0)} m²")
                     if st.button("Ver Detalles", key=f"proj_home_{p['id']}"):
-                        st.session_state.selected_proj = p['id']
+                        # Abrir en "nueva ventana" usando query params
+                        st.query_params["selected_project"] = p['id']
                         st.rerun()
         else:
             st.info("No hay proyectos arquitectónicos disponibles aún.")

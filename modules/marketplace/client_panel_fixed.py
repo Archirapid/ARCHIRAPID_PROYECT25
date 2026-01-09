@@ -59,7 +59,7 @@ def main():
         
         if st.button("Acceder", type="primary"):
             if email:
-                # Verificar si el email tiene transacciones O es propietario con fincas
+                # Verificar si el email tiene transacciones, propiedades O está registrado como cliente
                 conn = db_conn()
                 cursor = conn.cursor()
                 
@@ -74,21 +74,40 @@ def main():
                 else:
                     owner_plots = []
                 
+                # Si no tiene transacciones ni propiedades, verificar si está registrado como cliente
+                is_registered_client = False
+                if not transactions and not owner_plots:
+                    cursor.execute("SELECT id, name FROM clients WHERE email = ?", (email,))
+                    client_record = cursor.fetchone()
+                    is_registered_client = client_record is not None
+                
                 conn.close()
                 
-                # Permitir acceso si tiene transacciones O fincas como propietario
-                if transactions or owner_plots:
+                # Permitir acceso si tiene transacciones, fincas como propietario O está registrado como cliente
+                if transactions or owner_plots or is_registered_client:
                     st.session_state["client_logged_in"] = True
                     st.session_state["client_email"] = email
-                    st.session_state["user_role"] = "buyer" if transactions else "owner"
+                    
+                    # Determinar el rol basado en la prioridad: transacciones > propiedades > cliente registrado
+                    if transactions:
+                        user_role = "buyer"
+                        role_text = "comprador"
+                    elif owner_plots:
+                        user_role = "owner" 
+                        role_text = "propietario"
+                    else:
+                        # Cliente registrado sin transacciones ni propiedades
+                        user_role = "buyer"  # Por defecto buyer para poder comprar proyectos
+                        role_text = "cliente registrado"
+                    
+                    st.session_state["user_role"] = user_role
                     st.session_state["has_transactions"] = len(transactions) > 0
                     st.session_state["has_properties"] = len(owner_plots) > 0
                     
-                    role_text = "comprador" if transactions else "propietario"
                     st.success(f"✅ Acceso concedido como {role_text} para {email}")
                     st.rerun()
                 else:
-                    st.error("No se encontraron transacciones ni propiedades para este email")
+                    st.error("No se encontraron transacciones, propiedades ni registro para este email")
             else:
                 st.error("Por favor introduce tu email")
         

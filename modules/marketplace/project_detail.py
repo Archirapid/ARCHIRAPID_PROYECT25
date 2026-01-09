@@ -144,12 +144,15 @@ def show_project_detail_page(project_id: str):
 
     # Botón "Saber más" - Registro/Login
     st.header("🔍 ¿Interesado en este proyecto?")
-    st.info("Para ver planos detallados, ficha técnica completa, archivos 3D y realidad virtual, regístrate como cliente.")
-
+    
     # Verificar si el usuario ya está logueado
     client_logged_in = st.session_state.get("client_logged_in", False)
+    client_email = st.session_state.get("client_email", "")
 
-    if client_logged_in:
+    if client_logged_in and client_email:
+        st.success(f"✅ **Bienvenido de vuelta, {client_email}**")
+        st.info("Ya puedes acceder al portal completo del cliente con todos los detalles del proyecto.")
+        
         # Usuario ya logueado - ir al panel
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
@@ -159,6 +162,8 @@ def show_project_detail_page(project_id: str):
                 st.session_state["selected_project_for_panel"] = project_id
                 st.rerun()
     else:
+        st.info("Para ver planos detallados, ficha técnica completa, archivos 3D y realidad virtual, regístrate como cliente.")
+        
         # Usuario no logueado - mostrar formulario de registro rápido
         st.subheader("📝 Regístrate para acceder")
 

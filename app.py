@@ -19,6 +19,18 @@ from src import db as _db
 # Detectar si hay una finca seleccionada en los parámetros de consulta
 params = st.query_params
 
+# Detectar navegación al panel de cliente desde project_detail
+if st.session_state.get("navigate_to_client_panel"):
+    # Limpiar el flag de navegación
+    del st.session_state["navigate_to_client_panel"]
+    # Forzar selección de página del panel de cliente
+    st.session_state["selected_page"] = "👤 Panel de Cliente"
+    # Si hay proyecto seleccionado, mantenerlo en session_state
+    if "selected_project_for_panel" in st.session_state:
+        st.query_params["selected_project"] = st.session_state["selected_project_for_panel"]
+        del st.session_state["selected_project_for_panel"]
+    st.rerun()
+
 # Detectar página seleccionada por query param
 page_from_query = params.get("page")
 

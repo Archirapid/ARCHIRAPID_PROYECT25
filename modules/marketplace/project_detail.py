@@ -154,8 +154,9 @@ def show_project_detail_page(project_id: str):
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             if st.button("👁️ Acceder al Portal de Cliente", width='stretch', type="primary"):
-                st.query_params["page"] = "👤 Panel de Cliente"
-                st.query_params["selected_project"] = project_id
+                # Usar session_state para indicar navegación al panel de cliente
+                st.session_state["navigate_to_client_panel"] = True
+                st.session_state["selected_project_for_panel"] = project_id
                 st.rerun()
     else:
         # Usuario no logueado - mostrar formulario de registro rápido
@@ -216,9 +217,9 @@ def show_project_detail_page(project_id: str):
                         st.session_state["has_transactions"] = False
                         st.session_state["has_properties"] = False
 
-                        # Ir al panel de cliente con proyecto preseleccionado
-                        st.query_params["page"] = "👤 Panel de Cliente"
-                        st.query_params["selected_project"] = project_id
+                        # Ir al panel de cliente con proyecto preseleccionado usando session_state
+                        st.session_state["navigate_to_client_panel"] = True
+                        st.session_state["selected_project_for_panel"] = project_id
                         st.rerun()
 
                     except Exception as e:

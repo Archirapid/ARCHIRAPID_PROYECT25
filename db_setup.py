@@ -211,8 +211,16 @@ def init_db():
     )
     """)
 
-    # Insertar planes iniciales sólo si la tabla `planes` está vacía
-    insertar_planes_iniciales(conn)
+    # Tabla de intereses de clientes (proyectos guardados)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS client_interests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(email, project_id)
+    )
+    """)
     conn.commit()
     conn.close()
     print(f"DB initialized at {DB_PATH}")

@@ -221,6 +221,17 @@ def show_project_detail_page(project_id: str):
                             st.success("✅ Registro completado. Accediendo al portal...")
 
                         conn.commit()
+
+                        # Guardar interés en el proyecto
+                        try:
+                            cursor.execute("""
+                                INSERT OR IGNORE INTO client_interests (email, project_id, created_at)
+                                VALUES (?, ?, datetime('now'))
+                            """, (email, project_id))
+                            conn.commit()
+                        except Exception as e:
+                            st.warning(f"No se pudo guardar el interés: {e}")
+
                         conn.close()
 
                         # Auto-login

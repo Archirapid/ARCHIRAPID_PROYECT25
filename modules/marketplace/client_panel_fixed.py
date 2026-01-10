@@ -506,7 +506,66 @@ def show_selected_project_panel(client_email: str, project_id: str):
             st.write("Teléfono: +34 900 123 456")
 
 def show_buyer_panel(client_email):
-    """Panel para compradores con transacciones"""
+    """Panel para compradores con transacciones e intereses"""
+    
+    # Pestañas para organizar el contenido
+    tab_intereses, tab_transacciones = st.tabs(["⭐ Mis Proyectos de Interés", "📋 Mis Transacciones"])
+    
+    with tab_intereses:
+        show_client_interests(client_email)
+    
+    with tab_transacciones:
+        show_client_transactions(client_email)
+
+def show_client_interests(client_email):
+    """Mostrar proyectos de interés del cliente"""
+    st.subheader("⭐ Mis Proyectos de Interés")
+    
+    conn = db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT ci.project_id, ci.created_at, p.title, p.m2_construidos, p.price, p.foto_principal
+        FROM client_interests ci
+        JOIN projects p ON ci.project_id = p.id
+        WHERE ci.email = ?
+        ORDER BY ci.created_at DESC
+    """, (client_email,))
+    
+    interests = cursor.fetchall()
+    conn.close()
+    
+    if not interests:
+        st.info("No tienes proyectos guardados como de interés. Explora el marketplace para encontrar proyectos que te gusten.")
+        return
+    
+    # Mostrar proyectos de interés
+    for interest in interests:
+        project_id, saved_at, title, m2, price, foto = interest
+        
+        with st.expander(f"🏗️ {title}", expanded=True):
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                if foto:
+                    try:
+                        st.image(foto, width=200)
+                    except:
+                        st.image("assets/fincas/image1.jpg", width=200)
+                else:
+                    st.image("assets/fincas/image1.jpg", width=200)
+            
+            with col2:
+                st.markdown(f"**🏗️ Proyecto:** {title}")
+                st.markdown(f"**📏 Superficie:** {m2} m²" if m2 else "**📏 Superficie:** N/D")
+                st.markdown(f"**💰 Precio:** €{price:,.0f}" if price else "**💰 Precio:** N/D")
+                st.markdown(f"**📅 Guardado:** {saved_at}")
+                
+                if st.button("Ver Detalles", key=f"view_interest_{project_id}"):
+                    st.query_params["selected_project"] = project_id
+                    st.rerun()
+
+def show_client_transactions(client_email):
+    """Mostrar transacciones del cliente (fincas compradas)"""
     st.subheader("📋 Mis Transacciones")
     
     # Obtener transacciones del cliente

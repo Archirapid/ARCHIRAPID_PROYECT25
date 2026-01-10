@@ -144,9 +144,9 @@ def main():
             return
         
         # Contenido diferente según el rol
-        if user_role == "buyer" and has_transactions:
+        if user_role == "buyer":
             show_buyer_panel(client_email)
-        elif user_role == "owner" and has_properties:
+        elif user_role == "owner":
             show_owner_panel_v2(client_email)
         else:
             st.error("Error: No se pudo determinar el tipo de panel apropiado")

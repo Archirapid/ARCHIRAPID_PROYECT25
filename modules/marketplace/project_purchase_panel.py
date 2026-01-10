@@ -58,7 +58,7 @@ def show_project_purchase_panel(project_id:  str, client_email: str):
     
     with col_img:
         if foto_principal and os.path.exists(foto_principal):
-            st.image(foto_principal, use_column_width=True, caption="Vista principal")
+            st.image(foto_principal, use_container_width=True, caption="Vista principal")
         else:
             st.info("📷 Sin imagen")
     
@@ -151,7 +151,7 @@ def show_project_purchase_panel(project_id:  str, client_email: str):
     if total > 0:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button("🛒 COMPRAR AHORA", type="primary", use_column_width=True):
+            if st.button("🛒 COMPRAR AHORA", type="primary", use_container_width=True):
                 st.success("✅ Compra realizada (SIMULADO - MVP)")
                 st.balloons()
                 st.info("Recibirás un email con los detalles")

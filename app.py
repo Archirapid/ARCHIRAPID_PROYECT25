@@ -23,16 +23,34 @@ params = st.query_params
 if st.session_state.get("navigate_to_client_panel"):
     # Limpiar el flag de navegación
     del st.session_state["navigate_to_client_panel"]
-    # Forzar selección de página del panel de cliente
-    st.session_state["selected_page"] = "👤 Panel de Cliente"
-    # Si hay proyecto seleccionado, mantenerlo en session_state
+    # Usar el mismo mecanismo que el botón "Acceso Clientes" en HOME
+    st.query_params["page"] = "👤 Panel de Cliente"
+    # Si hay proyecto seleccionado, mantenerlo en query_params
     if "selected_project_for_panel" in st.session_state:
-        st.query_params["selected_project"] = st.session_state["selected_project_for_panel"]
+        if "selected_project" in st.query_params:
+            del st.query_params["selected_project"]
         del st.session_state["selected_project_for_panel"]
     st.rerun()
 
 # Detectar página seleccionada por query param
 page_from_query = params.get("page")
+
+# Interceptar páginas especiales por query param
+if page_from_query == "🛒 Comprar Proyecto":
+    try:
+        import modules.marketplace.project_purchase_panel as project_purchase_panel
+        project_purchase_panel.main()
+        st.stop()
+    except Exception as e:
+        st.error(f"Error mostrando panel de compra: {e}")
+
+if page_from_query == "👤 Panel de Cliente":
+    try:
+        from modules.marketplace import client_panel_fixed as client_panel
+        client_panel.main()
+        st.stop()
+    except Exception as e:
+        st.error(f"Error mostrando panel de cliente: {e}")
 
 if "selected_plot" in params:
     try:
@@ -43,7 +61,7 @@ if "selected_plot" in params:
     except Exception as e:
         st.error(f"Error mostrando detalles de la finca: {e}")
 
-if "selected_project" in params:
+if "selected_project" in params and not page_from_query: 
     try:
         project_id = params["selected_project"]
         from modules.marketplace.project_detail import show_project_detail_page
@@ -133,7 +151,7 @@ def three_html_for(url_3d: str, project_id: str = "") -> str:
 PAGES = {
     "Home":  ("modules.marketplace.marketplace", "main"),
     "Propietarios (Subir Fincas)": ("modules.marketplace.owners", "main"),
-    "Arquitectos (Marketplace)": ("modules.marketplace.marketplace_upload", None),
+    "Arquitectos (Marketplace)": ("modules.marketplace.marketplace_upload", "main"),
     "Intranet": ("modules.marketplace.intranet", "main"),
     "Fincas Guardadas": ("modules.marketplace.plots_table", "main"),
 }
@@ -315,15 +333,8 @@ if "vista_actual" not in st.session_state:
 
 # Añadir botón aditivo en el sidebar para abrir el Portal Cliente (no conectado por defecto)
 if st.sidebar.button("📂 Portal Cliente"):
-    st.session_state["vista_actual"] = "portal_cliente"
-
-# Si el usuario ha seleccionado explícitamente el Portal Cliente, mostrarlo y detener el flujo
-if st.session_state.get("vista_actual") == "portal_cliente":
-    try:
-        render_portal_cliente_proyecto()
-    except Exception as _e:
-        st.error("Error mostrando el Portal Cliente: " + str(_e))
-    st.stop()
+    st.query_params["page"] = "👤 Panel de Cliente"
+    st.rerun()
 
 
 

@@ -157,9 +157,17 @@ def show_project_detail_page(project_id: str):
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             if st.button("👁️ Acceder al Portal de Cliente", width='stretch', type="primary"):
-                # Usar session_state para indicar navegación al panel de cliente
-                st.session_state["navigate_to_client_panel"] = True
+                # Guardar datos del proyecto y cliente en session_state
+                st.session_state["selected_project_id"] = project_id
                 st.session_state["selected_project_for_panel"] = project_id
+                st.session_state["client_logged_in"] = True
+                st.session_state["buyer_email"] = client_email
+                
+                # Navegar usando query params (mismo método que el botón "Acceso Clientes" en HOME)
+                st.query_params.update({
+                    "page": "👤 Panel de Cliente",
+                    "selected_project": project_id
+                })
                 st.rerun()
     else:
         st.info("Para ver planos detallados, ficha técnica completa, archivos 3D y realidad virtual, regístrate como cliente.")
@@ -222,9 +230,18 @@ def show_project_detail_page(project_id: str):
                         st.session_state["has_transactions"] = False
                         st.session_state["has_properties"] = False
 
-                        # Ir al panel de cliente con proyecto preseleccionado usando session_state
-                        st.session_state["navigate_to_client_panel"] = True
-                        st.session_state["selected_project_for_panel"] = project_id
+                        # ═══════════════════════════════════════════════════════════════
+                        # NAVEGAR AL PANEL DE COMPRA CON PROYECTO SELECCIONADO
+                        # ═══════════════════════════════════════════════════════════════
+                        st.query_params.update({
+                            "page": "🛒 Comprar Proyecto",
+                            "selected_project": project_id
+                        })
+                        
+                        # Pequeña pausa visual antes de recargar
+                        import time
+                        time.sleep(0.5)
+                        
                         st.rerun()
 
                     except Exception as e:
@@ -237,3 +254,39 @@ def show_project_detail_page(project_id: str):
     if st.button("← Volver al Inicio"):
         st.query_params.clear()
         st.rerun()
+
+
+def get_project_by_id(project_id: str) -> dict:
+    """Obtiene los datos básicos de un proyecto por su ID"""
+    try:
+        conn = db.get_conn()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, title, description, m2_construidos, area_m2, price, estimated_cost,
+                   price_memoria, price_cad, property_type, foto_principal, galeria_fotos,
+                   memoria_pdf, planos_pdf, planos_dwg, modelo_3d_glb, vr_tour, energy_rating,
+                   architect_name, characteristics_json, habitaciones, banos, garaje, plantas,
+                   m2_parcela_minima, m2_parcela_maxima, certificacion_energetica, tipo_proyecto
+            FROM projects
+            WHERE id = ?
+        """, (project_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return None
+
+        # Retornar datos básicos del proyecto
+        return {
+            'id': row[0],
+            'nombre': row[1],
+            'descripcion': row[2],
+            'total_m2': row[3] or row[4],  # Usar m2_construidos o area_m2
+            'coste_estimado': row[6] or 0,  # estimated_cost
+            'imagen_principal': row[10],  # foto_principal
+            'tipo_propiedad': row[9],  # property_type
+            'precio': row[5] or 0,  # price
+        }
+    except Exception as e:
+        print(f"Error obteniendo proyecto {project_id}: {e}")
+        return None

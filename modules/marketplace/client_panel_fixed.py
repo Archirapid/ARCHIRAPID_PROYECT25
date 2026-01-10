@@ -127,14 +127,9 @@ def main():
         with st.sidebar:
             if st.button("🚪 Cerrar Sesión", use_container_width=True):
                 st.session_state["client_logged_in"] = False
-                if "client_email" in st.session_state:
-                    del st.session_state["client_email"]
-                if "user_role" in st.session_state:
-                    del st.session_state["user_role"]
-                if "has_transactions" in st.session_state:
-                    del st.session_state["has_transactions"]
-                if "has_properties" in st.session_state:
-                    del st.session_state["has_properties"]
+                for key in ["client_email", "user_role", "has_transactions", "has_properties", "selected_project_for_panel"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
                 st.rerun()
         
         # Mostrar rol del usuario
@@ -142,15 +137,16 @@ def main():
         role_text = "Comprador" if user_role == "buyer" else "Propietario"
         st.success(f"{role_emoji} **Bienvenido/a {role_text}** - {client_email}")
         
+        # 🔍 MODO 3: Usuario interesado en un proyecto (sin transacciones)
+        selected_project_for_panel = st.session_state.get("selected_project_for_panel")
+        if user_role == "buyer" and not has_transactions and selected_project_for_panel:
+            show_project_interest_panel(selected_project_for_panel)
+            return
+        
         # Contenido diferente según el rol
-        if selected_project:
-            # Mostrar proyecto seleccionado con detalles completos
-            show_selected_project_panel(client_email, selected_project)
-        elif user_role == "buyer" and has_transactions:
-            # Panel para compradores con transacciones
+        if user_role == "buyer" and has_transactions:
             show_buyer_panel(client_email)
         elif user_role == "owner" and has_properties:
-            # Panel para propietarios con fincas
             show_owner_panel_v2(client_email)
         else:
             st.error("Error: No se pudo determinar el tipo de panel apropiado")
@@ -772,3 +768,29 @@ def show_common_actions(context="common"):
 
 # Añadir import necesario
 import os
+
+
+def show_project_interest_panel(project_id):
+    st.subheader("🏗️ Proyecto Seleccionado")
+
+    from modules.marketplace.project_detail import get_project_by_id
+    project = get_project_by_id(project_id)
+
+    if not project:
+        st.error("Proyecto no encontrado")
+        return
+
+    st.markdown(f"### {project['nombre']}")
+    st.markdown(f"**Superficie:** {project['total_m2']} m²")
+    st.markdown(f"**Coste estimado:** €{project['coste_estimado']:,.0f}")
+
+    img = project.get("imagen_principal")
+    if img:
+        st.image(f"assets/projects/{img}", use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("💳 Acciones")
+
+    if st.button("Comprar Proyecto", type="primary"):
+        st.success("Compra simulada realizada")
+        st.info("Ahora puedes descargar memoria, planos y archivos 3D")

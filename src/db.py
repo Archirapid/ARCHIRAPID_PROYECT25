@@ -433,6 +433,16 @@ def ensure_tables():
         except Exception:
             pass
 
+        # Tabla client_interests (intereses de clientes en proyectos)
+        c.execute("""CREATE TABLE IF NOT EXISTS client_interests (
+            id TEXT PRIMARY KEY,
+            email TEXT,
+            project_id TEXT,
+            created_at TEXT,
+            FOREIGN KEY (email) REFERENCES clients(email),
+            FOREIGN KEY (project_id) REFERENCES projects(id)
+        )""")
+
 def insert_plot(data: Dict):
     print("DEBUG insert_plot data:", data)
     ensure_tables()

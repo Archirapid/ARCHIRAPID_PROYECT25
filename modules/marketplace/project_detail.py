@@ -149,26 +149,48 @@ def show_project_detail_page(project_id: str):
     # RESUMEN INTELIGENTE CON IA
     st.header("🤖 Resumen Inteligente con IA")
 
-    if st.button("Generar Resumen del Proyecto con IA", key="btn_ia_summary"):
+    if st.button("Generar Resumen Completo del Proyecto con IA", key="btn_ia_summary"):
         if project_data.get("memoria_pdf"):
             try:
                 import PyPDF2
                 with open(project_data["memoria_pdf"], "rb") as f:
                     reader = PyPDF2.PdfReader(f)
                     text = ""
-                    for page in reader.pages[:5]:  # Limitar a primeras 5 páginas para no exceder tokens
+                    for page in reader.pages[:10]:  # Más páginas para usuarios logueados
                         text += page.extract_text() + "\n"
 
                 if text.strip():
-                    prompt = f"Resume este proyecto arquitectónico en español, destacando características principales, distribución de espacios, materiales utilizados y aspectos técnicos relevantes. Sé conciso pero informativo:\n\n{text[:3000]}"
-                    
+                    # Prompt más detallado pero protegido para usuarios logueados
+                    prompt = f"""Analiza este proyecto arquitectónico y proporciona un resumen completo y detallado en español.
+
+                    INCLUIR:
+                    - Estilo arquitectónico y filosofía de diseño
+                    - Distribución general de espacios y ambientes
+                    - Materiales y acabados utilizados
+                    - Aspectos estéticos y de iluminación
+                    - Características sostenibles y eficiencia energética
+                    - Elementos innovadores o diferenciadores
+                    - Contexto y emplazamiento recomendado
+
+                    EXCLUIR COMPLETAMENTE:
+                    - Dimensiones exactas, medidas o proporciones específicas
+                    - Datos constructivos técnicos detallados
+                    - Información que permita replicar o copiar el proyecto
+                    - Detalles de estructura o cimentación
+                    - Especificaciones técnicas de instalaciones
+
+                    Sé informativo pero protege la propiedad intelectual del proyecto.
+
+                    Texto del proyecto:
+                    {text[:4000]}"""
+
                     from modules.marketplace import ai_engine_groq as ai
                     summary = ai.generate_text(prompt)
-                    
+
                     if "Error:" in summary:
                         st.error(summary)
                     else:
-                        st.success("✅ Resumen generado por IA:")
+                        st.success("✅ Resumen completo generado por IA:")
                         st.write(summary)
                 else:
                     st.warning("No se pudo extraer texto del PDF.")
@@ -178,6 +200,204 @@ def show_project_detail_page(project_id: str):
                 st.error(f"Error generando resumen: {e}")
         else:
             st.info("No hay memoria PDF disponible para este proyecto.")
+
+    # VISUALIZACIONES DEL PROYECTO
+    st.header("🏗️ Visualizaciones del Proyecto")
+
+    tab_3d, tab_vr, tab_fotos = st.tabs(["🎥 3D", "🥽 VR", "🖼️ Fotos / Planos"])
+
+    with tab_3d:
+        if client_logged_in:
+            st.markdown("#### 🎥 Visor 3D del Proyecto")
+            if project_data.get("modelo_3d_glb"):
+                # Mostrar visor 3D completo
+                rel_path = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
+                model_url = f"http://127.0.0.1:8765/{rel_path}".replace(" ", "%20")
+                try:
+                    # Usar la función three_html_for definida en app.py
+                    from app import three_html_for
+                    html_final = three_html_for(model_url, str(project_data["id"]))
+                    st.components.v1.html(html_final, height=700, scrolling=False)
+                except Exception as e:
+                    st.error(f"Error cargando visor 3D: {e}")
+            else:
+                st.info("Este proyecto no tiene modelo 3D disponible.")
+        else:
+            st.info("🔒 Para ver el modelo 3D interactivo completo, regístrate como cliente.")
+            st.markdown("**Vista previa limitada:** Los modelos 3D se desbloquean tras registro.")
+
+    with tab_vr:
+        if client_logged_in:
+            st.markdown("#### 🥽 Visor de Realidad Virtual")
+            if project_data.get("modelo_3d_glb"):
+                rel = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
+                glb_url = f"http://127.0.0.1:8765/{rel}".replace(" ", "%20")
+                viewer_url = f"http://127.0.0.1:8765/static/vr_viewer.html?model={glb_url}"
+                st.markdown(
+                    f'<a href="{viewer_url}" target="_blank">'
+                    f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
+                    f"Abrir experiencia VR en nueva pestaña"
+                    f"</button></a>",
+                    unsafe_allow_html=True,
+                )
+                st.caption("Se abrirá el visor VR en una nueva pestaña. Requiere navegador con WebXR.")
+            else:
+                st.info("Este proyecto no tiene modelo VR disponible.")
+        else:
+            st.info("🔒 Para acceder a la experiencia VR completa, regístrate como cliente.")
+            st.markdown("**Vista previa:** VR disponible tras registro.")
+
+    with tab_fotos:
+        if client_logged_in:
+            st.markdown("#### 🖼️ Galería Completa de Fotos y Planos")
+            # Foto principal
+            if project_data.get("foto_principal"):
+                rel = project_data["foto_principal"].replace("\\", "/").lstrip("/")
+                url = f"http://127.0.0.1:8765/{rel}"
+                st.image(url, width=400, caption="Foto Principal")
+            # Galería adicional
+            if project_data.get("galeria_fotos"):
+                st.subheader("Galería Adicional")
+                for idx, foto in enumerate(project_data["galeria_fotos"]):
+                    if foto:
+                        rel = foto.replace("\\", "/").lstrip("/")
+                        url = f"http://127.0.0.1:8765/{rel}"
+                        st.image(url, width=300, caption=f"Imagen {idx + 1}")
+            # Planos
+            if project_data.get("planos_pdf") or project_data.get("planos_dwg"):
+                st.subheader("Planos Técnicos")
+                if project_data.get("planos_pdf"):
+                    st.download_button("📄 Descargar Planos PDF", data=open(project_data["planos_pdf"], "rb"), file_name="planos.pdf")
+                if project_data.get("planos_dwg"):
+                    st.download_button("📐 Descargar Planos DWG", data=open(project_data["planos_dwg"], "rb"), file_name="planos.dwg")
+        else:
+            st.info("🔒 Para ver la galería completa de fotos y planos, regístrate como cliente.")
+
+    # 🔍 BUSCAR PROYECTOS SIMILARES (solo para usuarios logueados)
+    if client_logged_in:
+        st.header("🔍 Buscar Proyectos Similares")
+        st.write("Encuentra otros proyectos que se ajusten a tus necesidades específicas")
+        
+        # Formulario de búsqueda
+        with st.form("similar_projects_form"):
+            st.markdown("### 🎯 Especifica tus criterios")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                presupuesto_max = st.number_input(
+                    "💰 Presupuesto máximo (€)", 
+                    min_value=0, 
+                    value=int(project_data.get('price') or 0), 
+                    step=10000,
+                    help="Precio máximo que estás dispuesto a pagar"
+                )
+                
+                area_deseada = st.number_input(
+                    "📐 Área de construcción deseada (m²)", 
+                    min_value=0, 
+                    value=int(project_data.get('m2_construidos') or 0), 
+                    step=10,
+                    help="Superficie aproximada que quieres construir"
+                )
+            
+            with col2:
+                parcela_disponible = st.number_input(
+                    "🏞️ Parcela disponible (m²)", 
+                    min_value=0, 
+                    value=int(project_data.get('m2_parcela_minima') or 0), 
+                    step=50,
+                    help="Tamaño de terreno que tienes disponible"
+                )
+                
+                # Checkbox para buscar solo proyectos que quepan
+                solo_compatibles = st.checkbox(
+                    "Solo proyectos compatibles con mi parcela", 
+                    value=True,
+                    help="Filtrar proyectos cuya parcela mínima sea ≤ a tu terreno disponible"
+                )
+            
+            # Botón de búsqueda
+            submitted = st.form_submit_button("🔍 Buscar Proyectos Similares", type="primary", width='stretch')
+        
+        # Procesar búsqueda
+        if submitted:
+            # Preparar parámetros
+            search_params = {
+                'client_budget': presupuesto_max if presupuesto_max > 0 else None,
+                'client_desired_area': area_deseada if area_deseada > 0 else None,
+                'client_parcel_size': parcela_disponible if parcela_disponible > 0 and solo_compatibles else None,
+                'client_email': client_email
+            }
+            
+            # Mostrar criterios de búsqueda
+            st.markdown("### 📋 Criterios de búsqueda aplicados:")
+            criterios = []
+            if search_params['client_budget']:
+                criterios.append(f"💰 Presupuesto ≤ €{search_params['client_budget']:,}")
+            if search_params['client_desired_area']:
+                criterios.append(f"📐 Área ≈ {search_params['client_desired_area']} m² (±20%)")
+            if search_params['client_parcel_size']:
+                criterios.append(f"🏞️ Parcela ≥ {search_params['client_parcel_size']} m²")
+            
+            if criterios:
+                for criterio in criterios:
+                    st.write(f"• {criterio}")
+            else:
+                st.info("No se aplicaron filtros específicos - mostrando todos los proyectos disponibles")
+            
+            # Buscar proyectos
+            with st.spinner("Buscando proyectos similares..."):
+                from modules.marketplace.compatibilidad import get_proyectos_compatibles
+                proyectos = get_proyectos_compatibles(**search_params)
+            
+            # Filtrar para excluir el proyecto actual
+            proyectos = [p for p in proyectos if str(p['id']) != str(project_id)]
+            
+            # Mostrar resultados
+            st.markdown(f"### 🏗️ Proyectos similares encontrados: {len(proyectos)}")
+            
+            if not proyectos:
+                st.warning("No se encontraron proyectos que cumplan con tus criterios. Prueba ampliando los límites.")
+            else:
+                # Mostrar proyectos en grid
+                cols = st.columns(2)
+                for idx, proyecto in enumerate(proyectos):
+                    with cols[idx % 2]:
+                        # Tarjeta de proyecto
+                        with st.container():
+                            # Imagen
+                            foto = proyecto.get('foto_principal')
+                            if foto:
+                                try:
+                                    st.image(foto, width=250, caption=proyecto['title'])
+                                except:
+                                    st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+                            else:
+                                st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+                            
+                            # Información básica
+                            st.markdown(f"**🏗️ {proyecto['title']}**")
+                            st.write(f"📐 **Área:** {proyecto.get('m2_construidos', proyecto.get('area_m2', 'N/D'))} m²")
+                            st.write(f"💰 **Precio:** €{proyecto.get('price', 0):,.0f}" if proyecto.get('price') else "💰 **Precio:** Consultar")
+                            
+                            # Arquitecto
+                            if proyecto.get('architect_name'):
+                                st.write(f"👨‍💼 **Arquitecto:** {proyecto['architect_name']}")
+                            
+                            # Compatibilidad
+                            if search_params['client_parcel_size'] and proyecto.get('m2_parcela_minima'):
+                                if proyecto['m2_parcela_minima'] <= search_params['client_parcel_size']:
+                                    st.success("✅ Compatible con tu parcela")
+                                else:
+                                    st.warning(f"⚠️ Necesita parcela ≥ {proyecto['m2_parcela_minima']} m²")
+                            
+                            # Botón de detalles
+                            if st.button("Ver Detalles", key=f"similar_detail_{proyecto['id']}", width='stretch'):
+                                st.query_params["selected_project"] = proyecto['id']
+                                st.rerun()
+                            
+                            st.markdown("---")
 
     # VISUALIZACIONES DEL PROYECTO
     st.header("🏗️ Visualizaciones del Proyecto")
@@ -265,27 +485,36 @@ def show_project_detail_page(project_id: str):
     client_email = st.session_state.get("client_email", "")
 
     if client_logged_in and client_email:
-        st.success(f"✅ **Bienvenido de vuelta, {client_email}**")
-        st.info("Ya puedes acceder al portal completo del cliente con todos los detalles del proyecto.")
-        
-        # Usuario ya logueado - ir al panel
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("👁️ Acceder al Portal de Cliente", width='stretch', type="primary"):
-                # Guardar datos del proyecto y cliente en session_state
-                st.session_state["selected_project_id"] = project_id
-                st.session_state["selected_project_for_panel"] = project_id
-                st.session_state["client_logged_in"] = True
-                st.session_state["buyer_email"] = client_email
-                
-                # Navegar usando query params (mismo método que el botón "Acceso Clientes" en HOME)
-                st.query_params.update({
-                    "page": "👤 Panel de Cliente",
-                    "selected_project": project_id
-                })
-                st.rerun()
+        # Si acabamos de registrarnos, ya hemos mostrado las opciones arriba
+        just_registered = st.session_state.get("just_registered", False)
+        if not just_registered:
+            st.success(f"✅ **Bienvenido de vuelta, {client_email}**")
+            st.info("Ya puedes acceder al portal completo del cliente con todos los detalles del proyecto.")
+            
+            # Usuario ya logueado - ir al panel
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("👁️ Acceder al Portal de Cliente", width='stretch', type="primary"):
+                    # Guardar datos del proyecto y cliente en session_state
+                    st.session_state["selected_project_id"] = project_id
+                    st.session_state["selected_project_for_panel"] = project_id
+                    st.session_state["client_logged_in"] = True
+                    st.session_state["buyer_email"] = client_email
+                    
+                    # Navegar usando query params (mismo método que el botón "Acceso Clientes" en HOME)
+                    st.query_params.update({
+                        "page": "👤 Panel de Cliente",
+                        "selected_project": project_id
+                    })
+                    st.rerun()
+        # Si acabamos de registrarnos, limpiar el flag pero continuar mostrando la página
+        else:
+            del st.session_state["just_registered"]
     else:
         st.info("Para ver planos detallados, ficha técnica completa, archivos 3D y realidad virtual, regístrate como cliente.")
+        
+        # 🔍 BUSCAR PROYECTOS COMPATIBLES (antes del registro)
+        show_advanced_project_search(client_email=None)
         
         # Usuario no logueado - mostrar formulario de registro rápido
         st.subheader("📝 Regístrate para acceder")
@@ -355,20 +584,8 @@ def show_project_detail_page(project_id: str):
                         st.session_state["user_role"] = "buyer"
                         st.session_state["has_transactions"] = False
                         st.session_state["has_properties"] = False
-
-                        # ═══════════════════════════════════════════════════════════════
-                        # NAVEGAR AL PANEL DE COMPRA CON PROYECTO SELECCIONADO
-                        # ═══════════════════════════════════════════════════════════════
-                        st.query_params.update({
-                            "page": "🛒 Comprar Proyecto",
-                            "selected_project": project_id
-                        })
-                        
-                        # Pequeña pausa visual antes de recargar
-                        import time
-                        time.sleep(0.5)
-                        
-                        st.rerun()
+                        st.session_state["just_registered"] = True  # Flag para saber que acabamos de registrarnos
+                        st.session_state["registration_success"] = True  # Flag para mostrar opciones después del formulario
 
                     except Exception as e:
                         st.error(f"Error en el registro: {e}")
@@ -376,10 +593,176 @@ def show_project_detail_page(project_id: str):
         st.markdown("---")
         st.info("💡 **¿Ya tienes cuenta?** Si has realizado compras anteriores, usa tu email para acceder directamente.")
 
+        # ═══════════════════════════════════════════════════════════════
+        # MOSTRAR OPCIONES DESPUÉS DE REGISTRO EXITOSO (FUERA DEL FORMULARIO)
+        # ═══════════════════════════════════════════════════════════════
+        if st.session_state.get("registration_success"):
+            # Limpiar el flag para no mostrarlo en futuras visitas
+            del st.session_state["registration_success"]
+            
+            st.success("🎉 **¡Registro completado exitosamente!**")
+            st.balloons()
+            
+            # Mensaje informativo claro
+            st.info("✅ **Ahora tienes acceso completo a este proyecto y a todo el portal de cliente.**")
+            
+            # Opciones claras para el usuario
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("👤 Ir a Mi Panel de Cliente", type="primary", width='stretch'):
+                    st.query_params.update({
+                        "page": "👤 Panel de Cliente",
+                        "selected_project": project_id
+                    })
+                    st.rerun()
+            
+            with col2:
+                if st.button("🔍 Seguir Explorando Proyectos", width='stretch'):
+                    st.query_params.clear()
+                    st.query_params["page"] = "Home"
+                    st.rerun()
+            
+            st.markdown("---")
+            st.markdown("### 🎯 ¿Qué puedes hacer ahora?")
+            st.markdown("• **Ver todos los detalles** del proyecto (planos, 3D, VR)")
+            st.markdown("• **Comprar proyectos** completos (PDF + CAD)")  
+            st.markdown("• **Acceder a tu panel** para gestionar todas tus compras")
+            st.markdown("• **Buscar más proyectos** compatibles con tus necesidades")
+            
+            st.markdown("---")
+
     # Botón volver
     if st.button("← Volver al Inicio"):
         st.query_params.clear()
         st.rerun()
+
+    # Detener la ejecución para evitar mostrar contenido adicional
+    st.stop()
+
+
+def show_advanced_project_search(client_email=None):
+    """Búsqueda avanzada de proyectos por criterios"""
+    st.subheader("🔍 Buscar Proyectos Arquitectónicos")
+    st.write("Encuentra proyectos compatibles con tus necesidades específicas")
+    
+    # Formulario de búsqueda
+    with st.form("advanced_search_form"):
+        st.markdown("### 🎯 Especifica tus criterios")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            presupuesto_max = st.number_input(
+                "💰 Presupuesto máximo (€)", 
+                min_value=0, 
+                value=0, 
+                step=10000,
+                help="Precio máximo que estás dispuesto a pagar por el proyecto completo"
+            )
+            
+            area_deseada = st.number_input(
+                "📐 Área de construcción deseada (m²)", 
+                min_value=0, 
+                value=0, 
+                step=10,
+                help="Superficie aproximada que quieres construir (±20% tolerancia)"
+            )
+        
+        with col2:
+            parcela_disponible = st.number_input(
+                "🏞️ Parcela disponible (m²)", 
+                min_value=0, 
+                value=0, 
+                step=50,
+                help="Tamaño de terreno que tienes disponible"
+            )
+            
+            # Checkbox para buscar solo proyectos que quepan
+            solo_compatibles = st.checkbox(
+                "Solo proyectos que quepan en mi parcela", 
+                value=True,
+                help="Filtrar proyectos cuya parcela mínima sea ≤ a tu terreno disponible"
+            )
+        
+        # Botón de búsqueda
+        submitted = st.form_submit_button("🔍 Buscar Proyectos", type="primary", width='stretch')
+    
+    # Procesar búsqueda
+    if submitted:
+        # Preparar parámetros
+        search_params = {
+            'client_budget': presupuesto_max if presupuesto_max > 0 else None,
+            'client_desired_area': area_deseada if area_deseada > 0 else None,
+            'client_parcel_size': parcela_disponible if parcela_disponible > 0 and solo_compatibles else None,
+            'client_email': client_email
+        }
+        
+        # Mostrar criterios de búsqueda
+        st.markdown("### 📋 Criterios de búsqueda aplicados:")
+        criterios = []
+        if search_params['client_budget']:
+            criterios.append(f"💰 Presupuesto ≤ €{search_params['client_budget']:,}")
+        if search_params['client_desired_area']:
+            criterios.append(f"📐 Área ≈ {search_params['client_desired_area']} m² (±20%)")
+        if search_params['client_parcel_size']:
+            criterios.append(f"🏞️ Parcela ≥ {search_params['client_parcel_size']} m²")
+        
+        if criterios:
+            for criterio in criterios:
+                st.write(f"• {criterio}")
+        else:
+            st.info("No se aplicaron filtros específicos - mostrando todos los proyectos disponibles")
+        
+        # Buscar proyectos
+        with st.spinner("Buscando proyectos compatibles..."):
+            from modules.marketplace.compatibilidad import get_proyectos_compatibles
+            proyectos = get_proyectos_compatibles(**search_params)
+        
+        # Mostrar resultados
+        st.markdown(f"### 🏗️ Resultados: {len(proyectos)} proyectos encontrados")
+        
+        if not proyectos:
+            st.warning("No se encontraron proyectos que cumplan con tus criterios. Prueba ampliando los límites.")
+            return
+        
+        # Mostrar proyectos en grid
+        cols = st.columns(2)
+        for idx, proyecto in enumerate(proyectos):
+            with cols[idx % 2]:
+                # Tarjeta de proyecto
+                with st.container():
+                    # Imagen
+                    foto = proyecto.get('foto_principal')
+                    if foto:
+                        try:
+                            st.image(foto, width=250, caption=proyecto['title'])
+                        except:
+                            st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+                    else:
+                        st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+                    
+                    # Información básica
+                    st.markdown(f"**🏗️ {proyecto['title']}**")
+                    st.write(f"📐 **Área:** {proyecto.get('m2_construidos', proyecto.get('area_m2', 'N/D'))} m²")
+                    st.write(f"💰 **Precio:** €{proyecto.get('price', 0):,.0f}" if proyecto.get('price') else "💰 **Precio:** Consultar")
+                    
+                    # Arquitecto
+                    if proyecto.get('architect_name'):
+                        st.write(f"👨‍💼 **Arquitecto:** {proyecto['architect_name']}")
+                    
+                    # Compatibilidad
+                    if search_params['client_parcel_size'] and proyecto.get('m2_parcela_minima'):
+                        if proyecto['m2_parcela_minima'] <= search_params['client_parcel_size']:
+                            st.success("✅ Compatible con tu parcela")
+                        else:
+                            st.warning(f"⚠️ Necesita parcela ≥ {proyecto['m2_parcela_minima']} m²")
+                    
+                    # Botón de detalles
+                    if st.button("Ver Detalles", key=f"search_detail_{proyecto['id']}", width='stretch'):
+                        st.query_params["selected_project"] = proyecto['id']
+                        st.rerun()
+                    
+                    st.markdown("---")
 
 
 def get_project_by_id(project_id: str) -> dict:

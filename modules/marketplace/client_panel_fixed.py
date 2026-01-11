@@ -125,7 +125,7 @@ def main():
         
         # Botón de cerrar sesión en sidebar
         with st.sidebar:
-            if st.button("🚪 Cerrar Sesión", use_container_width=True):
+            if st.button("🚪 Cerrar Sesión", width='stretch', key="logout_button"):
                 st.session_state["client_logged_in"] = False
                 for key in ["client_email", "user_role", "has_transactions", "has_properties", "selected_project_for_panel"]:
                     if key in st.session_state:
@@ -140,7 +140,7 @@ def main():
         # 🔍 MODO 3: Usuario interesado en un proyecto (sin transacciones)
         selected_project_for_panel = st.session_state.get("selected_project_for_panel")
         if user_role == "buyer" and not has_transactions and selected_project_for_panel:
-            show_project_interest_panel(selected_project_for_panel)
+            show_selected_project_panel(client_email, selected_project_for_panel)
             return
         
         # Contenido diferente según el rol
@@ -505,21 +505,6 @@ def show_selected_project_panel(client_email: str, project_id: str):
             st.write("Email: proyectos@archirapid.com")
             st.write("Teléfono: +34 900 123 456")
 
-def show_buyer_panel(client_email):
-    """Panel para compradores con transacciones e intereses"""
-    
-    # Pestañas para organizar el contenido
-    tab_intereses, tab_transacciones, tab_busqueda = st.tabs(["⭐ Mis Proyectos de Interés", "📋 Mis Transacciones", "🔍 Buscar Proyectos"])
-    
-    with tab_intereses:
-        show_client_interests(client_email)
-    
-    with tab_transacciones:
-        show_client_transactions(client_email)
-    
-    with tab_busqueda:
-        show_advanced_project_search(client_email)
-
 def show_client_interests(client_email):
     """Mostrar proyectos de interés del cliente"""
     st.subheader("⭐ Mis Proyectos de Interés")
@@ -639,6 +624,26 @@ def show_client_transactions(client_email):
                 st.markdown("---")
 
         show_common_actions(context=f"buyer_{trans_id}")  # Acciones comunes para compradores
+
+def show_buyer_panel(client_email):
+    """Panel principal para compradores"""
+    st.header("🛒 Panel de Comprador")
+    
+    # Tabs para diferentes secciones
+    tab1, tab2, tab3 = st.tabs(["🔍 Buscar Proyectos", "📋 Mis Intereses", "📊 Mis Transacciones"])
+    
+    with tab1:
+        # Búsqueda avanzada de proyectos
+        show_advanced_project_search(client_email)
+    
+    with tab2:
+        # Mostrar proyectos guardados/interesantes
+        show_client_interests(client_email)
+    
+    with tab3:
+        # Mostrar transacciones realizadas
+        show_client_transactions(client_email)
+
 
 def show_owner_panel_v2(client_email):
     """Panel para propietarios con fincas"""
@@ -950,10 +955,6 @@ def show_advanced_project_search(client_email):
                         st.rerun()
                     
                     st.markdown("---")
-
-# Añadir import necesario
-import os
-
 
 def show_project_interest_panel(project_id):
     st.subheader("🏗️ Proyecto Seleccionado")

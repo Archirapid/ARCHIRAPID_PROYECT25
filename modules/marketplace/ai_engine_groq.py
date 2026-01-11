@@ -13,19 +13,22 @@ def generate_text(prompt: str, model_name: str = 'llama-3.3-70b-versatile') -> s
 
         api_key = None
 
-        # Intentar usar st.secrets SOLO si estamos en Streamlit
-        try:
-            import streamlit as st
-            if hasattr(st, "secrets") and "GROQ_API_KEY" in st.secrets:
-                api_key = st.secrets["GROQ_API_KEY"]
-        except:
-            pass
+        # Primero intentar .env
+        api_key = os.getenv("GROQ_API_KEY")
+        if api_key:
+            print(f"DEBUG: Clave cargada desde .env, longitud: {len(api_key)}")
+        else:
+            # Fallback a st.secrets
+            try:
+                import streamlit as st
+                if hasattr(st, "secrets") and "GROQ_API_KEY" in st.secrets:
+                    api_key = st.secrets["GROQ_API_KEY"]
+                    print(f"DEBUG: Clave cargada desde st.secrets, longitud: {len(api_key)}")
+            except:
+                pass
 
-        # Fallback a .env
         if not api_key:
-            api_key = os.getenv("GROQ_API_KEY")
-            if not api_key:
-                return "Error: No se encontró la clave GROQ_API_KEY en secrets de Streamlit ni GROQ_API_KEY en .env"
+            return "Error: No se encontró la clave GROQ_API_KEY en .env ni en secrets de Streamlit"
 
         # Inyectar clave en el entorno para que Groq la detecte
         os.environ["GROQ_API_KEY"] = api_key

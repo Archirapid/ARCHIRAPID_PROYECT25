@@ -509,13 +509,16 @@ def show_buyer_panel(client_email):
     """Panel para compradores con transacciones e intereses"""
     
     # Pestañas para organizar el contenido
-    tab_intereses, tab_transacciones = st.tabs(["⭐ Mis Proyectos de Interés", "📋 Mis Transacciones"])
+    tab_intereses, tab_transacciones, tab_busqueda = st.tabs(["⭐ Mis Proyectos de Interés", "📋 Mis Transacciones", "🔍 Buscar Proyectos"])
     
     with tab_intereses:
         show_client_interests(client_email)
     
     with tab_transacciones:
         show_client_transactions(client_email)
+    
+    with tab_busqueda:
+        show_advanced_project_search(client_email)
 
 def show_client_interests(client_email):
     """Mostrar proyectos de interés del cliente"""
@@ -824,6 +827,129 @@ def show_common_actions(context="common"):
         if st.button("📄 Descargar Documentación", key=f"download_docs_{context}", use_container_width=True):
             st.info("📄 Descarga disponible próximamente")
             st.write("Pronto podrás descargar todos los documentos de tu transacción")
+
+def show_advanced_project_search(client_email):
+    """Búsqueda avanzada de proyectos por criterios"""
+    st.subheader("🔍 Buscar Proyectos Arquitectónicos")
+    st.write("Encuentra proyectos compatibles con tus necesidades específicas")
+    
+    # Formulario de búsqueda
+    with st.form("advanced_search_form"):
+        st.markdown("### 🎯 Especifica tus criterios")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            presupuesto_max = st.number_input(
+                "💰 Presupuesto máximo (€)", 
+                min_value=0, 
+                value=0, 
+                step=10000,
+                help="Precio máximo que estás dispuesto a pagar por el proyecto completo"
+            )
+            
+            area_deseada = st.number_input(
+                "📐 Área de construcción deseada (m²)", 
+                min_value=0, 
+                value=0, 
+                step=10,
+                help="Superficie aproximada que quieres construir (±20% tolerancia)"
+            )
+        
+        with col2:
+            parcela_disponible = st.number_input(
+                "🏞️ Parcela disponible (m²)", 
+                min_value=0, 
+                value=0, 
+                step=50,
+                help="Tamaño de terreno que tienes disponible"
+            )
+            
+            # Checkbox para buscar solo proyectos que quepan
+            solo_compatibles = st.checkbox(
+                "Solo proyectos que quepan en mi parcela", 
+                value=True,
+                help="Filtrar proyectos cuya parcela mínima sea ≤ a tu terreno disponible"
+            )
+        
+        # Botón de búsqueda
+        submitted = st.form_submit_button("🔍 Buscar Proyectos", type="primary", use_container_width=True)
+    
+    # Procesar búsqueda
+    if submitted:
+        # Preparar parámetros
+        search_params = {
+            'client_budget': presupuesto_max if presupuesto_max > 0 else None,
+            'client_desired_area': area_deseada if area_deseada > 0 else None,
+            'client_parcel_size': parcela_disponible if parcela_disponible > 0 and solo_compatibles else None,
+            'client_email': client_email
+        }
+        
+        # Mostrar criterios de búsqueda
+        st.markdown("### 📋 Criterios de búsqueda aplicados:")
+        criterios = []
+        if search_params['client_budget']:
+            criterios.append(f"💰 Presupuesto ≤ €{search_params['client_budget']:,}")
+        if search_params['client_desired_area']:
+            criterios.append(f"📐 Área ≈ {search_params['client_desired_area']} m² (±20%)")
+        if search_params['client_parcel_size']:
+            criterios.append(f"🏞️ Parcela ≥ {search_params['client_parcel_size']} m²")
+        
+        if criterios:
+            for criterio in criterios:
+                st.write(f"• {criterio}")
+        else:
+            st.info("No se aplicaron filtros específicos - mostrando todos los proyectos disponibles")
+        
+        # Buscar proyectos
+        with st.spinner("Buscando proyectos compatibles..."):
+            proyectos = get_proyectos_compatibles(**search_params)
+        
+        # Mostrar resultados
+        st.markdown(f"### 🏗️ Resultados: {len(proyectos)} proyectos encontrados")
+        
+        if not proyectos:
+            st.warning("No se encontraron proyectos que cumplan con tus criterios. Prueba ampliando los límites.")
+            return
+        
+        # Mostrar proyectos en grid
+        cols = st.columns(2)
+        for idx, proyecto in enumerate(proyectos):
+            with cols[idx % 2]:
+                # Tarjeta de proyecto
+                with st.container():
+                    # Imagen
+                    foto = proyecto.get('foto_principal')
+                    if foto:
+                        try:
+                            st.image(foto, width=250, caption=proyecto['title'])
+                        except:
+                            st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+                    else:
+                        st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+                    
+                    # Información básica
+                    st.markdown(f"**🏗️ {proyecto['title']}**")
+                    st.write(f"📐 **Área:** {proyecto.get('m2_construidos', proyecto.get('area_m2', 'N/D'))} m²")
+                    st.write(f"💰 **Precio:** €{proyecto.get('price', 0):,.0f}" if proyecto.get('price') else "💰 **Precio:** Consultar")
+                    
+                    # Arquitecto
+                    if proyecto.get('architect_name'):
+                        st.write(f"👨‍💼 **Arquitecto:** {proyecto['architect_name']}")
+                    
+                    # Compatibilidad
+                    if search_params['client_parcel_size'] and proyecto.get('m2_parcela_minima'):
+                        if proyecto['m2_parcela_minima'] <= search_params['client_parcel_size']:
+                            st.success("✅ Compatible con tu parcela")
+                        else:
+                            st.warning(f"⚠️ Necesita parcela ≥ {proyecto['m2_parcela_minima']} m²")
+                    
+                    # Botón de detalles
+                    if st.button("Ver Detalles", key=f"search_detail_{proyecto['id']}", use_container_width=True):
+                        st.query_params["selected_project"] = proyecto['id']
+                        st.rerun()
+                    
+                    st.markdown("---")
 
 # Añadir import necesario
 import os

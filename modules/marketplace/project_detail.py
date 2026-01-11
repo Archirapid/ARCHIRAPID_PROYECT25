@@ -66,6 +66,10 @@ def show_project_detail_page(project_id: str):
         'tipo_proyecto': row[27]
     }
 
+    # Definir variables de login temprano para evitar errores
+    client_logged_in = st.session_state.get("client_logged_in", False)
+    client_email = st.session_state.get("client_email", "")
+
     # Calcular superficie mínima requerida
     m2_proyecto = project_data['m2_construidos'] or project_data['area_m2'] or 0
     if project_data['m2_parcela_minima']:
@@ -141,6 +145,117 @@ def show_project_detail_page(project_id: str):
     # Arquitecto
     if project_data['architect_name']:
         st.write(f"**Arquitecto:** {project_data['architect_name']}")
+
+    # RESUMEN INTELIGENTE CON IA
+    st.header("🤖 Resumen Inteligente con IA")
+
+    if st.button("Generar Resumen del Proyecto con IA", key="btn_ia_summary"):
+        if project_data.get("memoria_pdf"):
+            try:
+                import PyPDF2
+                with open(project_data["memoria_pdf"], "rb") as f:
+                    reader = PyPDF2.PdfReader(f)
+                    text = ""
+                    for page in reader.pages[:5]:  # Limitar a primeras 5 páginas para no exceder tokens
+                        text += page.extract_text() + "\n"
+
+                if text.strip():
+                    prompt = f"Resume este proyecto arquitectónico en español, destacando características principales, distribución de espacios, materiales utilizados y aspectos técnicos relevantes. Sé conciso pero informativo:\n\n{text[:3000]}"
+                    
+                    from modules.marketplace import ai_engine_groq as ai
+                    summary = ai.generate_text(prompt)
+                    
+                    if "Error:" in summary:
+                        st.error(summary)
+                    else:
+                        st.success("✅ Resumen generado por IA:")
+                        st.write(summary)
+                else:
+                    st.warning("No se pudo extraer texto del PDF.")
+            except ImportError:
+                st.error("Librería PyPDF2 no instalada. Instala con: pip install PyPDF2")
+            except Exception as e:
+                st.error(f"Error generando resumen: {e}")
+        else:
+            st.info("No hay memoria PDF disponible para este proyecto.")
+
+    # VISUALIZACIONES DEL PROYECTO
+    st.header("🏗️ Visualizaciones del Proyecto")
+
+    tab_3d, tab_vr, tab_fotos = st.tabs(["🎥 3D", "🥽 VR", "🖼️ Fotos / Planos"])
+
+    with tab_3d:
+        if client_logged_in:
+            st.markdown("#### 🎥 Visor 3D del Proyecto")
+            if project_data.get("modelo_3d_glb"):
+                # Mostrar visor 3D completo
+                rel_path = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
+                model_url = f"http://127.0.0.1:8765/{rel_path}".replace(" ", "%20")
+                try:
+                    # Usar la función three_html_for definida en app.py
+                    from app import three_html_for
+                    html_final = three_html_for(model_url, str(project_data["id"]))
+                    st.components.v1.html(html_final, height=700, scrolling=False)
+                except Exception as e:
+                    st.error(f"Error cargando visor 3D: {e}")
+            else:
+                st.info("Este proyecto no tiene modelo 3D disponible.")
+        else:
+            st.info("🔒 Para ver el modelo 3D interactivo completo, regístrate como cliente.")
+            st.markdown("**Vista previa limitada:** Los modelos 3D se desbloquean tras registro.")
+
+    with tab_vr:
+        if client_logged_in:
+            st.markdown("#### 🥽 Visor de Realidad Virtual")
+            if project_data.get("modelo_3d_glb"):
+                rel = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
+                glb_url = f"http://127.0.0.1:8765/{rel}".replace(" ", "%20")
+                viewer_url = f"http://127.0.0.1:8765/static/vr_viewer.html?model={glb_url}"
+                st.markdown(
+                    f'<a href="{viewer_url}" target="_blank">'
+                    f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
+                    f"Abrir experiencia VR en nueva pestaña"
+                    f"</button></a>",
+                    unsafe_allow_html=True,
+                )
+                st.caption("Se abrirá el visor VR en una nueva pestaña. Requiere navegador con WebXR.")
+            else:
+                st.info("Este proyecto no tiene modelo VR disponible.")
+        else:
+            st.info("🔒 Para acceder a la experiencia VR completa, regístrate como cliente.")
+            st.markdown("**Vista previa:** VR disponible tras registro.")
+
+    with tab_fotos:
+        if client_logged_in:
+            st.markdown("#### 🖼️ Galería Completa de Fotos y Planos")
+            # Foto principal
+            if project_data.get("foto_principal"):
+                rel = project_data["foto_principal"].replace("\\", "/").lstrip("/")
+                url = f"http://127.0.0.1:8765/{rel}"
+                st.image(url, width=400, caption="Foto Principal")
+            # Galería adicional
+            if project_data.get("galeria_fotos"):
+                st.subheader("Galería Adicional")
+                for idx, foto in enumerate(project_data["galeria_fotos"]):
+                    if foto:
+                        rel = foto.replace("\\", "/").lstrip("/")
+                        url = f"http://127.0.0.1:8765/{rel}"
+                        st.image(url, width=300, caption=f"Imagen {idx + 1}")
+            # Planos
+            if project_data.get("planos_pdf") or project_data.get("planos_dwg"):
+                st.subheader("Planos Técnicos")
+                if project_data.get("planos_pdf"):
+                    st.download_button("📄 Descargar Planos PDF", data=open(project_data["planos_pdf"], "rb"), file_name="planos.pdf")
+                if project_data.get("planos_dwg"):
+                    st.download_button("📐 Descargar Planos DWG", data=open(project_data["planos_dwg"], "rb"), file_name="planos.dwg")
+        else:
+            st.info("🔒 Para ver la galería completa de fotos y planos, regístrate como cliente.")
+            st.markdown("**Vista previa limitada:**")
+            # Mostrar solo foto principal como preview
+            if project_data.get("foto_principal"):
+                rel = project_data["foto_principal"].replace("\\", "/").lstrip("/")
+                url = f"http://127.0.0.1:8765/{rel}"
+                st.image(url, width=300, caption="Vista Previa - Foto Principal")
 
     # Botón "Saber más" - Registro/Login
     st.header("🔍 ¿Interesado en este proyecto?")

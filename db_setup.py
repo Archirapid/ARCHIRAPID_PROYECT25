@@ -48,6 +48,17 @@ def init_db():
         created_at TEXT
     )
     """)
+    # clients table for registered clients
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS clients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        email TEXT UNIQUE,
+        phone TEXT,
+        address TEXT,
+        created_at TEXT
+    )
+    """)
     # architects table (profiles)
     c.execute("""
     CREATE TABLE IF NOT EXISTS architects (

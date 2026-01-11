@@ -259,10 +259,10 @@ def _process_project_upload(arquitecto_id: int, title: str, description: str, pr
             'piscina': 1 if characteristics['piscina'] else 0,
             'garaje': 1 if characteristics['garaje'] else 0,
             'foto_principal': render_paths[0] if render_paths else None,
-            'modelo_3d_path': saved_files['modelo_3d_path'],
+            'modelo_3d_glb': saved_files['modelo_3d_path'],
             'imagenes': render_paths[0] if render_paths else None,
             # Rutas de archivos
-            'memoria_pdf_path': saved_files['memoria_pdf_path'],
+            'memoria_pdf': saved_files['memoria_pdf_path'],
             'cad_dwg_path': saved_files['planos_cad_path'],
             'imagenes_path': render_paths[0] if render_paths else None,
             # Datos adicionales

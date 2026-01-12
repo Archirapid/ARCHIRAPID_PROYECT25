@@ -93,9 +93,11 @@ def get_project_images(proyecto):
 
     # Procesar galería de fotos
     galeria = proyecto.get('galeria_fotos', [])
-    if galeria and isinstance(galeria, list):
+    
+    # Validar que galeria sea una lista y no un número
+    if galeria and isinstance(galeria, list) and not any(isinstance(item, (int, float)) for item in galeria):
         for img_path in galeria:
-            if img_path and img_path not in images and os.path.exists(img_path):
+            if img_path and isinstance(img_path, str) and img_path.strip() and img_path not in images and os.path.exists(img_path):
                 images.append(img_path)
 
     # Si no hay imágenes válidas, usar fallback

@@ -293,6 +293,16 @@ def render_portal_cliente_proyecto():
         except:
             pass
 
+        # Galería completa
+        galeria_fotos = proyecto.get('files', {}).get('fotos', [])
+        if galeria_fotos:
+            st.subheader("Galería Completa")
+            for foto in galeria_fotos:
+                if foto and isinstance(foto, str) and not foto.isdigit() and foto.strip():
+                    rel = foto.replace("\\", "/").lstrip("/")
+                    url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel}"
+                    st.image(url, width=300)
+
     st.markdown("---")
     st.markdown("### 🛒 Acciones del Cliente")
     col1, col2 = st.columns(2)

@@ -9,6 +9,21 @@ import json
 from modules.marketplace.plot_detail import get_project_images
 from src import db
 
+def normalize_gallery(galeria_fotos):
+    import json
+    if not galeria_fotos:
+        return []
+    if isinstance(galeria_fotos, list):
+        return [f for f in galeria_fotos if f]
+    if isinstance(galeria_fotos, str):
+        try:
+            data = json.loads(galeria_fotos)
+            if isinstance(data, list):
+                return [f for f in data if f]
+        except:
+            return []
+    return []
+
 def show_project_detail_page(project_id: str):
     """Muestra la página de vista previa de un proyecto arquitectónico"""
 
@@ -66,6 +81,8 @@ def show_project_detail_page(project_id: str):
         'tipo_proyecto': row[27]
     }
 
+    gallery = normalize_gallery(project_data["galeria_fotos"])
+
     # Definir variables de login temprano para evitar errores
     client_logged_in = st.session_state.get("client_logged_in", False)
     client_email = st.session_state.get("client_email", "")
@@ -86,7 +103,7 @@ def show_project_detail_page(project_id: str):
     # Obtener imágenes válidas
     project_images = get_project_images({
         'foto_principal': project_data['foto_principal'],
-        'galeria_fotos': json.loads(project_data['galeria_fotos']) if isinstance(project_data['galeria_fotos'], str) else project_data['galeria_fotos']
+        'galeria_fotos': gallery
     })
 
     if project_images:
@@ -256,9 +273,9 @@ def show_project_detail_page(project_id: str):
                 url = f"http://127.0.0.1:8765/{rel}"
                 st.image(url, width=400, caption="Foto Principal")
             # Galería adicional
-            if project_data.get("galeria_fotos"):
+            if gallery:
                 st.subheader("Galería Adicional")
-                for idx, foto in enumerate(project_data["galeria_fotos"]):
+                for idx, foto in enumerate(gallery):
                     if foto:
                         rel = foto.replace("\\", "/").lstrip("/")
                         url = f"http://127.0.0.1:8765/{rel}"
@@ -399,118 +416,8 @@ def show_project_detail_page(project_id: str):
                             
                             st.markdown("---")
 
-    # VISUALIZACIONES DEL PROYECTO
-    st.header("🏗️ Visualizaciones del Proyecto")
-
-    tab_3d, tab_vr, tab_fotos = st.tabs(["🎥 3D", "🥽 VR", "🖼️ Fotos / Planos"])
-
-    with tab_3d:
-        if client_logged_in:
-            st.markdown("#### 🎥 Visor 3D del Proyecto")
-            if project_data.get("modelo_3d_glb"):
-                # Mostrar visor 3D completo
-                rel_path = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
-                model_url = f"http://127.0.0.1:8765/{rel_path}".replace(" ", "%20")
-                try:
-                    # Usar la función three_html_for definida en app.py
-                    from app import three_html_for
-                    html_final = three_html_for(model_url, str(project_data["id"]))
-                    st.components.v1.html(html_final, height=700, scrolling=False)
-                except Exception as e:
-                    st.error(f"Error cargando visor 3D: {e}")
-            else:
-                st.info("Este proyecto no tiene modelo 3D disponible.")
-        else:
-            st.info("🔒 Para ver el modelo 3D interactivo completo, regístrate como cliente.")
-            st.markdown("**Vista previa limitada:** Los modelos 3D se desbloquean tras registro.")
-
-    with tab_vr:
-        if client_logged_in:
-            st.markdown("#### 🥽 Visor de Realidad Virtual")
-            if project_data.get("modelo_3d_glb"):
-                rel = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
-                glb_url = f"http://127.0.0.1:8765/{rel}".replace(" ", "%20")
-                viewer_url = f"http://127.0.0.1:8765/static/vr_viewer.html?model={glb_url}"
-                st.markdown(
-                    f'<a href="{viewer_url}" target="_blank">'
-                    f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
-                    f"Abrir experiencia VR en nueva pestaña"
-                    f"</button></a>",
-                    unsafe_allow_html=True,
-                )
-                st.caption("Se abrirá el visor VR en una nueva pestaña. Requiere navegador con WebXR.")
-            else:
-                st.info("Este proyecto no tiene modelo VR disponible.")
-        else:
-            st.info("🔒 Para acceder a la experiencia VR completa, regístrate como cliente.")
-            st.markdown("**Vista previa:** VR disponible tras registro.")
-
-    with tab_fotos:
-        if client_logged_in:
-            st.markdown("#### 🖼️ Galería Completa de Fotos y Planos")
-            # Foto principal
-            if project_data.get("foto_principal"):
-                rel = project_data["foto_principal"].replace("\\", "/").lstrip("/")
-                url = f"http://127.0.0.1:8765/{rel}"
-                st.image(url, width=400, caption="Foto Principal")
-            # Galería adicional
-            if project_data.get("galeria_fotos"):
-                st.subheader("Galería Adicional")
-                for idx, foto in enumerate(project_data["galeria_fotos"]):
-                    if foto:
-                        rel = foto.replace("\\", "/").lstrip("/")
-                        url = f"http://127.0.0.1:8765/{rel}"
-                        st.image(url, width=300, caption=f"Imagen {idx + 1}")
-            # Planos
-            if project_data.get("planos_pdf") or project_data.get("planos_dwg"):
-                st.subheader("Planos Técnicos")
-                if project_data.get("planos_pdf"):
-                    st.download_button("📄 Descargar Planos PDF", data=open(project_data["planos_pdf"], "rb"), file_name="planos.pdf")
-                if project_data.get("planos_dwg"):
-                    st.download_button("📐 Descargar Planos DWG", data=open(project_data["planos_dwg"], "rb"), file_name="planos.dwg")
-        else:
-            st.info("🔒 Para ver la galería completa de fotos y planos, regístrate como cliente.")
-            st.markdown("**Vista previa limitada:**")
-            # Mostrar solo foto principal como preview
-            if project_data.get("foto_principal"):
-                rel = project_data["foto_principal"].replace("\\", "/").lstrip("/")
-                url = f"http://127.0.0.1:8765/{rel}"
-                st.image(url, width=300, caption="Vista Previa - Foto Principal")
-
-    # Botón "Saber más" - Registro/Login
-    st.header("🔍 ¿Interesado en este proyecto?")
-    
-    # Verificar si el usuario ya está logueado
-    client_logged_in = st.session_state.get("client_logged_in", False)
-    client_email = st.session_state.get("client_email", "")
-
-    if client_logged_in and client_email:
-        # Si acabamos de registrarnos, ya hemos mostrado las opciones arriba
-        just_registered = st.session_state.get("just_registered", False)
-        if not just_registered:
-            st.success(f"✅ **Bienvenido de vuelta, {client_email}**")
-            st.info("Ya puedes acceder al portal completo del cliente con todos los detalles del proyecto.")
-            
-            # Usuario ya logueado - ir al panel
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                if st.button("👁️ Acceder al Portal de Cliente", width='stretch', type="primary"):
-                    # Guardar datos del proyecto y cliente en session_state
-                    st.session_state["selected_project_id"] = project_id
-                    st.session_state["selected_project_for_panel"] = project_id
-                    st.session_state["client_logged_in"] = True
-                    st.session_state["buyer_email"] = client_email
-                    
-                    # Navegar usando query params (mismo método que el botón "Acceso Clientes" en HOME)
-                    st.query_params.update({
-                        "page": "👤 Panel de Cliente",
-                        "selected_project": project_id
-                    })
-                    st.rerun()
-        # Si acabamos de registrarnos, limpiar el flag pero continuar mostrando la página
-        else:
-            del st.session_state["just_registered"]
     else:
+        st.header("🔍 ¿Interesado en este proyecto?")
         st.info("Para ver planos detallados, ficha técnica completa, archivos 3D y realidad virtual, regístrate como cliente.")
         
         # 🔍 BUSCAR PROYECTOS COMPATIBLES (antes del registro)
@@ -630,6 +537,33 @@ def show_project_detail_page(project_id: str):
             st.markdown("• **Buscar más proyectos** compatibles con tus necesidades")
             
             st.markdown("---")
+
+    if client_logged_in and client_email:
+        # Si acabamos de registrarnos, ya hemos mostrado las opciones arriba
+        just_registered = st.session_state.get("just_registered", False)
+        if not just_registered:
+            st.success(f"✅ **Bienvenido de vuelta, {client_email}**")
+            st.info("Ya puedes acceder al portal completo del cliente con todos los detalles del proyecto.")
+            
+            # Usuario ya logueado - ir al panel
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("👁️ Acceder al Portal de Cliente", width='stretch', type="primary"):
+                    # Guardar datos del proyecto y cliente en session_state
+                    st.session_state["selected_project_id"] = project_id
+                    st.session_state["selected_project_for_panel"] = project_id
+                    st.session_state["client_logged_in"] = True
+                    st.session_state["buyer_email"] = client_email
+                    
+                    # Navegar usando query params (mismo método que el botón "Acceso Clientes" en HOME)
+                    st.query_params.update({
+                        "page": "👤 Panel de Cliente",
+                        "selected_project": project_id
+                    })
+                    st.rerun()
+        # Si acabamos de registrarnos, limpiar el flag pero continuar mostrando la página
+        else:
+            del st.session_state["just_registered"]
 
     # Botón volver
     if st.button("← Volver al Inicio"):

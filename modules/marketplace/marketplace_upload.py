@@ -265,6 +265,8 @@ def _process_project_upload(arquitecto_id: int, title: str, description: str, pr
             'memoria_pdf': saved_files['memoria_pdf_path'],
             'cad_dwg_path': saved_files['planos_cad_path'],
             'imagenes_path': render_paths[0] if render_paths else None,
+            # Guardar TODAS las imágenes en la galería (la primera será la principal)
+            'galeria_fotos': json.dumps(render_paths),
             # Datos adicionales
             'autor_tipo': 'arquitecto',
             'autor_id': arquitecto_id,

@@ -1,104 +1,76 @@
 <!doctype html>
-<html>
+<html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ARCHIRAPID - VR Viewer</title>
-  <style>html,body{height:100%;margin:0;background:#111}#info{position:absolute;left:10px;top:10px;color:#fff;z-index:2;font-family:Arial,Helvetica,sans-serif}</style>
+  <title>ARCHIRAPID VR Viewer</title>
+  <style>
+    html, body { margin:0; padding:0; overflow:hidden; background:#111; }
+    #info { position:absolute; top:10px; left:10px; color:white; font-family:Arial; z-index:10; }
+  </style>
 </head>
 <body>
-<div id="info">ARCHIRAPID VR Viewer — Si el botón VR no aparece, use un navegador compatible WebXR (Chrome/Edge + WebXR/Flags).</div>
+<div id="info">Cargando visor VR...</div>
+
 <script type="module">
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
-import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/controls/OrbitControls.js';
-import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/webxr/VRButton.js';
+import * as THREE from "./three/three.module.js";
+import { GLTFLoader } from "./three/GLTFLoader.js";
+import { OrbitControls } from "./three/OrbitControls.js";
+import { VRButton } from "./three/VRButton.js";
 
 const params = new URLSearchParams(window.location.search);
-<script>
-// Versión no-module para mayor compatibilidad (Firefox u otros navegadores)
-// Cargamos Three.js y loaders clásicos
-</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/vr/VRButton.js"></script>
-<script>
-  (function(){
-    function logInfo(msg){
-      var i = document.getElementById('info');
-      if(i) i.innerText = msg;
-    }
-    try{
-      var params = new URLSearchParams(window.location.search);
-      var model = params.get('model');
-      if(!model){ logInfo('No se indicó modelo. Añada ?model=path/al/archivo.glb'); }
+const modelUrl = params.get("model");
 
-      var scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x222222);
-      var camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-      var renderer = new THREE.WebGLRenderer({antialias:true});
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.xr = { enabled: false };
-      document.body.appendChild(renderer.domElement);
+const info = document.getElementById("info");
+function setInfo(msg){ info.innerText = msg; }
 
-      var controls = new THREE.OrbitControls(camera, renderer.domElement);
-      controls.target.set(0,1,0);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x222222);
 
-      var hemi = new THREE.HemisphereLight(0xffffff,0x444444,0.8); hemi.position.set(0,20,0); scene.add(hemi);
-      var amb = new THREE.AmbientLight(0xffffff,0.4); scene.add(amb);
-      var dir = new THREE.DirectionalLight(0xffffff,0.6); dir.position.set(10,10,10); scene.add(dir);
-      camera.position.set(0,1.4,3);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(0,1.6,3);
 
-      var loader = new THREE.GLTFLoader();
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
 
-      function addEdgesToMesh(obj){
-        obj.traverse(function(child){
-          if(child.isMesh){
-            try{ child.material = new THREE.MeshStandardMaterial({ color:0xdddddd, side:THREE.DoubleSide }); }catch(e){}
-            try{ var edges = new THREE.EdgesGeometry(child.geometry); var line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color:0x888888 })); child.add(line); }catch(e){}
-          }
-        });
-      }
+document.body.appendChild(VRButton.createButton(renderer));
 
-      if(model){
-        logInfo('Cargando modelo...');
-        loader.load(model, function(gltf){
-          var root = gltf.scene || gltf.scenes && gltf.scenes[0] || gltf;
-          var box = new THREE.Box3().setFromObject(root);
-          var center = box.getCenter(new THREE.Vector3());
-          var size = box.getSize(new THREE.Vector3());
-          root.position.sub(center);
-          var maxDim = Math.max(size.x, size.y, size.z);
-          if(maxDim>0){ var scale = (1.5*1.0)/maxDim; root.scale.multiplyScalar(scale); }
-          addEdgesToMesh(root);
-          scene.add(root);
-          logInfo('Modelo cargado correctamente.');
-        }, function(progress){
-          if(progress && progress.loaded && progress.total){
-            var pct = Math.round((progress.loaded/progress.total)*100);
-            logInfo('Cargando modelo... ' + pct + '%');
-          }
-        }, function(err){
-          console.error('Error cargando GLB', err);
-          logInfo('Error cargando modelo. Revisa la consola del navegador para más detalles.');
-        });
-      }
+const controls = new OrbitControls(camera, renderer.domElement);
 
-      function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
-      window.addEventListener('resize', function(){ camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
+scene.add(new THREE.DirectionalLight(0xffffff, 0.8));
 
-      // Try to add VR button if available (may not be supported in Firefox)
-      try{ if(window.VRButton && VRButton.createButton){ document.body.appendChild(VRButton.createButton(renderer)); } }catch(e){}
+if(modelUrl){
+  setInfo("Cargando modelo...");
+  const loader = new GLTFLoader();
+  loader.load(modelUrl, gltf => {
+    const root = gltf.scene;
+    scene.add(root);
+    setInfo("Modelo cargado. Pulsa el botón VR.");
+  }, undefined, err => {
+    console.error(err);
+    setInfo("Error cargando modelo.");
+  });
+} else {
+  setInfo("No se indicó modelo (?model=URL)");
+}
 
-      animate();
-    }catch(e){ console.error(e); logInfo('Error inicializando visor: ' + (e && e.message)); }
-  })();
-</script>
-try{
-  document.body.appendChild(VRButton.createButton(renderer));
-}catch(e){/* ignore if not disponible */}
+function animate(){
+  renderer.setAnimationLoop(() => {
+    controls.update();
+    renderer.render(scene, camera);
+  });
+}
 animate();
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
 </script>
+
 </body>
 </html>

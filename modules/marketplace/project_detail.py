@@ -165,8 +165,8 @@ def show_project_detail_page(project_id: str):
 
     # RESUMEN INTELIGENTE CON IA
     st.header("🤖 Resumen Inteligente con IA")
-
-    if st.button("Generar Resumen Completo del Proyecto con IA", key="btn_ia_summary"):
+    ia_key = f"btn_ia_summary_{project_id}"
+    if st.button("Generar Resumen Completo del Proyecto con IA", key=ia_key):
         if project_data.get("memoria_pdf"):
             try:
                 import PyPDF2
@@ -544,23 +544,16 @@ def show_project_detail_page(project_id: str):
         if not just_registered:
             st.success(f"✅ **Bienvenido de vuelta, {client_email}**")
             st.info("Ya puedes acceder al portal completo del cliente con todos los detalles del proyecto.")
-            
-            # Usuario ya logueado - ir al panel
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                if st.button("👁️ Acceder al Portal de Cliente", width='stretch', type="primary"):
-                    # Guardar datos del proyecto y cliente en session_state
-                    st.session_state["selected_project_id"] = project_id
-                    st.session_state["selected_project_for_panel"] = project_id
-                    st.session_state["client_logged_in"] = True
-                    st.session_state["buyer_email"] = client_email
-                    
-                    # Navegar usando query params (mismo método que el botón "Acceso Clientes" en HOME)
-                    st.query_params.update({
-                        "page": "👤 Panel de Cliente",
-                        "selected_project": project_id
-                    })
-                    st.rerun()
+                panel_url = "/?page=👤 Panel de Cliente"
+                st.markdown(
+                    f'<a href="{panel_url}">' 
+                    f'<button style="width:100%; padding:10px 16px;">Ir al Panel de Cliente</button>' 
+                    f'</a>',
+                    unsafe_allow_html=True
+                )
+                st.info("Desde el Panel de Cliente podrás gestionar tus compras y ver los detalles completos de este proyecto.")
         # Si acabamos de registrarnos, limpiar el flag pero continuar mostrando la página
         else:
             del st.session_state["just_registered"]

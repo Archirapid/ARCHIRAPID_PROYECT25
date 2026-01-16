@@ -1,3 +1,4 @@
+# ESTE MÓDULO ESTÁ DEPRECADO. USAR client_panel_fixed.main() EN SU LUGAR
 # modules/marketplace/client_panel.py
 import streamlit as st
 from modules.marketplace.utils import db_conn

@@ -61,14 +61,7 @@ if "selected_plot" in params:
     except Exception as e:
         st.error(f"Error mostrando detalles de la finca: {e}")
 
-if "selected_project" in params and not page_from_query: 
-    try:
-        project_id = params["selected_project"]
-        from modules.marketplace.project_detail import show_project_detail_page
-        show_project_detail_page(project_id)
-        st.stop()  # Detener la ejecución para no mostrar el resto de la app
-    except Exception as e:
-        st.error(f"Error mostrando detalles del proyecto: {e}")
+# Routing de selected_project desactivado: las fichas se sirven ahora desde project_app.py (puerto 8502).
 
 @st.cache_resource
 def three_html_for(url_3d: str, project_id: str = "") -> str:
@@ -187,144 +180,9 @@ def _start_static_server(root_dir: Path, port: int = 8765):
     return port
 
 
+# TODO: render_portal_cliente_proyecto desactivado temporalmente para evitar duplicados de ficha.
 def render_portal_cliente_proyecto():
-    st.header("📂 Portal de Cliente — Proyecto Seleccionado")
-
-    proyecto = st.session_state.get("proyecto_seleccionado")
-    interes_id = st.session_state.get("interes_proyecto_id")
-    interes_titulo = st.session_state.get("interes_proyecto_titulo")
-    email = st.session_state.get("email", "")
-    rol = st.session_state.get("role", "cliente")  # futuro: cliente / propietario / arquitecto / admin
-
-    if not proyecto and not interes_id:
-        st.warning("No hay ningún proyecto seleccionado para mostrar en el portal de cliente.")
-        return
-
-    st.markdown("### 🏡 Información del Proyecto")
-
-    if proyecto:
-        st.write(f"**Título:** {proyecto.get('title', 'N/D')}")
-        st.write(f"**💰 Precio:** {proyecto.get('price', 'N/D')} €")
-        st.write(f"**📐 Superficie:** {proyecto.get('m2_construidos', 'N/D')} m²")
-        st.write(f"**🛏️ Habitaciones:** {proyecto.get('habitaciones', 'N/D')}")
-        st.write(f"**🛁 Baños:** {proyecto.get('banos', 'N/D')}")
-        st.write(f"**🏠 Plantas:** {proyecto.get('plantas', 'N/D')}")
-    else:
-        st.warning("No hay proyecto seleccionado.")
-
-    st.markdown("---")
-
-    # VISUALIZACIONES (pestañas: 3D / VR / Fotos)
-    st.markdown("### 🏗️ Visualizaciones del Proyecto")
-
-    tab_3d, tab_vr, tab_fotos = st.tabs(["🎥 3D", "🥽 VR", "🖼️ Fotos / Planos"])
-
-    # --- Pestaña 3D ---
-    with tab_3d:
-        st.markdown("#### 🎥 Visor 3D del Proyecto")
-
-        if proyecto:
-            # Usamos GLB siempre que exista
-            glb_path = proyecto.get("modelo_3d_glb")
-
-            if glb_path:
-                rel_path = str(glb_path).replace("\\", "/").lstrip("/")
-                # Obtener STATIC_URL si está definido, si no usar fallback
-                STATIC_URL = globals().get('STATIC_URL', 'http://127.0.0.1:8765/')
-                model_url = f"{STATIC_URL}{rel_path}".replace(" ", "%20")
-
-                try:
-                    html_final = three_html_for(model_url, str(proyecto.get("id")))
-                    st.components.v1.html(html_final, height=700, scrolling=False)
-                except Exception as e:
-                    st.error(f"Error cargando visor 3D: {e}")
-            else:
-                st.info("Este proyecto no tiene modelo GLB. Próximamente convertiremos OBJ a GLB automáticamente.")
-        else:
-            st.warning("No hay proyecto seleccionado en el portal.")
-
-    # --- Pestaña VR ---
-    with tab_vr:
-        st.markdown("#### 🥽 Visor de Realidad Virtual")
-
-        model_glb = None
-        if proyecto and proyecto.get("modelo_3d_glb"):
-            model_glb = proyecto.get("modelo_3d_glb")
-
-        if model_glb:
-            rel = str(model_glb).replace("\\", "/").lstrip("/")
-            glb_url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel}".replace(" ", "%20")
-            viewer_url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}static/vr_viewer.html?model={glb_url}"
-
-            st.markdown(
-                f'<a href="{viewer_url}" target="_blank">'
-                f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
-                f"Abrir experiencia RV en nueva pestaña"
-                f"</button></a>",
-                unsafe_allow_html=True,
-            )
-            st.caption("Se abrirá el visor RV en una nueva pestaña. Requiere navegador con WebXR o modo Desktop para previsualizar.")
-        else:
-            st.info("Este proyecto todavía no tiene modelo VR asociado. Usaremos el modelo 3D como base en futuras versiones.")
-
-    # --- Pestaña Fotos / Planos ---
-    with tab_fotos:
-        st.markdown("#### 🖼️ Galería de Fotos y Planos")
-
-        # Foto principal
-        foto = proyecto.get("foto_principal")
-        if foto:
-            rel = foto.replace("\\", "/").lstrip("/")
-            url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel}"
-            st.image(url, width=400)
-
-        # Imagen adicional dentro de characteristics_json
-        try:
-            import json
-            chars = json.loads(proyecto.get("characteristics_json", "{}"))
-            img2 = chars.get("imagenes")
-            # Evitar duplicados
-            if img2 and img2 == foto:
-                img2 = None
-            if img2:
-                rel2 = img2.replace("\\", "/").lstrip("/")
-                url2 = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel2}"
-                st.image(url2, width=400)
-        except:
-            pass
-
-        # Galería completa
-        galeria_fotos = proyecto.get('files', {}).get('fotos', [])
-        if galeria_fotos:
-            st.subheader("Galería Completa")
-            for foto in galeria_fotos:
-                if foto and isinstance(foto, str) and not foto.isdigit() and foto.strip():
-                    rel = foto.replace("\\", "/").lstrip("/")
-                    url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel}"
-                    st.image(url, width=300)
-
-    st.markdown("---")
-    st.markdown("### 🛒 Acciones del Cliente")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🛒 COMPRAR ESTE PROYECTO (simulado)", key="btn_comprar_proyecto_portal"):
-            st.success("Simulando compra. Nuestro equipo comercial se pondrá en contacto contigo.")
-    with col2:
-        if st.button("📞 QUIERO QUE ME LLAMEN", key="btn_llamar_proyecto_portal"):
-            st.success("Hemos registrado tu interés para que te llame el equipo comercial.")
-
-    st.caption(f"Portal vinculado al email: {email or 'No registrado'}")
-
-    st.markdown("---")
-    st.markdown("### 🔧 Módulos Profesionales (Futuro)")
-    st.info("Estos módulos estarán disponibles en futuras versiones para monetización:")
-    st.write("- 🎨 Decoradores (packs de interiorismo)")
-    st.write("- 🏗️ Constructores (presupuestos automáticos)")
-    st.write("- 🧱 Prefabricadas (catálogo integrado)")
-    st.write("- 🛡️ Aseguradoras (pólizas vinculadas)")
-    st.write("- 🧰 Materiales de construcción (marketplace)")
-    st.write("- 🧑‍💼 Arquitectos (gestión avanzada)")
-    st.write("- 🧑‍💼 Propietarios (seguimiento de obra)")
+    pass
 
 
 # Navigation state handling (restore `page` variable)
@@ -478,10 +336,13 @@ if selected_page == "Home":
                     st.image(thumbnail, width=250)
                     st.subheader(p.get('title', 'Proyecto'))
                     st.write(f"**€{p.get('price', 0):,.0f}** | {p.get('area_m2', 0)} m²")
-                    if st.button("Ver Detalles", key=f"proj_home_{p['id']}"):
-                        # Abrir en "nueva ventana" usando query params
-                        st.query_params["selected_project"] = p['id']
-                        st.rerun()
+                    project_url = f"http://localhost:8502/?project_id={p['id']}"
+                    st.markdown(
+                        f'<a href="{project_url}" target="_blank">'
+                        f'<button style="width:100%; padding:8px 12px;">Ver Detalles</button>'
+                        f'</a>',
+                        unsafe_allow_html=True
+                    )
         else:
             st.info("No hay proyectos arquitectónicos disponibles aún.")
     except Exception as e:

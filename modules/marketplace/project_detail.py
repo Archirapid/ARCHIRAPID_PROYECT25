@@ -230,13 +230,103 @@ def show_project_detail_page(project_id: str):
                 # Mostrar visor 3D completo
                 rel_path = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
                 model_url = f"http://127.0.0.1:8765/{rel_path}".replace(" ", "%20")
-                try:
-                    # Usar la función three_html_for definida en app.py
-                    from app import three_html_for
-                    html_final = three_html_for(model_url, str(project_data["id"]))
-                    st.components.v1.html(html_final, height=700, scrolling=False)
-                except Exception as e:
-                    st.error(f"Error cargando visor 3D: {e}")
+
+                # HTML con Three.js para visor 3D
+                three_html = f"""
+                <div id="container3d" style="width: 100%; height: 700px; border: 1px solid #ccc;"></div>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+                <script>
+                    // Inicializar escena, cámara y renderer
+                    const scene = new THREE.Scene();
+                    scene.background = new THREE.Color(0xf0f0f0);
+
+                    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                    camera.position.set(5, 5, 5);
+
+                    const renderer = new THREE.WebGLRenderer({{ antialias: true }});
+                    renderer.setSize(document.getElementById('container3d').clientWidth, 700);
+                    renderer.shadowMap.enabled = true;
+                    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                    document.getElementById('container3d').appendChild(renderer.domElement);
+
+                    // Controles de órbita
+                    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+                    controls.enableDamping = true;
+                    controls.dampingFactor = 0.05;
+
+                    // Luces
+                    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+                    scene.add(ambientLight);
+
+                    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                    directionalLight.position.set(10, 10, 5);
+                    directionalLight.castShadow = true;
+                    scene.add(directionalLight);
+
+                    // Cargar modelo GLTF
+                    const loader = new THREE.GLTFLoader();
+                    loader.load(
+                        '{model_url}',
+                        function (gltf) {{
+                            const model = gltf.scene;
+                            scene.add(model);
+
+                            // Calcular bounding box para centrar la cámara
+                            const box = new THREE.Box3().setFromObject(model);
+                            const center = box.getCenter(new THREE.Vector3());
+                            const size = box.getSize(new THREE.Vector3());
+
+                            // Centrar modelo en origen
+                            model.position.sub(center);
+
+                            // Ajustar cámara para ver todo el modelo
+                            const maxDim = Math.max(size.x, size.y, size.z);
+                            const fov = camera.fov * (Math.PI / 180);
+                            let cameraZ = Math.abs(maxDim / Math.sin(fov / 2));
+
+                            camera.position.set(center.x, center.y, center.z + cameraZ * 1.5);
+                            camera.lookAt(center);
+
+                            controls.target.copy(center);
+                            controls.update();
+
+                            // Habilitar sombras si el modelo las soporta
+                            model.traverse(function (child) {{
+                                if (child.isMesh) {{
+                                    child.castShadow = true;
+                                    child.receiveShadow = true;
+                                }}
+                            }});
+                        }},
+                        function (xhr) {{
+                            console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+                        }},
+                        function (error) {{
+                            console.error('Error loading GLTF:', error);
+                            alert('Error cargando el modelo 3D. Verifica que el archivo exista.');
+                        }}
+                    );
+
+                    // Función de animación
+                    function animate() {{
+                        requestAnimationFrame(animate);
+                        controls.update();
+                        renderer.render(scene, camera);
+                    }}
+                    animate();
+
+                    // Ajustar tamaño al cambiar ventana
+                    window.addEventListener('resize', function() {{
+                        camera.aspect = document.getElementById('container3d').clientWidth / 700;
+                        camera.updateProjectionMatrix();
+                        renderer.setSize(document.getElementById('container3d').clientWidth, 700);
+                    }});
+                </script>
+                """
+
+                st.components.v1.html(three_html, height=700, scrolling=False)
             else:
                 st.info("Este proyecto no tiene modelo 3D disponible.")
         else:

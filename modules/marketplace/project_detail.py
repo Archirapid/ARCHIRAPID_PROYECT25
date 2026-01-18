@@ -177,84 +177,32 @@ def show_project_detail_page(project_id: str):
                         text += page.extract_text() + "\n"
 
                 if text.strip():
-                    # PROMPT MEJORADO PARA GENERAR PLANOS CON IA
-                    m2_proyecto = project_data.get('m2_construidos') or project_data.get('area_m2') or 100
-                    habitaciones = project_data.get('habitaciones') or 3
-                    banos = project_data.get('banos') or 2
-                    plantas = project_data.get('plantas') or 1
-                    tipo_proyecto = project_data.get('property_type') or project_data.get('tipo_proyecto') or 'Residencial'
+                    # PROMPT SENCILLO PARA PLANO BÁSICO
+                    # Usar los m² reales del proyecto (ya calculados arriba)
+                    m2_para_plano = m2_proyecto if m2_proyecto > 0 else 120  # Valor por defecto razonable si no hay datos
 
-                    # Calcular dimensiones aproximadas basadas en m²
+                    # Calcular dimensión aproximada (cuadrado)
                     import math
-                    lado_largo = math.sqrt(m2_proyecto / 0.7)  # Asumiendo ratio 0.7 para rectangular
-                    lado_corto = m2_proyecto / lado_largo
+                    lado = math.sqrt(m2_para_plano)
 
-                    prompt = f"""Analiza este proyecto arquitectónico y genera TRES PLANOS VISUALES detallados y PROFESIONALES en español.
+                    prompt = f"""Genera ÚNICAMENTE un plano arquitectónico básico en formato ASCII para un proyecto de {m2_para_plano} m².
 
-                    DATOS DEL PROYECTO:
-                    - Superficie construida: {m2_proyecto} m²
-                    - Dimensiones aproximadas: {lado_largo:.1f}m x {lado_corto:.1f}m
-                    - Habitaciones: {habitaciones}
-                    - Baños: {banos}
-                    - Plantas: {plantas}
-                    - Tipo: {tipo_proyecto}
+INSTRUCCIONES OBLIGATORIAS:
+- Crea SOLO el plano en ASCII, sin explicaciones adicionales
+- Dimensiones aproximadas cuadradas: {lado:.1f}m x {lado:.1f}m
+- Usa EXACTAMENTE este formato:
 
-                    == PLANO 1: DISTRIBUCIÓN GENERAL DE SUPERFICIE ==
-                    Crea un plano a escala rectangular con medidas reales precisas:
-                    - Dimensiones totales: {lado_largo:.1f}m x {lado_corto:.1f}m
-                    - Incluye medidas en todos los lados y divisiones
-                    - Usa formato ASCII profesional con | - + para paredes
-                    - Indica orientación cardinal (Norte/Sur/Este/Oeste)
-                    - Muestra proporciones realistas
+PLANO BÁSICO DEL PROYECTO ({m2_para_plano} m²)
 
-                    == PLANO 2: DISTRIBUCIÓN DETALLADA DE ESPACIOS ==
-                    Crea un plano de planta completo con distribución funcional:
-                    - {habitaciones} habitaciones (especifica tamaños: ej. 3x4m, 4x3.5m)
-                    - {banos} baños (1 principal + {banos-1} secundarios)
-                    - 1 cocina amplia (4x3m mínimo)
-                    - 1 salón-comedor integrado (mínimo 6x4m)
-                    - 1 pasillo central de distribución
-                    - Garaje doble si {tipo_proyecto.lower()} contiene 'adosada' o 'pareada'
-                    - 1 entrada principal con porche
-                    - Incluye: ventanas (○), puertas (□), muebles básicos
-                    - Usa caracteres ASCII: □ habitaciones, ○ ventanas/puertas, | - + paredes
+   NORTE
++----------+  {lado:.1f}m
+|          |
+|   CASA   |  Área construida: {m2_para_plano} m²
+|          |  Dimensiones aproximadas: {lado:.1f}m x {lado:.1f}m
++----------+
+   {lado:.1f}m
 
-                    == PLANO 3: PLANTA SUPERIOR (si {plantas} > 1) ==
-                    Para la segunda planta, distribuye:
-                    - {max(1, habitaciones-2)} habitaciones adicionales
-                    - 1 baño completo
-                    - 1 despacho o habitación de invitados
-                    - Escalera de conexión con primera planta
-                    - Mismas convenciones ASCII que plano 2
-
-                    == REGLAS PROFESIONALES ESTRICTAS ==
-                    - TODOS los planos deben ser VISUALES, LEGIBLES y a ESCALA
-                    - Usa SOLO caracteres ASCII: | - + □ ○ para crear planos realistas
-                    - Incluye MEDIDAS EXACTAS en metros en cada elemento
-                    - Mantén DISTRIBUCIÓN LÓGICA: circulación, iluminación natural, privacidad
-                    - Asegura CONEXIONES: puertas entre espacios, acceso a baños
-                    - Haz que luzca como planos arquitectónicos PROFESIONALES
-                    - NO copies diseños existentes - crea distribución ORIGINAL
-                    - Optimiza ESPACIO: maximiza funcionalidad en {m2_proyecto}m²
-                    - Considera NORMATIVA: ventilación, iluminación, accesibilidad
-
-                    == EJEMPLO DE FORMATO ==
-                    ```
-                    NORTE
-                    +-------------------+  {lado_largo:.1f}m
-                    |        ○          |
-                    |   SALÓN-COMEDOR   |  6.0x4.0m
-                    |        ○          |
-                    +---+---+---+---+---+
-                    |   |       |   |   |
-                    | ○ | COCINA| ○ | ○ |
-                    |   | 4x3m |   |   |
-                    +---+-------+---+---+
-                        2.0m    4.0m
-                    ```
-
-                    Texto del proyecto para contexto adicional:
-                    {text[:4000]}"""
+IMPORTANTE: No agregues texto antes o después del plano. Solo el plano ASCII."""
 
                     from modules.marketplace import ai_engine_groq as ai
                     plans = ai.generate_text(prompt)

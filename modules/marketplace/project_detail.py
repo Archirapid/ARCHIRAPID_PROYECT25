@@ -163,6 +163,116 @@ def show_project_detail_page(project_id: str):
     if project_data['architect_name']:
         st.write(f"**Arquitecto:** {project_data['architect_name']}")
 
+    # PLANOS ARQUITECTÓNICOS CON IA
+    st.header("🎨 Planos Arquitectónicos con IA")
+
+    if st.button("🎨 Generar Planos Arquitectónicos con IA", key="btn_ia_plans"):
+        if project_data.get("memoria_pdf"):
+            try:
+                import PyPDF2
+                with open(project_data["memoria_pdf"], "rb") as f:
+                    reader = PyPDF2.PdfReader(f)
+                    text = ""
+                    for page in reader.pages[:10]:  # Más páginas para usuarios logueados
+                        text += page.extract_text() + "\n"
+
+                if text.strip():
+                    # PROMPT MEJORADO PARA GENERAR PLANOS CON IA
+                    m2_proyecto = project_data.get('m2_construidos') or project_data.get('area_m2') or 100
+                    habitaciones = project_data.get('habitaciones') or 3
+                    banos = project_data.get('banos') or 2
+                    plantas = project_data.get('plantas') or 1
+                    tipo_proyecto = project_data.get('property_type') or project_data.get('tipo_proyecto') or 'Residencial'
+
+                    # Calcular dimensiones aproximadas basadas en m²
+                    import math
+                    lado_largo = math.sqrt(m2_proyecto / 0.7)  # Asumiendo ratio 0.7 para rectangular
+                    lado_corto = m2_proyecto / lado_largo
+
+                    prompt = f"""Analiza este proyecto arquitectónico y genera TRES PLANOS VISUALES detallados y PROFESIONALES en español.
+
+                    DATOS DEL PROYECTO:
+                    - Superficie construida: {m2_proyecto} m²
+                    - Dimensiones aproximadas: {lado_largo:.1f}m x {lado_corto:.1f}m
+                    - Habitaciones: {habitaciones}
+                    - Baños: {banos}
+                    - Plantas: {plantas}
+                    - Tipo: {tipo_proyecto}
+
+                    == PLANO 1: DISTRIBUCIÓN GENERAL DE SUPERFICIE ==
+                    Crea un plano a escala rectangular con medidas reales precisas:
+                    - Dimensiones totales: {lado_largo:.1f}m x {lado_corto:.1f}m
+                    - Incluye medidas en todos los lados y divisiones
+                    - Usa formato ASCII profesional con | - + para paredes
+                    - Indica orientación cardinal (Norte/Sur/Este/Oeste)
+                    - Muestra proporciones realistas
+
+                    == PLANO 2: DISTRIBUCIÓN DETALLADA DE ESPACIOS ==
+                    Crea un plano de planta completo con distribución funcional:
+                    - {habitaciones} habitaciones (especifica tamaños: ej. 3x4m, 4x3.5m)
+                    - {banos} baños (1 principal + {banos-1} secundarios)
+                    - 1 cocina amplia (4x3m mínimo)
+                    - 1 salón-comedor integrado (mínimo 6x4m)
+                    - 1 pasillo central de distribución
+                    - Garaje doble si {tipo_proyecto.lower()} contiene 'adosada' o 'pareada'
+                    - 1 entrada principal con porche
+                    - Incluye: ventanas (○), puertas (□), muebles básicos
+                    - Usa caracteres ASCII: □ habitaciones, ○ ventanas/puertas, | - + paredes
+
+                    == PLANO 3: PLANTA SUPERIOR (si {plantas} > 1) ==
+                    Para la segunda planta, distribuye:
+                    - {max(1, habitaciones-2)} habitaciones adicionales
+                    - 1 baño completo
+                    - 1 despacho o habitación de invitados
+                    - Escalera de conexión con primera planta
+                    - Mismas convenciones ASCII que plano 2
+
+                    == REGLAS PROFESIONALES ESTRICTAS ==
+                    - TODOS los planos deben ser VISUALES, LEGIBLES y a ESCALA
+                    - Usa SOLO caracteres ASCII: | - + □ ○ para crear planos realistas
+                    - Incluye MEDIDAS EXACTAS en metros en cada elemento
+                    - Mantén DISTRIBUCIÓN LÓGICA: circulación, iluminación natural, privacidad
+                    - Asegura CONEXIONES: puertas entre espacios, acceso a baños
+                    - Haz que luzca como planos arquitectónicos PROFESIONALES
+                    - NO copies diseños existentes - crea distribución ORIGINAL
+                    - Optimiza ESPACIO: maximiza funcionalidad en {m2_proyecto}m²
+                    - Considera NORMATIVA: ventilación, iluminación, accesibilidad
+
+                    == EJEMPLO DE FORMATO ==
+                    ```
+                    NORTE
+                    +-------------------+  {lado_largo:.1f}m
+                    |        ○          |
+                    |   SALÓN-COMEDOR   |  6.0x4.0m
+                    |        ○          |
+                    +---+---+---+---+---+
+                    |   |       |   |   |
+                    | ○ | COCINA| ○ | ○ |
+                    |   | 4x3m |   |   |
+                    +---+-------+---+---+
+                        2.0m    4.0m
+                    ```
+
+                    Texto del proyecto para contexto adicional:
+                    {text[:4000]}"""
+
+                    from modules.marketplace import ai_engine_groq as ai
+                    plans = ai.generate_text(prompt)
+
+                    if "Error:" in plans:
+                        st.error(plans)
+                    else:
+                        st.success("✅ Planos arquitectónicos profesionales generados por IA:")
+                        st.write(plans)
+                else:
+                    st.warning("No se pudo extraer texto del PDF.")
+            except ImportError:
+                st.error("Librería PyPDF2 no instalada. Instala con: pip install PyPDF2")
+            except Exception as e:
+                st.error(f"Error generando planos: {e}")
+        else:
+            st.info("No hay memoria PDF disponible para este proyecto.")
+
     # RESUMEN INTELIGENTE CON IA
     st.header("🤖 Resumen Inteligente con IA")
 

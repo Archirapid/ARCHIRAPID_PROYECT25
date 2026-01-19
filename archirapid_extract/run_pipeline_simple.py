@@ -26,7 +26,7 @@ SCRIPTS = [
     ("extract_pdf.py", "[1/4] Extraccion de PDF"),
     ("ocr_and_preprocess.py", "[2/4] OCR y preprocesado"),
     ("vectorize_plan.py", "[3/4] Vectorizacion de plano"),
-    ("compute_edificability.py", "[4/4] Calculo de edificabilidad")
+    ("../compute_edificability.py", "[4/4] Calculo de edificabilidad")
 ]
 
 def run_script(script_name, description):

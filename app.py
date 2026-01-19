@@ -272,56 +272,31 @@ def detalles_proyecto_v2(project_id: str):
         st.write(f"**Arquitecto:** {project_data['architect_name']}")
 
     # RESUMEN INTELIGENTE CON IA
-    st.header("🤖 Resumen Inteligente con IA")
+    st.header("🤖 Análisis Inteligente con IA")
 
-    if st.button("Generar Resumen Completo del Proyecto con IA", key="btn_ia_summary_v2"):
-        if project_data.get("memoria_pdf"):
-            try:
-                import PyPDF2
-                with open(project_data["memoria_pdf"], "rb") as f:
-                    reader = PyPDF2.PdfReader(f)
-                    text = ""
-                    for page in reader.pages[:10]:  # Más páginas para usuarios logueados
-                        text += page.extract_text() + "\n"
+    # --- DEPURACIÓN TÉCNICA ---
+    from modules.marketplace.project_detail import get_project_by_id
+    from modules.marketplace import ai_engine_groq as ai
 
-                if text.strip():
-                    # Prompt más detallado pero protegido para usuarios logueados
-                    prompt = f"""Analiza este proyecto arquitectónico y proporciona un resumen completo y detallado en español.
+    # Obtener proyecto con OCR data
+    project_full = get_project_by_id(project_id)
 
-                    INCLUIR:
-                    - Estilo arquitectónico y filosofía de diseño
-                    - Distribución general de espacios y ambientes
-                    - Materiales y acabados utilizados
-                    - Aspectos estéticos y de iluminación
-                    - Características sostenibles y eficiencia energética
-                    - Elementos innovadores o diferenciadores
-                    - Contexto y emplazamiento recomendado
+    # 1. BOTÓN DE DOSSIER (Texto corto para evitar cortes)
+    if st.button("📋 GENERAR DOSSIER PREVENTA"):
+        texto = project_full.get('ocr_text', "No hay datos en la DB")
+        with st.spinner("Analizando..."):
+            resumen = ai.generate_text(f"Resume en 150 palabras materiales y estilo de: {texto[:2000]}")
+            st.info(resumen)
 
-                    EXCLUIR COMPLETAMENTE:
-                    - Dimensiones exactas, medidas o proporciones específicas
-                    - Datos constructivos técnicos detallados
-                    - Información que permita replicar o copiar el proyecto
-                    - Detalles de estructura o cimentación
-                    - Especificaciones técnicas de instalaciones
-
-                    Sé informativo pero protege la propiedad intelectual del proyecto."""
-
-                    from modules.marketplace import ai_engine_groq as ai
-                    summary = ai.generate_text(prompt)
-
-                    if "Error:" in summary:
-                        st.error(summary)
-                    else:
-                        st.success("✅ Resumen completo generado por IA:")
-                        st.write(summary)
-                else:
-                    st.warning("No se pudo extraer texto del PDF.")
-            except ImportError:
-                st.error("Librería PyPDF2 no instalada. Instala con: pip install PyPDF2")
-            except Exception as e:
-                st.error(f"Error generando resumen: {e}")
+    # 2. BOTÓN DE PLANO (La clave de lo que buscas)
+    if st.button("📐 GENERAR PLANO TÉCNICO"):
+        texto = project_full.get('ocr_text', "")
+        if not texto:
+            st.error("Error: No hay memoria técnica guardada en la base de datos para este proyecto.")
         else:
-            st.info("No hay memoria PDF disponible para este proyecto.")
+            with st.spinner("Dibujando plano..."):
+                plano = ai.generate_ascii_plan_only(texto)
+                st.code(plano, language="text")
 
     # VISUALIZACIONES DEL PROYECTO
     st.header("🏗️ Visualizaciones del Proyecto")
@@ -1772,82 +1747,6 @@ if page_from_query == "Registro V2":
     except Exception as e:
         st.error(f"Error mostrando registro v2: {e}")
 
-@st.cache_resource
-def three_html_for(url_3d: str, project_id: str = "") -> str:
-    three_html = """
-<!doctype html>
-<html>
-    <head>
-        <meta charset="utf-8" />
-        <style>body { margin: 0; overflow: hidden; background: #f0f0f0; }</style>
-    </head>
-    <body>
-        <div id="container" style="width:100%;height:600px;"></div>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/OBJLoader.js"></script>
-        <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
-        <script>
-            (function(){
-                const container = document.getElementById('container');
-                const scene = new THREE.Scene();
-                scene.background = new THREE.Color(0xf0f0f0);
-                
-                const camera = new THREE.PerspectiveCamera(45, window.innerWidth / 600, 0.1, 20000);
-                const renderer = new THREE.WebGLRenderer({antialias:true});
-                renderer.setSize(window.innerWidth, 600);
-                container.appendChild(renderer.domElement);
-
-                const controls = new THREE.OrbitControls(camera, renderer.domElement);
-                const ambient = new THREE.AmbientLight(0xffffff, 0.7); // Luz ambiental suave
-                scene.add(ambient);
-
-                const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8); // Luz de cielo y suelo
-                hemiLight.position.set(0, 20, 0);
-                scene.add(hemiLight);
-
-                const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-                dirLight.position.set(100, 100, 50);
-                scene.add(dirLight);
-
-                const loader = new THREE.OBJLoader();
-                loader.load('""" + url_3d + """', function(obj){
-                    // Escalado leve del modelo para hacerlo más visible (factor 1.5)
-                    if(obj && obj.scale){ obj.scale.multiplyScalar(1.5); }
-                    const box = new THREE.Box3().setFromObject(obj);
-                    const center = box.getCenter(new THREE.Vector3());
-                    const size = box.getSize(new THREE.Vector3());
-                    obj.position.sub(center);
-
-                    // Ajuste de cámara: 1.5 para que se vea más grande
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    const cameraZ = maxDim / 2 / Math.tan(Math.PI * camera.fov / 360) * 1.5;
-                    camera.position.set(cameraZ, cameraZ, cameraZ);
-                    camera.lookAt(0,0,0);
-
-                    obj.traverse(function(child){
-                        if(child.isMesh){
-                            // Material Gris con bordes visibles para que no sea "todo blanco"
-                            child.material = new THREE.MeshStandardMaterial({
-                                color: 0xdddddd,
-                                side: THREE.DoubleSide
-                            });
-                            const edges = new THREE.EdgesGeometry(child.geometry);
-                            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x888888 }));
-                            child.add(line);
-                        }
-                    });
-                    scene.add(obj);
-                });
-
-                function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
-                animate();
-                window.onresize = function(){ renderer.setSize(window.innerWidth, 600); };
-            })();
-        </script>
-    </body>
-</html>
-"""
-    return three_html
 
 # Page configuration and navigation
 PAGES = {

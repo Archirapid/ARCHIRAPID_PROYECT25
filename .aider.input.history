@@ -1,0 +1,38 @@
+
+# 2026-01-18 13:26:17.697412
++Y
+
+# 2026-01-18 13:26:34.722123
++N
+
+# 2026-01-18 13:26:45.764864
++Necesito arreglar el resumen de IA que se trunca a 300 tokens. 
++
++PROBLEMA:
++- En ai_engine_groq.py, generate_text() usa max_tokens=300 diseñado para planos ASCII cortos
++- En project_detail.py línea ~303 usa generate_text() para informes largos
++- Resultado: Informe se corta a mitad
++
++SOLUCIÓN:
++1. En ai_engine_groq.py: 
++   - Añadir nueva función generate_project_report(prompt:  str) -> str
++   - Parámetros: max_tokens=8000, temperature=0.7, sin stop sequence
++   - System prompt: "Eres arquitecto profesional. Genera informes completos en markdown con títulos ##, listas y secciones claras. Incluye planos ASCII cuando sea apropiado.  NO trunces el informe."
++   - Manejo de errores igual que generate_text()
++
++2. En project_detail.py:
++   - Línea ~303: cambiar "summary = ai. generate_text(prompt)" por "summary = ai.generate_project_report(prompt)"
++
++El objetivo es tener informes completos de 2000+ palabras sin truncar. 
+
+# 2026-01-18 13:28:17.143576
++YYES
+
+# 2026-01-18 13:28:24.620449
++YES
+
+# 2026-01-18 13:29:15.952495
++aider --model groq/llama-3.3-70b-versatile modules\marketplace\ai_engine_groq.py modules\marketplace\project_detail.py
+
+# 2026-01-18 13:30:01.179140
++C

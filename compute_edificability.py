@@ -1,5 +1,11 @@
 # compute_edificability.py - Enhanced validation and report generation
 # -*- coding: utf-8 -*-
+#
+# ⚠️  CRÍTICO: Este archivo DEBE permanecer en la RAÍZ del proyecto
+#    Todos los módulos de ArchiRapid dependen de esta ubicación para
+#    acceder a los datos de edificabilidad validados.
+#    NO mover a subcarpetas.
+#
 import re
 import json
 from pathlib import Path

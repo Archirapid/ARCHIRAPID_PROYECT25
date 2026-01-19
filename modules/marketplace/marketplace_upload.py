@@ -14,6 +14,7 @@ from .data_access import save_proyecto, get_usuario
 from .documentacion import generar_memoria_constructiva, generar_presupuesto_estimado
 from src import db
 from export_ops import generar_paquete_descarga
+from archirapid_extract.parse_project_memoria import extract_text_from_pdf, parse_memoria_text
 
 # === CONFIGURACIÓN ===
 UPLOAD_DIR = "uploads/proyectos_arquitectos"
@@ -278,6 +279,20 @@ def _process_project_upload(arquitecto_id: int, title: str, description: str, pr
             'validacion_ok': True
         }
         
+        # Procesar automáticamente la memoria técnica con OCR y análisis
+        if saved_files.get('memoria_pdf_path'):
+            try:
+                # Extraemos el texto real del PDF que acabas de subir
+                texto_extraido = extract_text_from_pdf(saved_files['memoria_pdf_path'])
+                # Lo convertimos en datos técnicos (m2, habitaciones, etc.)
+                datos_tecnicos = parse_memoria_text(texto_extraido)
+                
+                # Estos son los datos que irán a las nuevas columnas de la DB
+                project_data['ocr_text'] = texto_extraido
+                project_data['parsed_data_json'] = json.dumps(datos_tecnicos)
+            except Exception as e:
+                st.error(f"Error procesando memoria técnica: {e}")
+        
         # Guardar en base de datos
         try:
             db.insert_project(project_data)
@@ -301,7 +316,7 @@ def get_projects_by_architect(architect_id: int) -> List[Dict]:
         # Intentar usar list_proyectos si existe
         try:
             from src.db import list_proyectos
-            return list_proyectos({'autor_id': architect_id})
+            return list_proyectos({'architect_id': str(architect_id)})
         except ImportError:
             # Fallback: usar get_all_projects y filtrar manualmente
             all_projects = db.get_all_projects()

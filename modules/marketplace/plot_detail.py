@@ -16,48 +16,47 @@ from modules.marketplace.marketplace import get_plot_image_path
 from modules.marketplace.compatibilidad import get_proyectos_compatibles
 from src import db
 
-def generar_svg_solar(superficie_parcela, max_construible):
-    width, height = 250, 200  # Reducido a la mitad para mejor visualización
-    margin = 20
+def generar_svg_solar_validado(superficie_parcela, max_construible, es_urbano=True):
+    # Dimensiones del lienzo SVG
+    width, height = 300, 250
+    margin = 30
 
-    solar_x = margin
-    solar_y = margin
-    solar_width = width - 2 * margin
-    solar_height = height - 2 * margin
+    # Color según tipo de suelo
+    color_solar = "#e8f4f8" if es_urbano else "#fdf2e9" # Azul suave vs Naranja rústico
+    color_borde = "#2980b9" if es_urbano else "#d35400"
 
+    # 1. Dibujamos el Solar (La Parcela)
+    solar_w = width - (margin * 2)
+    solar_h = height - (margin * 2)
+
+    # 2. Calculamos el área de construcción proporcional
+    # Si la edificabilidad es el 33%, el cuadro interno ocupará esa proporción de área
     ratio = max_construible / superficie_parcela if superficie_parcela > 0 else 0
-    factor = ratio ** 0.5
+    factor_escala = ratio ** 0.5  # Raíz cuadrada para escala lineal
 
-    construible_width = solar_width * factor
-    construible_height = solar_height * factor
+    const_w = solar_w * factor_escala
+    const_h = solar_h * factor_escala
 
-    construible_x = solar_x + (solar_width - construible_width) / 2
-    construible_y = solar_y + (solar_height - construible_height) / 2
+    # Centramos la construcción dentro del solar
+    const_x = margin + (solar_w - const_w) / 2
+    const_y = margin + (solar_h - const_h) / 2
 
     svg = f"""
-<svg 
-    width="{width}" 
-    height="{height}" 
-    viewBox="0 0 {width} {height}"
-    xmlns="http://www.w3.org/2000/svg"
-    style="display:block; width:100%; height:auto; max-width:500px; margin:0 auto;">
+    <svg viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="{margin}" y="{margin}" width="{solar_w}" height="{solar_h}"
+              fill="{color_solar}" stroke="{color_borde}" stroke-width="2" />
 
-  <rect width="100%" height="100%" fill="#f8f9fa" />
+        <rect x="{const_x}" y="{const_y}" width="{const_w}" height="{const_h}"
+              fill="#2ecc71" fill-opacity="0.6" stroke="#27ae60" stroke-width="2" stroke-dasharray="4" />
 
-  <rect x="{solar_x}" y="{solar_y}" width="{solar_width}" height="{solar_height}"
-        fill="#e0e0e0" stroke="#555" stroke-width="2" />
-  <text x="{solar_x + 10}" y="{solar_y + 15}" font-size="12" fill="#333">
-    Solar: {superficie_parcela:.0f} m²
-  </text>
-
-  <rect x="{construible_x}" y="{construible_y}" width="{construible_width}" height="{construible_height}"
-        fill="#b0c4de" stroke="#333" stroke-width="2" />
-  <text x="{construible_x + 10}" y="{construible_y + 15}" font-size="12" fill="#333">
-    Zona construible: {max_construible:.0f} m²
-  </text>
-
-</svg>
-"""
+        <text x="{width/2}" y="{margin-10}" text-anchor="middle" font-size="12" font-family="sans-serif" fill="#34495e">
+            Parcela Real: {superficie_parcela} m²
+        </text>
+        <text x="{width/2}" y="{height-margin+20}" text-anchor="middle" font-size="11" font-family="sans-serif" fill="#27ae60">
+            Máx. Edificable: {max_construible} m² ({int(ratio*100)}%)
+        </text>
+    </svg>
+    """
     return svg
 
 def get_all_plot_images(plot):
@@ -250,9 +249,33 @@ def show_plot_detail_page(plot_id: str):
 
     st.markdown("### 🤖 Validación y Diseño IA (MVP)")
 
-    # Calcular superficie máxima construible
-    superficie_parcela = plot.get("superficie_parcela")
-    max_construible = round(superficie_parcela * 0.33, 2) if superficie_parcela else 0
+    # --- INICIO DE LA CIRUGÍA ---
+    import json
+    from pathlib import Path
+
+    # Intentamos localizar el informe real generado por compute_edificability.py
+    # Lo buscamos en la raíz, que es donde el script lo guarda por defecto
+    path_reporte = Path("catastro_output/validation_report.json")
+
+    # Fallback: Valores por defecto de la base de datos
+    superficie_final = plot['m2']
+    max_construible = calculate_edificability(superficie_final) 
+    tipo_suelo = "No Verificado"
+    datos_validados = None
+
+    if path_reporte.exists():
+        try:
+            with open(path_reporte, "r", encoding="utf-8") as f:
+                datos_validados = json.load(f)
+                # Si el ID del reporte coincide con la finca actual (opcional) 
+                # o simplemente si el archivo existe, actualizamos valores:
+                superficie_final = datos_validados.get('surface_m2', superficie_final)
+                max_construible = datos_validados.get('max_buildable_m2', max_construible)
+                tipo_suelo = datos_validados.get('soil_type', "URBANO")
+        except Exception:
+            pass # Si falla el JSON, el sistema sigue funcionando con los datos de DB
+    # --- FIN DE LA CIRUGÍA ---
+    
     st.write(f"**Superficie máxima construible:** {max_construible} m²")
 
     st.info("La IA revisará tus requisitos y generará una propuesta arquitectónica conceptual.")
@@ -292,7 +315,7 @@ def show_plot_detail_page(plot_id: str):
 Actúas como arquitecto especializado en vivienda unifamiliar. 
 
 DATOS DEL SOLAR
-- Superficie total de parcela: {superficie_parcela:.0f} m²
+- Superficie total de parcela: {superficie_final:.0f} m²
 - Superficie máxima construible (33%): {max_construible:.0f} m²
 - Ubicación: {plot.get('localidad')}, {plot.get('provincia')}
 - Tipo de solar: {plot.get('type') or "No especificado"}
@@ -423,36 +446,98 @@ Después del SVG, NO escribas nada más.
 """
 
             try:
-                respuesta = ai_engine.generate_text(prompt)
+                # TRUCO DE INGENIERO: Generar texto y plano por separado para garantizar que aparezca
+                # 1. Generamos el texto (resumen sin plano)
+                resumen_prompt = f"""
+Actúas como arquitecto especializado en vivienda unifamiliar.
+
+DATOS DEL SOLAR
+- Superficie total de parcela: {superficie_final:.0f} m²
+- Superficie máxima construible (33%): {max_construible:.0f} m²
+- Ubicación: {plot.get('localidad')}, {plot.get('provincia')}
+- Tipo de solar: {plot.get('type') or "No especificado"}
+- Referencia catastral: {plot.get('catastral_ref') or "No especificada"}
+
+CONFIGURACIÓN DE LA VIVIENDA
+- Superficie deseada por el usuario: {m2_deseados or "No especificada"} m²
+- Superficie sobre la que se diseña el proyecto: {m2_correccion:.0f} m²
+- Motivo de ajuste: {motivo_correccion}
+
+PROPUESTA ARQUITECTÓNICA (máximo 200 palabras):
+Describe de forma clara y profesional:
+- Concepto general de la vivienda.
+- Número de plantas y reparto aproximado de m² por planta.
+- Distribución básica (zona de día, zona de noche, espacios exteriores).
+- Criterios de orientación, luz natural y ventilación.
+- Materiales y estilo arquitectónico sugerido.
+- Consideraciones de sostenibilidad.
+
+SUPERFICIE Y NORMATIVA:
+Explica brevemente que el diseño se basa en {m2_correccion:.0f} m² construidos.
+
+ESTIMACIÓN DE PRESUPUESTO:
+- Usa un rango de coste por m² razonable (estándar y calidad media-alta).
+- Calcula un rango aproximado de presupuesto para {m2_correccion:.0f} m².
+- Explica claramente que es una estimación orientativa, no vinculante.
+"""
+
+                resumen = ai_engine.generate_text(resumen_prompt, max_tokens=600)
                 st.success("Propuesta generada con éxito")
 
-                # Separar texto y SVG usando el separador
-                parts = respuesta.split("===SVG_DISTRIBUCION===")
-                if len(parts) == 2:
-                    texto_parte = parts[0].strip()
-                    svg_parte = parts[1].strip()
-                else:
-                    texto_parte = respuesta.strip()
-                    svg_parte = None
-
                 st.markdown("### 🧩 Propuesta Arquitectónica IA")
-                st.write(texto_parte)
+                st.write(resumen)
 
-                # Generar SVG determinista del solar
-                svg = generar_svg_solar(superficie_parcela, max_construible)
-                st.subheader("Plano conceptual")
-                components.html(svg, height=550, scrolling=True)
+                # Dentro de la vista de detalles
+                if datos_validados:
+                    svg_grafico = generar_svg_solar_validado(
+                        superficie_parcela=datos_validados['surface_m2'],
+                        max_construible=datos_validados['max_buildable_m2'],
+                        es_urbano=(datos_validados['soil_type'] == "URBANO")
+                    )
+                    st.subheader("Plano conceptual")
+                    components.html(svg_grafico, height=300)
 
-                st.markdown(f"🧱 Distribución esquemática aproximada basada en {m2_correccion:.0f} m² construidos")
+                st.divider()
 
-                # Mostrar SVG de distribución si existe
-                if svg_parte and "<svg" in svg_parte:
-                    st.subheader("Plano de distribución")
-                    components.html(svg_parte, height=600, scrolling=True)
+                # 2. Generamos el PLANO de forma independiente (¡Esto garantiza que salga!)
+                st.subheader("📐 Esquema de Planta (IA)")
+                plano_prompt = f"Vivienda unifamiliar de {m2_correccion:.0f} m² con salón, comedor, cocina, 3 habitaciones y baño"
+                plano = ai_engine.generate_ascii_plan(plano_prompt)
+                st.code(plano, language="text")  # Usamos st.code para que el dibujo no se descuadre
 
             except Exception as e:
                 st.error(f"Error generando propuesta IA: {e}")
-    
+
+    # NUEVO BOTÓN: DOSSIER DE PRE-VENTA CON IA
+    st.markdown("### 📄 Dossier de Pre-Venta con IA")
+
+    if st.button("🤖 GENERAR DOSSIER DE PRE-VENTA (IA)", type="primary"):
+        with st.spinner("Analizando memoria técnica y dimensiones..."):
+            from modules.marketplace import ai_engine_groq as ai
+
+            # Definir text_context para todo el flujo
+            text_context = plot.get('description', '') or plot.get('title', 'Proyecto inmobiliario')
+
+            # PASO 1: Extraer tabla de m2 (Pág 13 de la memoria)
+            tabla_m2 = ai.extract_area_table(text_context)
+            st.subheader("📊 Cuadro de Superficies Extraído")
+            st.markdown(tabla_m2)
+
+            # PASO 2: Generar el resumen corto (Para que no se corte)
+            resumen = ai.generate_text(f"Resume brevemente el estilo de este proyecto: {text_context[:1000]}", max_tokens=250)
+            st.write(resumen)
+
+            st.divider()
+
+            # PASO 3: EL PLANO (Llamada independiente con st.code)
+            st.subheader("📐 Esquema de Distribución Sugerido")
+            plano_visual = ai.generate_blueprint_from_data(tabla_m2)
+
+            # El bloque st.code fuerza a la IA a mostrar el dibujo sin deformarlo
+            st.code(plano_visual, language="text")
+
+            st.success("✅ Análisis completado. Este proyecto cumple con la normativa detectada.")
+
     # Descripción
     if plot.get('description'):
         st.subheader("📝 Descripción")
@@ -480,6 +565,57 @@ Después del SVG, NO escribas nada más.
         # Mostrar coordenadas GPS si están disponibles
         if plot.get('lat') and plot.get('lon'):
             st.markdown(f"**Coordenadas GPS:** {float(plot['lat']):.6f}, {float(plot['lon']):.6f}")
+
+    st.markdown("---")
+
+    # NUEVO BOTÓN: Análisis y Esquema Técnico
+    if st.button("🤖 Generar Análisis y Esquema Técnico", type="primary"):
+        # Cargamos datos reales del JSON de validación
+        import json
+        from pathlib import Path
+
+        path_json = Path("catastro_output/validation_report.json")
+        datos_verificados = {}
+        if path_json.exists():
+            with open(path_json, "r", encoding="utf-8") as f:
+                datos_verificados = json.load(f)
+
+        with st.spinner("Consultando con el Arquitecto IA..."):
+            from modules.marketplace import ai_engine_groq as ai
+
+            # LLAMADA 1: Resumen Profesional (Corto para que no se sature)
+            # Usamos los datos del JSON para que la IA no invente
+            project_info = plot.get('description', '') or plot.get('title', 'Proyecto inmobiliario')
+            prompt_resumen = f"""
+            Resume este proyecto inmobiliario: {project_info[:1500]}
+            DATOS CLAVE: Superficie {datos_verificados.get('surface_m2')}m2,
+            Edificabilidad {datos_verificados.get('max_buildable_m2')}m2.
+            Sé directo y profesional.
+            """
+            resumen = ai.generate_text(prompt_resumen, max_tokens=500)
+            st.markdown("### 📋 Resumen Ejecutivo")
+            st.write(resumen)
+
+            st.divider()
+
+            # LLAMADA 2: El Plano ASCII (Independiente)
+            st.markdown("### 📐 Esquema de Planta Sugerido")
+            # Le pasamos los m2 reales para que el dibujo tenga sentido
+            prompt_plano = f"Planta para una vivienda en parcela de {datos_verificados.get('surface_m2')}m2 con {datos_verificados.get('max_buildable_m2')}m2 construibles."
+            plano_ascii = ai.generate_ascii_plan(prompt_plano)
+
+            # ¡IMPORTANTE! Usar st.code para que las líneas no se tuerzan
+            st.code(plano_ascii, language="text")
+
+    # Validación de edificabilidad
+    st.subheader("✅ Validación de Edificabilidad")
+    if datos_validados is not None:
+        if tipo_suelo == 'URBANO':
+            st.success(f"✅ Viable: {max_construible}m² edificables")
+        else:
+            st.warning("⚠️ Restricciones detectadas")
+    else:
+        st.info("No hay reporte de validación disponible")
     
     st.markdown("---")
     
@@ -712,4 +848,78 @@ Después del SVG, NO escribas nada más.
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error al procesar la compra: {str(e)}")
+    
+    st.markdown("---")
+    
+    # Funcionalidades de IA
+    st.subheader("🤖 Herramientas de IA")
+    
+    col_gemelo, col_diseno = st.columns(2)
+    
+    with col_gemelo:
+        st.markdown("### 🏗️ Gemelo Digital")
+        st.markdown("Crea una réplica virtual 3D de tu proyecto")
+        if st.button("🚀 Crear Gemelo Digital", key="btn_gemelo", type="secondary"):
+            # Guardar el ID de la parcela actual para el gemelo digital
+            st.session_state["selected_plot_for_gemelo"] = plot_id
+            st.session_state["page"] = "gemelo_digital"
+            st.success("🔄 Redirigiendo al Gemelo Digital...")
+            st.info("Allí podrás diseñar tu vivienda en 3D con IA")
+            st.rerun()
+    
+    with col_diseno:
+        st.markdown("### 🏠 Diseño con IA")
+        st.markdown("Arquitecto virtual para diseñar tu casa")
+        if st.button("🎨 Diseñar con IA", key="btn_diseno", type="secondary"):
+            # Guardar el ID de la parcela actual para el diseñador
+            st.session_state["selected_plot_for_design"] = plot_id
+            st.session_state["page"] = "disenador_vivienda"
+            st.success("🔄 Redirigiendo al Arquitecto Virtual...")
+            st.info("Un asistente IA te guiará paso a paso")
+            st.rerun()
+    
+    # Nuevo botón para análisis de terreno
+    st.markdown("### 📊 Análisis Técnico de Terreno")
+    st.markdown("Análisis profesional de viabilidad basado en datos catastrales validados")
+    
+    import json
+    from pathlib import Path
+    
+    # Ruta quirúrgica al reporte generado por tu script
+    PATH_VALIDACION = Path("catastro_output/validation_report.json")
+    
+    if st.button("🪄 Análisis Experto (Datos Verificados)", type="primary"):
+        if PATH_VALIDACION.exists():
+            with open(PATH_VALIDACION, "r", encoding="utf-8") as f:
+                datos_finca = json.load(f)
+            
+            with st.spinner("Consultando inteligencia técnica..."):
+                # Intentar obtener contexto OCR para análisis más completo
+                ocr_context = ""
+                ocr_paths = [
+                    Path("archirapid_extract/catastro_output/ocr_text.txt"),
+                    Path("archirapid_extract/catastro_output/extracted_text.txt")
+                ]
+                
+                for ocr_path in ocr_paths:
+                    if ocr_path.exists():
+                        try:
+                            with open(ocr_path, "r", encoding="utf-8") as f:
+                                ocr_context = f.read()[:2000]  # Limitar a 2000 caracteres
+                            break
+                        except Exception:
+                            continue
+                
+                # Usar análisis completo si hay contexto OCR, sino usar versión ligera
+                from modules.marketplace.ai_engine_groq import generate_validated_analysis, generar_analisis_ligero
+                
+                if ocr_context.strip():
+                    respuesta = generate_validated_analysis(datos_finca, ocr_context)
+                else:
+                    respuesta = generar_analisis_ligero(datos_finca)
+                
+                st.info("### 📋 Informe de Viabilidad")
+                st.markdown(respuesta)
+        else:
+            st.warning("⚠️ No se encuentra el reporte de validación. Ejecuta primero 'compute_edificability.py'.")
 

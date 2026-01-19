@@ -35,10 +35,13 @@ data.db.backup_*
 # Logs
 *.log
 
-# Database (opcional - incluir si quieres versionar data.db)
-# data.db
-archirapid.db
-archirapid.db
+# Database (contiene datos sensibles)
+database.db
+*.db
+
+# Environment files with sensitive data
+.env.txt
+.env.*
 
 # Uploads y outputs temporales
 uploads/*

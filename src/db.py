@@ -149,9 +149,19 @@ def ensure_tables():
             pass  # ya existe
         c.execute("""CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
-            title TEXT, architect_name TEXT, area_m2 INTEGER, max_height REAL,
-            style TEXT, price REAL, file_path TEXT, description TEXT,
-            created_at TEXT
+            title TEXT,
+            description TEXT,
+            m2_construidos REAL,
+            area_m2 REAL,
+            price REAL,
+            estimated_cost REAL,
+            architect_name TEXT,
+            max_height REAL,
+            style TEXT,
+            file_path TEXT,
+            ocr_text TEXT,
+            parsed_data_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
         # Asegurar columna `characteristics_json` en la tabla projects (migración segura)
         try:
@@ -166,6 +176,16 @@ def ensure_tables():
             pass
         except Exception:
             pass
+        # Asegurar columna `ocr_text` en la tabla projects (migración segura)
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN ocr_text TEXT")
+        except Exception:
+            pass  # Columna ya existe
+        # Asegurar columna `parsed_data_json` en la tabla projects (migración segura)
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN parsed_data_json TEXT")
+        except Exception:
+            pass  # Columna ya existe
         c.execute("""CREATE TABLE IF NOT EXISTS payments (
             payment_id TEXT PRIMARY KEY,
             amount REAL, concept TEXT, buyer_name TEXT, buyer_email TEXT,

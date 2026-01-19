@@ -682,7 +682,7 @@ def build_project(catastro_path: str, output_dir: str, num_bedrooms: int = 2,
 
 if __name__ == "__main__":
     # Test básico
-    catastro_dir = "catastro_output"
+    catastro_dir = "../catastro_output"
     output_dir = "design_output"
     
     result = build_project(

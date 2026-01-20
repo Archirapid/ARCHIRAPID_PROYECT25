@@ -363,7 +363,7 @@ Ejemplo que el modelo debe imitar (NO lo modifiques, solo úsalo como referencia
             if project_data.get("modelo_3d_glb"):
                 # Mostrar visor 3D completo
                 rel_path = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
-                model_url = f"http://127.0.0.1:8765/{rel_path}".replace(" ", "%20")
+                model_url = f"http://localhost:8765/{rel_path}".replace(" ", "%20")
 
                 # HTML con Three.js para visor 3D
                 three_html = f"""
@@ -472,8 +472,8 @@ Ejemplo que el modelo debe imitar (NO lo modifiques, solo úsalo como referencia
             st.markdown("#### 🥽 Visor de Realidad Virtual")
             if project_data.get("modelo_3d_glb"):
                 rel = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
-                glb_url = f"http://127.0.0.1:8765/{rel}".replace(" ", "%20")
-                viewer_url = f"http://127.0.0.1:8765/static/vr_viewer.html?model={glb_url}"
+                glb_url = f"http://localhost:8765/{rel}".replace(" ", "%20")
+                viewer_url = f"http://localhost:8765/static/vr_viewer.html?model={glb_url}"
                 st.markdown(
                     f'<a href="{viewer_url}" target="_blank">'
                     f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
@@ -494,7 +494,7 @@ Ejemplo que el modelo debe imitar (NO lo modifiques, solo úsalo como referencia
             # Foto principal
             if project_data.get("foto_principal"):
                 rel = project_data["foto_principal"].replace("\\", "/").lstrip("/")
-                url = f"http://127.0.0.1:8765/{rel}"
+                url = f"http://localhost:8765/{rel}"
                 st.image(url, width=400, caption="Foto Principal")
             # Galería adicional
             if gallery:
@@ -502,7 +502,7 @@ Ejemplo que el modelo debe imitar (NO lo modifiques, solo úsalo como referencia
                 for idx, foto in enumerate(gallery):
                     if foto:
                         rel = foto.replace("\\", "/").lstrip("/")
-                        url = f"http://127.0.0.1:8765/{rel}"
+                        url = f"http://localhost:8765/{rel}"
                         st.image(url, width=300, caption=f"Imagen {idx + 1}")
             # Planos
             if project_data.get("planos_pdf") or project_data.get("planos_dwg"):

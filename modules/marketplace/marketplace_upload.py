@@ -352,52 +352,68 @@ def get_all_architect_projects() -> List[Dict]:
     except Exception:
         return []
 
-def display_architect_project(project: Dict):
+def display_architect_project(project: Dict, show_buy_button: bool = True):
     """
     Muestra los detalles de un proyecto de arquitecto
+    show_buy_button: Si False, oculta opciones de compra (modo competencia)
     """
     st.subheader(f"🏗️ {project.get('title', project.get('nombre', 'Proyecto'))}")
-    
+
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
         st.write(f"**Descripción:** {project.get('description', project.get('descripcion', 'Sin descripción'))}")
         st.write(f"**Tipo:** {project.get('tipo', 'No especificado').replace('_', ' ').title()}")
         st.write(f"**Superficie:** {project.get('area_m2', project.get('total_m2', 0))} m²")
-        
+
         if project.get('etiquetas'):
             st.write(f"**Etiquetas:** {', '.join(project['etiquetas'])}")
-    
+
     with col2:
-        price = project.get('price', project.get('precio_venta', 0))
-        st.metric("Precio de venta", f"€{price:,.0f}")
-        
-        # Mostrar archivos disponibles
-        archivos = []
-        if project.get('modelo_3d_path'): archivos.append("3D")
-        if project.get('imagenes') or project.get('foto_principal'): archivos.append("Imágenes")
-        if project.get('memoria_pdf_path'): archivos.append("PDF")
-        if project.get('cad_dwg_path'): archivos.append("CAD")
-        
-        if archivos:
-            st.write(f"**Archivos:** {', '.join(archivos)}")
-        
-        # Botón de compra
-        buyer_email = st.text_input("Email del comprador", key=f"buy_email_{project.get('id', '')}")
-        if st.button("Comprar Proyecto", key=f"buy_{project.get('id', '')}"):
-            if not buyer_email or '@' not in buyer_email:
-                st.error("Introduce un email válido")
-            else:
-                try:
-                    commission = db.registrar_venta_proyecto(
-                        project.get('id'), 
-                        buyer_email, 
-                        'Proyecto completo', 
-                        float(price)
-                    )
-                    st.success(f"Compra registrada. Comisión: €{commission:.2f}")
-                except Exception as e:
-                    st.error(f"Error en la compra: {e}")
+        if show_buy_button:
+            # Mostrar precio y opciones de compra para clientes
+            price = project.get('price', project.get('precio_venta', 0))
+            st.metric("Precio de venta", f"€{price:,.0f}")
+
+            # Mostrar archivos disponibles
+            archivos = []
+            if project.get('modelo_3d_path'): archivos.append("3D")
+            if project.get('imagenes') or project.get('foto_principal'): archivos.append("Imágenes")
+            if project.get('memoria_pdf_path'): archivos.append("PDF")
+            if project.get('cad_dwg_path'): archivos.append("CAD")
+
+            if archivos:
+                st.write(f"**Archivos:** {', '.join(archivos)}")
+
+            # Botón de compra
+            buyer_email = st.text_input("Email del comprador", key=f"buy_email_{project.get('id', '')}")
+            if st.button("Comprar Proyecto", key=f"buy_{project.get('id', '')}"):
+                if not buyer_email or '@' not in buyer_email:
+                    st.error("Introduce un email válido")
+                else:
+                    try:
+                        commission = db.registrar_venta_proyecto(
+                            project.get('id'),
+                            buyer_email,
+                            'Proyecto completo',
+                            float(price)
+                        )
+                        st.success(f"Compra registrada. Comisión: €{commission:.2f}")
+                    except Exception as e:
+                        st.error(f"Error en la compra: {e}")
+        else:
+            # Modo competencia - solo mostrar archivos disponibles, sin precio ni compra
+            archivos = []
+            if project.get('modelo_3d_path'): archivos.append("3D")
+            if project.get('imagenes') or project.get('foto_principal'): archivos.append("Imágenes")
+            if project.get('memoria_pdf_path'): archivos.append("PDF")
+            if project.get('cad_dwg_path'): archivos.append("CAD")
+
+            if archivos:
+                st.write(f"**Archivos:** {', '.join(archivos)}")
+
+            # Mensaje informativo para arquitectos
+            st.info("💼 Proyecto de competencia - Solo para referencia")
 
 # === FUNCIÓN PRINCIPAL ===
 def main():
@@ -477,7 +493,7 @@ def main():
         st.subheader("📋 Proyectos Disponibles")
         available_projects = get_all_architect_projects()
         for project in available_projects:
-            display_architect_project(project)
+            display_architect_project(project, show_buy_button=False)
             st.divider()
         return
     
@@ -515,7 +531,7 @@ def main():
         st.subheader("🛒 Catálogo de Proyectos")
         market_projects = get_all_architect_projects()
         for project in market_projects:
-            display_architect_project(project)
+            display_architect_project(project, show_buy_button=False)
             st.divider()
     
     elif menu_option == "Subir Proyecto":

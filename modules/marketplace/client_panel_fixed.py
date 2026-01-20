@@ -1,6 +1,14 @@
 # modules/marketplace/client_panel.py
 import streamlit as st
-from modules.marketplace.utils import db_conn
+try:
+    from modules.marketplace.utils import db_conn
+except ImportError:
+    # Fallback si falla el import
+    import sys
+    sys.path.append(r"C:/ARCHIRAPID_PROYECT25")
+    from src import db as db_module
+    def db_conn():
+        return db_module.get_conn()
 import json
 import os
 from modules.marketplace.compatibilidad import get_proyectos_compatibles
@@ -313,7 +321,7 @@ def show_buyer_panel(client_email):
     st.header("🛒 Panel de Comprador")
     
     # Tabs para diferentes secciones
-    tab1, tab2, tab3 = st.tabs(["🔍 Buscar Proyectos", "📋 Mis Intereses", "📊 Mis Transacciones"])
+    tab1, tab2, tab3 = st.tabs(["🔍 Buscar Proyectos", "📋 Mis Intereses", "� Mis Compras de Proyectos"])
     
     with tab1:
         # Búsqueda avanzada de proyectos
@@ -324,8 +332,8 @@ def show_buyer_panel(client_email):
         show_client_interests(client_email)
     
     with tab3:
-        # Mostrar transacciones realizadas
-        show_client_transactions(client_email)
+        # Mostrar compras de proyectos realizadas
+        show_client_project_purchases(client_email)
 
 
 def show_owner_panel_v2(client_email):
@@ -681,3 +689,96 @@ def show_project_interest_panel(project_id):
                 st.markdown("#### Distribución de Planta Sugerida")
                 st.code(plano_ascii, language="text")
                 st.caption("Nota: Este plano es una representación esquemática basada en la memoria descriptiva.")
+
+
+def show_client_project_purchases(client_email):
+    """Mostrar compras de proyectos realizadas por el cliente"""
+    st.subheader("🛒 Mis Compras de Proyectos")
+
+    # Obtener compras del cliente
+    conn = db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT vp.*, p.title as project_title, p.architect_name
+        FROM ventas_proyectos vp
+        LEFT JOIN projects p ON vp.proyecto_id = p.id
+        WHERE vp.cliente_email = ?
+        ORDER BY vp.fecha_compra DESC
+    """, (client_email,))
+
+    purchases = cursor.fetchall()
+    conn.close()
+
+    if not purchases:
+        st.info("Aún no has realizado ninguna compra de proyectos.")
+        st.markdown("💡 **¿Quieres comprar un proyecto?**")
+        st.markdown("• Ve a la pestaña '🔍 Buscar Proyectos' para explorar opciones")
+        st.markdown("• O navega por el marketplace principal")
+        return
+
+    # Mostrar estadísticas
+    total_compras = len(purchases)
+    total_gastado = sum(purchase[6] for purchase in purchases if purchase[6])  # total_pagado
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total de Compras", total_compras)
+    with col2:
+        st.metric("Total Gastado", f"€{total_gastado:,.0f}")
+    with col3:
+        st.metric("Promedio por Compra", f"€{total_gastado/total_compras:,.0f}" if total_compras > 0 else "€0")
+
+    st.markdown("---")
+
+    # Mostrar compras agrupadas por proyecto
+    st.subheader("📋 Detalle de Compras")
+
+    # Agrupar por proyecto
+    projects_grouped = {}
+    for purchase in purchases:
+        project_id = purchase[1]  # proyecto_id
+        if project_id not in projects_grouped:
+            projects_grouped[project_id] = {
+                'title': purchase[9] or f"Proyecto {project_id}",  # project_title
+                'architect': purchase[10] or "No especificado",  # architect_name
+                'purchases': []
+            }
+        projects_grouped[project_id]['purchases'].append(purchase)
+
+    # Mostrar cada proyecto con sus compras
+    for project_id, project_data in projects_grouped.items():
+        with st.expander(f"🏗️ {project_data['title']} - Arquitecto: {project_data['architect']}", expanded=True):
+
+            # Calcular total por proyecto
+            project_total = sum(p[6] for p in project_data['purchases'] if p[6])
+
+            st.markdown(f"**💰 Total invertido en este proyecto:** €{project_total:,.0f}")
+
+            # Mostrar cada compra
+            for purchase in project_data['purchases']:
+                col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+
+                with col1:
+                    producto = purchase[4]  # productos_comprados
+                    st.markdown(f"**📄 {producto}**")
+
+                with col2:
+                    precio = purchase[5]  # total_pagado
+                    st.markdown(f"**€{precio:,.0f}**")
+
+                with col3:
+                    metodo = purchase[6]  # metodo_pago
+                    st.markdown(f"**{metodo}**")
+
+                with col4:
+                    fecha = purchase[7]  # fecha_compra
+                    if fecha:
+                        # Formatear fecha si es necesario
+                        st.markdown(f"**{fecha[:10]}**")
+                    else:
+                        st.markdown("**Fecha N/D**")
+
+                st.markdown("---")
+
+    st.markdown("### 📥 Descargas Disponibles")
+    st.info("Las descargas de tus proyectos estarán disponibles próximamente en esta sección.")

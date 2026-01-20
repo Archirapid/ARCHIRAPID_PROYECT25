@@ -111,10 +111,6 @@ page_from_query = params.get("page")
 def detalles_proyecto_v2(project_id: str):
     """Muestra la página de vista previa de un proyecto arquitectónico - VERSIÓN V2"""
     # modules/marketplace/project_detail.py
-    """
-    Página de detalles de proyecto arquitectónico
-    Vista previa básica para usuarios no registrados
-    """
 
     import json
     from modules.marketplace.plot_detail import get_project_images
@@ -262,6 +258,8 @@ def detalles_proyecto_v2(project_id: str):
         st.write(f"• PDF (Memoria completa): €{project_data['price_memoria']}")
         st.write(f"• CAD (Planos editables): €{project_data['price_cad']}")
 
+        # Los botones de compra se muestran al final del flujo
+
     # Descripción
     if project_data['description']:
         st.header("📝 Descripción")
@@ -309,7 +307,7 @@ def detalles_proyecto_v2(project_id: str):
             if project_data.get("modelo_3d_glb"):
                 # Mostrar visor 3D completo
                 rel_path = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
-                model_url = f"http://127.0.0.1:8765/{rel_path}".replace(" ", "%20")
+                model_url = f"http://localhost:8765/{rel_path}".replace(" ", "%20")
 
                 # HTML con Three.js para visor 3D
                 three_html = f"""
@@ -347,9 +345,11 @@ def detalles_proyecto_v2(project_id: str):
 
                     // Cargar modelo GLTF
                     const loader = new THREE.GLTFLoader();
+                    console.log('Loading model from:', '{model_url}');
                     loader.load(
                         '{model_url}',
                         function (gltf) {{
+                            console.log('Modelo cargado exitosamente:', gltf);
                             const model = gltf.scene;
                             scene.add(model);
 
@@ -415,19 +415,18 @@ def detalles_proyecto_v2(project_id: str):
 
     with tab_vr:
         if client_logged_in:
+            st.markdown("**ESTÁS EN LA VERSIÓN V2**")
             st.markdown("#### 🥽 Visor de Realidad Virtual")
             if project_data.get("modelo_3d_glb"):
                 rel = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
-                glb_url = f"http://127.0.0.1:8765/{rel}".replace(" ", "%20")
-                viewer_url = f"http://127.0.0.1:8765/static/vr_viewer.html?model={glb_url}"
+                glb_url = f"http://localhost:8765/{rel}".replace(" ", "%20") + "?v=123"
+                print(f"DEBUG: GLB URL generada: {glb_url}")
+                viewer_url = f"http://localhost:8765/static/vr_viewer.html?model={glb_url}"
                 st.markdown(
-                    f'<a href="{viewer_url}" target="_blank">'
-                    f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
-                    f"Abrir experiencia VR en nueva pestaña"
-                    f"</button></a>",
+                    f'<iframe src="{viewer_url}" width="100%" height="600" allow="accelerometer; gyroscope; xr-spatial-tracking; vr" frameborder="0"></iframe>',
                     unsafe_allow_html=True,
                 )
-                st.caption("Se abrirá el visor VR en una nueva pestaña. Requiere navegador con WebXR.")
+                st.caption("Visor VR integrado. Si no funciona, verifica permisos del navegador.")
             else:
                 st.info("Este proyecto no tiene modelo VR disponible.")
         else:
@@ -440,7 +439,7 @@ def detalles_proyecto_v2(project_id: str):
             # Foto principal
             if project_data.get("foto_principal"):
                 rel = project_data["foto_principal"].replace("\\", "/").lstrip("/")
-                url = f"http://127.0.0.1:8765/{rel}"
+                url = f"http://localhost:8765/{rel}"
                 st.image(url, width=400, caption="Foto Principal")
             # Galería adicional
             if gallery:
@@ -448,7 +447,7 @@ def detalles_proyecto_v2(project_id: str):
                 for idx, foto in enumerate(gallery):
                     if foto:
                         rel = foto.replace("\\", "/").lstrip("/")
-                        url = f"http://127.0.0.1:8765/{rel}"
+                        url = f"http://localhost:8765/{rel}"
                         st.image(url, width=300, caption=f"Imagen {idx + 1}")
             # Planos
             if project_data.get("planos_pdf") or project_data.get("planos_dwg"):
@@ -584,6 +583,57 @@ def detalles_proyecto_v2(project_id: str):
                                 st.query_params["selected_project_v2"] = proyecto['id']
                                 st.rerun()
 
+                            # Botones de compra directa
+                            # Verificar si ya compró este proyecto
+                            conn_check = db_conn()
+                            cursor_check = conn_check.cursor()
+                            cursor_check.execute("SELECT id FROM ventas_proyectos WHERE proyecto_id = ? AND cliente_email = ?", (proyecto['id'], client_email))
+                            ya_compro = cursor_check.fetchone()
+                            conn_check.close()
+
+                            if ya_compro:
+                                st.success("✅ Ya adquirido")
+                            else:
+                                # Botones de compra
+                                col_buy_pdf, col_buy_cad = st.columns(2)
+                                with col_buy_pdf:
+                                    if st.button(f"📄 PDF €{proyecto.get('price_memoria', 1800)}", key=f"buy_similar_pdf_{proyecto['id']}", use_container_width=True):
+                                        # Simular compra de PDF
+                                        with st.spinner("Procesando compra..."):
+                                            import time
+                                            time.sleep(1)
+                                        # Registrar compra
+                                        conn_buy = db_conn()
+                                        cursor_buy = conn_buy.cursor()
+                                        cursor_buy.execute("""
+                                            INSERT INTO ventas_proyectos
+                                            (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
+                                            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                                        """, (proyecto['id'], client_email, "Compra desde similares", "PDF", proyecto.get('price_memoria', 1800), "Simulado"))
+                                        conn_buy.commit()
+                                        conn_buy.close()
+                                        st.success("🎉 PDF comprado!")
+                                        st.rerun()
+
+                                with col_buy_cad:
+                                    if st.button(f"🖥️ CAD €{proyecto.get('price_cad', 2500)}", key=f"buy_similar_cad_{proyecto['id']}", use_container_width=True):
+                                        # Simular compra de CAD
+                                        with st.spinner("Procesando compra..."):
+                                            import time
+                                            time.sleep(1)
+                                        # Registrar compra
+                                        conn_buy = db_conn()
+                                        cursor_buy = conn_buy.cursor()
+                                        cursor_buy.execute("""
+                                            INSERT INTO ventas_proyectos
+                                            (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
+                                            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                                        """, (proyecto['id'], client_email, "Compra desde similares", "CAD", proyecto.get('price_cad', 2500), "Simulado"))
+                                        conn_buy.commit()
+                                        conn_buy.close()
+                                        st.success("🎉 CAD comprado!")
+                                        st.rerun()
+
                             st.markdown("---")
 
     else:
@@ -702,27 +752,123 @@ def detalles_proyecto_v2(project_id: str):
         just_registered = st.session_state.get("just_registered", False)
         if not just_registered:
             st.success(f"✅ **Bienvenido de vuelta, {client_email}**")
-            st.info("Ya puedes acceder al portal completo del cliente con todos los detalles del proyecto.")
-
-            # Usuario ya logueado - ir al panel
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                if st.button("👁️ Acceder al Portal de Cliente", width='stretch', type="primary"):
-                    # Guardar datos del proyecto y cliente en session_state
-                    st.session_state["selected_project_id"] = project_id
-                    st.session_state["selected_project_for_panel"] = project_id
-                    st.session_state["client_logged_in"] = True
-                    st.session_state["buyer_email"] = client_email
-
-                    # Navegar usando query params (mismo método que el botón "Acceso Clientes" en HOME)
-                    st.query_params.update({
-                        "page": "Panel Cliente V2",
-                        "selected_project_v2": project_id
-                    })
-                    st.rerun()
+            st.info("💡 **Nota:** Si sales de esta página, puedes volver a tu portal de cliente desde la página principal usando tu email registrado.")
         # Si acabamos de registrarnos, limpiar el flag pero continuar mostrando la página
         else:
             del st.session_state["just_registered"]
+
+    # ═══════════════════════════════════════════════════════════════
+    # BOTONES DE COMPRA AL FINAL DEL FLUJO (SOLO PARA USUARIOS LOGUEADOS)
+    # ═══════════════════════════════════════════════════════════════
+    if client_logged_in and client_email:
+        st.markdown("---")
+        st.markdown("### 🛒 Comprar este proyecto")
+
+        # === SERVICIOS ADICIONALES PROFESIONALES ===
+        st.markdown("#### 🏗️ Servicios Profesionales Adicionales")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            direccion_obra = st.checkbox("📍 Dirección de Obra - 1000€", help="Servicio de dirección técnica durante la ejecución de la obra")
+            visado_proyecto = st.checkbox("✅ Visado del Proyecto - 500€", help="Tramitación y legalización del proyecto ante las autoridades competentes")
+            gemelos_digitales = st.checkbox("🏢 Gemelos Digitales (BIM) - 900€", help="Modelos BIM avanzados y gemelos digitales para gestión del edificio")
+
+        with col2:
+            consultoria_sostenibilidad = st.checkbox("📊 Consultoría de Sostenibilidad - 300€", help="Certificación energética y análisis de sostenibilidad ambiental")
+            coordinacion_seguridad = st.checkbox("🔧 Coordinación SSL - 400€", help="Estudio de Seguridad y Salud Laboral obligatorio")
+
+        # Copias adicionales
+        st.markdown("**📋 Copias Adicionales del Proyecto**")
+        copias_adicionales = st.number_input("Número de copias adicionales (200€ cada una)", min_value=0, max_value=10, value=0, step=1,
+                                           help="Copias adicionales del PDF/CAD para distribuir a proveedores, contratistas, etc.")
+
+        # Cálculo del total de servicios adicionales
+        total_servicios = 0
+        servicios_seleccionados = []
+
+        if direccion_obra:
+            total_servicios += 1000
+            servicios_seleccionados.append("Dirección de Obra")
+        if visado_proyecto:
+            total_servicios += 500
+            servicios_seleccionados.append("Visado del Proyecto")
+        if gemelos_digitales:
+            total_servicios += 900
+            servicios_seleccionados.append("Gemelos Digitales (BIM)")
+        if consultoria_sostenibilidad:
+            total_servicios += 300
+            servicios_seleccionados.append("Consultoría Sostenibilidad")
+        if coordinacion_seguridad:
+            total_servicios += 400
+            servicios_seleccionados.append("Coordinación SSL")
+
+        total_copias = copias_adicionales * 200
+        if copias_adicionales > 0:
+            servicios_seleccionados.append(f"{copias_adicionales} Copias Adicionales")
+
+        total_servicios += total_copias
+
+        if total_servicios > 0:
+            st.markdown(f"**💰 Total Servicios Adicionales: {total_servicios}€**")
+            with st.expander("Ver servicios seleccionados"):
+                for servicio in servicios_seleccionados:
+                    st.write(f"• {servicio}")
+
+        st.markdown("---")
+
+        from modules.marketplace.utils import db_conn
+
+        # Verificar si ya compró este proyecto
+        conn_check = db_conn()
+        cursor_check = conn_check.cursor()
+        cursor_check.execute("SELECT id FROM ventas_proyectos WHERE proyecto_id = ? AND cliente_email = ?", (project_id, client_email))
+        ya_compro = cursor_check.fetchone()
+        conn_check.close()
+
+        if ya_compro:
+            st.success("✅ Ya has adquirido este proyecto")
+        else:
+            col_buy_pdf, col_buy_cad = st.columns(2)
+            with col_buy_pdf:
+                precio_total_pdf = project_data['price_memoria'] + total_servicios
+                if st.button(f"📄 Comprar PDF + Servicios €{precio_total_pdf}", key=f"buy_pdf_{project_id}", use_container_width=True):
+                    with st.spinner("Procesando compra..."):
+                        import time
+                        time.sleep(1)
+                    # Registrar compra con servicios adicionales
+                    productos_comprados = f"PDF + {', '.join(servicios_seleccionados)}" if servicios_seleccionados else "PDF"
+                    conn_buy = db_conn()
+                    cursor_buy = conn_buy.cursor()
+                    cursor_buy.execute("""
+                        INSERT INTO ventas_proyectos
+                        (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
+                        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                    """, (project_id, client_email, "Compra directa", productos_comprados, precio_total_pdf, "Simulado"))
+                    conn_buy.commit()
+                    conn_buy.close()
+                    st.success("🎉 PDF con servicios adicionales comprado exitosamente!")
+                    st.rerun()
+
+            with col_buy_cad:
+                precio_total_cad = project_data['price_cad'] + total_servicios
+                if st.button(f"🖥️ Comprar CAD + Servicios €{precio_total_cad}", key=f"buy_cad_{project_id}", use_container_width=True):
+                    with st.spinner("Procesando compra..."):
+                        import time
+                        time.sleep(1)
+                    # Registrar compra con servicios adicionales
+                    productos_comprados = f"CAD + {', '.join(servicios_seleccionados)}" if servicios_seleccionados else "CAD"
+                    conn_buy = db_conn()
+                    cursor_buy = conn_buy.cursor()
+                    cursor_buy.execute("""
+                        INSERT INTO ventas_proyectos
+                        (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
+                        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                    """, (project_id, client_email, "Compra directa", productos_comprados, precio_total_cad, "Simulado"))
+                    conn_buy.commit()
+                    conn_buy.close()
+                    st.success("🎉 CAD con servicios adicionales comprado exitosamente!")
+                    st.rerun()
 
     # Botón volver
     if st.button("← Volver al Inicio"):
@@ -740,6 +886,15 @@ def panel_cliente_v2():
     import json
     import os
     from modules.marketplace.compatibilidad import get_proyectos_compatibles
+
+    # Iniciar servidor estático para VR y archivos
+    from pathlib import Path
+    STATIC_ROOT = Path(r"C:/ARCHIRAPID_PROYECT25")
+    STATIC_PORT = _start_static_server(STATIC_ROOT, port=8765)
+    if STATIC_PORT:
+        STATIC_URL = f"http://localhost:{STATIC_PORT}/"
+    else:
+        STATIC_URL = "http://localhost:8765/"
 
     st.title("👤 Panel de Cliente - ARCHIRAPID V2")
 
@@ -870,7 +1025,7 @@ def panel_cliente_v2():
         # Mostrar rol del usuario
         role_emoji = "🛒" if user_role == "buyer" else "🏠"
         role_text = "Comprador" if user_role == "buyer" else "Propietario"
-        st.success(f"{role_emoji} **Bienvenido/a {role_text}** - {client_email}")
+        # st.success(f"{role_emoji} **Bienvenido/a {role_text}** - {client_email}")
 
         # 🔍 MODO 3: Usuario interesado en un proyecto (sin transacciones)
         selected_project_for_panel = st.session_state.get("selected_project_for_panel")
@@ -1052,110 +1207,27 @@ def show_selected_project_panel_v2(client_email: str, project_id: str):
                 st.info("Descarga iniciada... (simulado)")
 
     else:
-        # Formulario de compra
-        st.info("💳 Completa tu compra para acceder a todos los archivos del proyecto")
+        st.info("💳 Selecciona el producto que deseas adquirir:")
 
-        with st.form("compra_proyecto_v2"):
-            st.subheader("📋 Datos de Facturación")
+        col_pdf, col_cad = st.columns(2)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                nombre_fact = st.text_input("Nombre completo", placeholder="Nombre y apellidos")
-                email_fact = st.text_input("Email", value=client_email, disabled=True)
-                telefono_fact = st.text_input("Teléfono", placeholder="+34 600 000 000")
+        with col_pdf:
+            if st.button(f"📄 Comprar Memoria PDF - €{project_data['price_memoria']}", use_container_width=True, type="primary"):
+                # Simular compra directa de PDF
+                with st.spinner("Procesando compra de PDF..."):
+                    import time
+                    time.sleep(1)
+                st.success("🎉 **PDF comprado con éxito!**")
+                st.info("📧 Recibirás el enlace de descarga por email")
 
-            with col2:
-                direccion_fact = st.text_area("Dirección completa", placeholder="Calle, número, piso, CP, ciudad")
-                nif_fact = st.text_input("NIF/CIF", placeholder="12345678A")
-
-            st.subheader("🛒 Productos a Comprar")
-
-            # Opciones de compra
-            col_pdf, col_cad, col_3d = st.columns(3)
-
-            with col_pdf:
-                comprar_pdf = st.checkbox(f"📄 Memoria PDF - €{project_data['price_memoria']}", value=True)
-                if project_data['memoria_pdf']:
-                    st.caption("✅ Archivo disponible")
-                else:
-                    st.caption("⚠️ Archivo no disponible")
-
-            with col_cad:
-                comprar_cad = st.checkbox(f"🖥️ Planos CAD - €{project_data['price_cad']}", value=True)
-                if project_data['planos_dwg']:
-                    st.caption("✅ Archivo disponible")
-                else:
-                    st.caption("⚠️ Archivo no disponible")
-
-            with col_3d:
-                comprar_3d = st.checkbox("🏗️ Modelo 3D - €500" if project_data.get('modelo_3d_glb') else "🏗️ Modelo 3D - No disponible", disabled=not project_data.get('modelo_3d_glb'))
-
-            # Cálculo total
-            total = 0
-            if comprar_pdf: total += project_data['price_memoria']
-            if comprar_cad: total += project_data['price_cad']
-            if comprar_3d: total += 500
-
-            st.markdown(f"### 💰 **Total a pagar: €{total}**")
-
-            # Método de pago (simulado)
-            st.subheader("💳 Método de Pago")
-            metodo_pago = st.selectbox("Selecciona método de pago",
-                                      ["💳 Tarjeta de Crédito", "🏦 Transferencia Bancaria", "📱 Bizum"],
-                                      help="Pago simulado - en producción se integraría con pasarela real")
-
-            # Términos y condiciones
-            aceptar_terminos = st.checkbox("✅ Acepto los términos y condiciones de compra")
-            aceptar_privacidad = st.checkbox("✅ Acepto la política de privacidad")
-
-            # Botón de compra
-            submitted = st.form_submit_button("🚀 Completar Compra", type="primary", use_container_width=True)
-
-            if submitted:
-                if not nombre_fact or not telefono_fact or not direccion_fact or not nif_fact:
-                    st.error("❌ Por favor completa todos los campos obligatorios")
-                elif not aceptar_terminos or not aceptar_privacidad:
-                    st.error("❌ Debes aceptar los términos y condiciones")
-                elif total == 0:
-                    st.error("❌ Debes seleccionar al menos un producto")
-                else:
-                    # Simular proceso de compra
-                    with st.spinner("Procesando pago..."):
-                        import time
-                        time.sleep(2)
-
-                    # Registrar venta en base de datos
-                    try:
-                        conn = db_conn()
-                        cursor = conn.cursor()
-
-                        # Insertar venta
-                        cursor.execute("""
-                            INSERT INTO ventas_proyectos
-                            (proyecto_id, cliente_email, nombre_cliente, telefono, direccion, nif,
-                             productos_comprados, total_pagado, metodo_pago, fecha_compra)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                        """, (project_id, client_email, nombre_fact, telefono_fact, direccion_fact, nif_fact,
-                              f"PDF:{comprar_pdf},CAD:{comprar_cad},3D:{comprar_3d}", total, metodo_pago))
-
-                        conn.commit()
-                        conn.close()
-
-                        st.success("🎉 **¡Compra completada con éxito!**")
-                        st.balloons()
-
-                        # Mostrar resumen
-                        st.info(f"📧 Recibirás un email de confirmación en {client_email}")
-                        st.info("📄 Los archivos estarán disponibles para descarga en 'Mis Proyectos'")
-
-                        # Limpiar query params para evitar re-compra
-                        if "selected_project_v2" in st.query_params:
-                            del st.query_params["selected_project_v2"]
-
-                        st.rerun()
-
-                    except Exception as e:
-                        st.error(f"Error al procesar la compra: {e}")
+        with col_cad:
+            if st.button(f"🖥️ Comprar Planos CAD - €{project_data['price_cad']}", use_container_width=True, type="primary"):
+                # Simular compra directa de CAD
+                with st.spinner("Procesando compra de CAD..."):
+                    import time
+                    time.sleep(1)
+                st.success("🎉 **CAD comprado con éxito!**")
+                st.info("📧 Recibirás el enlace de descarga por email")
 
     # FINCAS COMPATIBLES DEL USUARIO
     st.header("🏠 Fincas Compatibles")
@@ -1282,7 +1354,7 @@ def registro_v2():
                     existing = cursor.fetchone()
 
                     if existing:
-                        st.success("✅ Ya estabas registrado. Accediendo al portal...")
+                        st.info("Ya estabas registrado. Accediendo...")
                     else:
                         # Insertar nuevo cliente (combinar nombre y apellidos)
                         full_name = f"{nombre} {apellidos}".strip()
@@ -1291,7 +1363,7 @@ def registro_v2():
                             VALUES (?, ?, ?, ?, datetime('now'))
                         """, (full_name, email, telefono, direccion))
 
-                        st.success("✅ Registro completado. Accediendo al portal...")
+                        st.info("Registro completado. Accediendo...")
 
                     conn.commit()
                     conn.close()
@@ -1302,6 +1374,12 @@ def registro_v2():
                     st.session_state["user_role"] = "buyer"
                     st.session_state["has_transactions"] = False
                     st.session_state["has_properties"] = False
+
+                    # Si venía viendo un proyecto específico, guardarlo para mostrar los botones de compra
+                    if "proyecto_seleccionado" in st.session_state and st.session_state["proyecto_seleccionado"]:
+                        project_id = st.session_state["proyecto_seleccionado"].get("id")
+                        if project_id:
+                            st.session_state["selected_project_for_panel"] = project_id
 
                     # Redirigir al panel de cliente
                     st.query_params["page"] = "Panel Cliente V2"
@@ -1647,81 +1725,190 @@ def show_advanced_project_search_v2(client_email):
         # Botón de búsqueda
         submitted = st.form_submit_button("🔍 Buscar Proyectos", type="primary", width='stretch')
 
-    # Procesar búsqueda
-    if submitted:
-        # Preparar parámetros
-        search_params = {
-            'client_budget': presupuesto_max if presupuesto_max > 0 else None,
-            'client_desired_area': area_deseada if area_deseada > 0 else None,
-            'client_parcel_size': parcela_disponible if parcela_disponible > 0 and solo_compatibles else None,
-            'client_email': client_email
-        }
+    # Mostrar proyectos disponibles (todos al inicio, filtrados si se buscó)
+    search_params = {'client_email': client_email}  # Parámetros por defecto
 
-        # Mostrar criterios de búsqueda
-        st.markdown("### 📋 Criterios de búsqueda aplicados:")
-        criterios = []
-        if search_params['client_budget']:
-            criterios.append(f"💰 Presupuesto ≤ €{search_params['client_budget']:,}")
-        if search_params['client_desired_area']:
-            criterios.append(f"📐 Área ≈ {search_params['client_desired_area']} m² (±20%)")
-        if search_params['client_parcel_size']:
-            criterios.append(f"🏞️ Parcela ≥ {search_params['client_parcel_size']} m²")
+    # Si se hizo una búsqueda, usar esos parámetros
+    if 'last_search_params_v2' in st.session_state:
+        search_params = st.session_state['last_search_params_v2']
 
-        if criterios:
-            for criterio in criterios:
-                st.write(f"• {criterio}")
-        else:
-            st.info("No se aplicaron filtros específicos - mostrando todos los proyectos disponibles")
+    # Buscar proyectos
+    with st.spinner("Cargando proyectos..."):
+        proyectos = get_proyectos_compatibles(**search_params)
 
-        # Buscar proyectos
-        with st.spinner("Buscando proyectos compatibles..."):
-            proyectos = get_proyectos_compatibles(**search_params)
+    # Mostrar contador
+    st.markdown(f"### 🏗️ Proyectos Disponibles: {len(proyectos)}")
 
-        # Mostrar resultados
-        st.markdown(f"### 🏗️ Resultados: {len(proyectos)} proyectos encontrados")
+    if not proyectos:
+        st.info("No hay proyectos disponibles en este momento.")
+        return
 
-        if not proyectos:
-            st.warning("No se encontraron proyectos que cumplan con tus criterios. Prueba ampliando los límites.")
-            return
+    # Formulario de búsqueda (siempre visible)
+    with st.expander("🔍 Filtrar Proyectos", expanded=False):
+        with st.form("advanced_search_form_v2"):
+            st.markdown("### 🎯 Especifica tus criterios")
 
-        # Mostrar proyectos en grid
-        cols = st.columns(2)
-        for idx, proyecto in enumerate(proyectos):
-            with cols[idx % 2]:
-                # Tarjeta de proyecto
-                with st.container():
-                    # Imagen
-                    foto = proyecto.get('foto_principal')
-                    if foto:
-                        try:
-                            st.image(foto, width=250, caption=proyecto['title'])
-                        except:
-                            st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
-                    else:
+            col1, col2 = st.columns(2)
+
+            with col1:
+                presupuesto_max = st.number_input(
+                    "💰 Presupuesto máximo (€)",
+                    min_value=0,
+                    value=0,
+                    step=10000,
+                    help="Precio máximo que estás dispuesto a pagar por el proyecto completo"
+                )
+
+                area_deseada = st.number_input(
+                    "📐 Área de construcción deseada (m²)",
+                    min_value=0,
+                    value=0,
+                    step=10,
+                    help="Superficie aproximada que quieres construir (±20% tolerancia)"
+                )
+
+            with col2:
+                parcela_disponible = st.number_input(
+                    "🏞️ Parcela disponible (m²)",
+                    min_value=0,
+                    value=0,
+                    step=50,
+                    help="Tamaño de terreno que tienes disponible"
+                )
+
+                # Checkbox para buscar solo proyectos que quepan
+                solo_compatibles = st.checkbox(
+                    "Solo proyectos que quepan en mi parcela",
+                    value=True,
+                    help="Filtrar proyectos cuya parcela mínima sea ≤ a tu terreno disponible"
+                )
+
+            # Botón de búsqueda
+            submitted = st.form_submit_button("🔍 Aplicar Filtros", type="primary", width='stretch')
+
+        if submitted:
+            # Preparar parámetros de búsqueda
+            search_params = {
+                'client_budget': presupuesto_max if presupuesto_max > 0 else None,
+                'client_desired_area': area_deseada if area_deseada > 0 else None,
+                'client_parcel_size': parcela_disponible if parcela_disponible > 0 and solo_compatibles else None,
+                'client_email': client_email
+            }
+            st.session_state['last_search_params_v2'] = search_params
+
+            # Mostrar criterios aplicados
+            st.markdown("### 📋 Filtros aplicados:")
+            criterios = []
+            if search_params['client_budget']:
+                criterios.append(f"💰 Presupuesto ≤ €{search_params['client_budget']:,}")
+            if search_params['client_desired_area']:
+                criterios.append(f"📐 Área ≈ {search_params['client_desired_area']} m² (±20%)")
+            if search_params['client_parcel_size']:
+                criterios.append(f"🏞️ Parcela ≥ {search_params['client_parcel_size']} m²")
+
+            if criterios:
+                for criterio in criterios:
+                    st.write(f"• {criterio}")
+            else:
+                st.info("Mostrando todos los proyectos")
+
+            # Re-buscar con filtros
+            with st.spinner("Aplicando filtros..."):
+                proyectos = get_proyectos_compatibles(**search_params)
+            st.markdown(f"### 🏗️ Resultados filtrados: {len(proyectos)} proyectos")
+
+    # Mostrar proyectos en grid
+    cols = st.columns(2)
+    for idx, proyecto in enumerate(proyectos):
+        with cols[idx % 2]:
+            # Tarjeta de proyecto
+            with st.container():
+                # Imagen
+                foto = proyecto.get('foto_principal')
+                if foto:
+                    try:
+                        st.image(foto, width=250, caption=proyecto['title'])
+                    except:
                         st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+                else:
+                    st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
 
-                    # Información básica
-                    st.markdown(f"**🏗️ {proyecto['title']}**")
-                    st.write(f"📐 **Área:** {proyecto.get('m2_construidos', proyecto.get('area_m2', 'N/D'))} m²")
-                    st.write(f"💰 **Precio:** €{proyecto.get('price', 0):,.0f}" if proyecto.get('price') else "💰 **Precio:** Consultar")
+                # Información básica
+                st.markdown(f"**🏗️ {proyecto['title']}**")
+                st.write(f"📐 **Área:** {proyecto.get('m2_construidos', proyecto.get('area_m2', 'N/D'))} m²")
+                st.write(f"💰 **Precio:** €{proyecto.get('price', 0):,.0f}" if proyecto.get('price') else "💰 **Precio:** Consultar")
 
-                    # Arquitecto
-                    if proyecto.get('architect_name'):
-                        st.write(f"👨‍💼 **Arquitecto:** {proyecto['architect_name']}")
+                # Arquitecto
+                if proyecto.get('architect_name'):
+                    st.write(f"👨‍💼 **Arquitecto:** {proyecto['architect_name']}")
 
-                    # Compatibilidad
-                    if search_params['client_parcel_size'] and proyecto.get('m2_parcela_minima'):
-                        if proyecto['m2_parcela_minima'] <= search_params['client_parcel_size']:
+                # Compatibilidad (si hay filtros aplicados)
+                if 'last_search_params_v2' in st.session_state and st.session_state['last_search_params_v2'].get('client_parcel_size'):
+                    parcel_size = st.session_state['last_search_params_v2']['client_parcel_size']
+                    if proyecto.get('m2_parcela_minima'):
+                        if proyecto['m2_parcela_minima'] <= parcel_size:
                             st.success("✅ Compatible con tu parcela")
                         else:
                             st.warning(f"⚠️ Necesita parcela ≥ {proyecto['m2_parcela_minima']} m²")
 
-                    # Botón de detalles
-                    if st.button("Ver Detalles", key=f"search_detail_v2_{proyecto['id']}", use_container_width=True):
-                        st.query_params["selected_project_v2"] = proyecto['id']
-                        st.rerun()
+                # Botón de detalles
+                if st.button("Ver Detalles", key=f"search_detail_v2_{proyecto['id']}", use_container_width=True):
+                    st.query_params["selected_project_v2"] = proyecto['id']
+                    st.rerun()
 
-                    st.markdown("---")
+                # Botones de compra directa (si está logueado)
+                if st.session_state.get("client_logged_in", False):
+                    # Verificar si ya compró este proyecto
+                    conn_check = db_conn()
+                    cursor_check = conn_check.cursor()
+                    cursor_check.execute("SELECT id FROM ventas_proyectos WHERE proyecto_id = ? AND cliente_email = ?", (proyecto['id'], client_email))
+                    ya_compro = cursor_check.fetchone()
+                    conn_check.close()
+
+                    if ya_compro:
+                        st.success("✅ Ya adquirido")
+                    else:
+                        # Botones de compra
+                        col_buy_pdf, col_buy_cad = st.columns(2)
+                        with col_buy_pdf:
+                            if st.button(f"📄 PDF €{proyecto.get('price_memoria', 1800)}", key=f"buy_pdf_{proyecto['id']}", use_container_width=True):
+                                # Simular compra de PDF
+                                with st.spinner("Procesando compra..."):
+                                    import time
+                                    time.sleep(1)
+                                # Registrar compra
+                                conn_buy = db_conn()
+                                cursor_buy = conn_buy.cursor()
+                                cursor_buy.execute("""
+                                    INSERT INTO ventas_proyectos
+                                    (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
+                                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                                """, (proyecto['id'], client_email, "Compra directa", "PDF", proyecto.get('price_memoria', 1800), "Simulado"))
+                                conn_buy.commit()
+                                conn_buy.close()
+                                st.success("🎉 PDF comprado!")
+                                st.rerun()
+
+                        with col_buy_cad:
+                            if st.button(f"🖥️ CAD €{proyecto.get('price_cad', 2500)}", key=f"buy_cad_{proyecto['id']}", use_container_width=True):
+                                # Simular compra de CAD
+                                with st.spinner("Procesando compra..."):
+                                    import time
+                                    time.sleep(1)
+                                # Registrar compra
+                                conn_buy = db_conn()
+                                cursor_buy = conn_buy.cursor()
+                                cursor_buy.execute("""
+                                    INSERT INTO ventas_proyectos
+                                    (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
+                                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                                """, (proyecto['id'], client_email, "Compra directa", "CAD", proyecto.get('price_cad', 2500), "Simulado"))
+                                conn_buy.commit()
+                                conn_buy.close()
+                                st.success("🎉 CAD comprado!")
+                                st.rerun()
+
+                st.markdown("---")
 
 
 # === NUEVAS RUTAS V2 (BORRÓN Y CUENTA NUEVA) ===
@@ -1777,7 +1964,7 @@ def _start_static_server(root_dir: Path, port: int = 8765):
                 self.end_headers()
 
         Handler = functools.partial(CORSRequestHandler, directory=str(root_dir))
-        httpd = socketserver.ThreadingTCPServer(("127.0.0.1", port), Handler)
+        httpd = socketserver.ThreadingTCPServer(("0.0.0.0", port), Handler)
     except Exception:
         return None
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -1789,6 +1976,7 @@ def _start_static_server(root_dir: Path, port: int = 8765):
 
 
 def render_portal_cliente_proyecto():
+    from modules.marketplace.utils import db_conn
     st.header("📂 Portal de Cliente — Proyecto Seleccionado")
 
     proyecto = st.session_state.get("proyecto_seleccionado")
@@ -1854,17 +2042,15 @@ def render_portal_cliente_proyecto():
 
         if model_glb:
             rel = str(model_glb).replace("\\", "/").lstrip("/")
-            glb_url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}{rel}".replace(" ", "%20")
-            viewer_url = f"{globals().get('STATIC_URL','http://127.0.0.1:8765/')}static/vr_viewer.html?model={glb_url}"
+            glb_url = f"http://localhost:8765/{rel}".replace(" ", "%20") + "?v=123"
+            print(f"DEBUG: GLB URL generada: {glb_url}")
+            viewer_url = f"http://localhost:8765/static/vr_viewer.html?model={glb_url}"
 
             st.markdown(
-                f'<a href="{viewer_url}" target="_blank">'
-                f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
-                f"Abrir experiencia RV en nueva pestaña"
-                f"</button></a>",
+                f'<iframe src="{viewer_url}" width="100%" height="600" allow="accelerometer; gyroscope; xr-spatial-tracking; vr" frameborder="0"></iframe>',
                 unsafe_allow_html=True,
             )
-            st.caption("Se abrirá el visor RV en una nueva pestaña. Requiere navegador con WebXR o modo Desktop para previsualizar.")
+            st.caption("Visor VR integrado. Si no funciona, verifica permisos del navegador.")
         else:
             st.info("Este proyecto todavía no tiene modelo VR asociado. Usaremos el modelo 3D como base en futuras versiones.")
 
@@ -1955,9 +2141,9 @@ if selected_page == "Home":
     STATIC_PORT = _start_static_server(STATIC_ROOT, port=8765)
     # URL base del servidor estático (definida temprano para usar en el header de diagnóstico)
     if STATIC_PORT:
-        STATIC_URL = f"http://127.0.0.1:{STATIC_PORT}/"
+        STATIC_URL = f"http://localhost:{STATIC_PORT}/"
     else:
-        STATIC_URL = "http://127.0.0.1:8765/"
+        STATIC_URL = "http://localhost:8765/"
 
     # Header
     with st.container():
@@ -1977,31 +2163,9 @@ if selected_page == "Home":
             access_col = cols[2]
 
         with access_col:
-            col_reg, col_acc = st.columns(2)
-            with col_reg:
-                if st.button("📝 REGISTRO (v2)", key="btn_registro_v2"):
-                    st.query_params["page"] = "Registro V2"
-                    st.rerun()
-            with col_acc:
-                if st.button("ACCESO"):
-                    if hasattr(st, 'modal'):
-                        with st.modal("Acceso"):
-                            login_val = st.text_input("Email o Clave", key="login_input")
-                            if st.button("Entrar", key="login_submit"):
-                                val = st.session_state.get("login_input", "")
-                                if val == "admin123":
-                                    st.success("Acceso admin aceptado")
-                                    st.session_state['selected_page'] = "Intranet"
-                                    st.rerun()
-                    else:
-                        with st.expander("Acceso"):
-                            login_val = st.text_input("Email o Clave", key="login_input_no_modal")
-                            if st.button("Entrar", key="login_submit_no_modal"):
-                                val = st.session_state.get("login_input_no_modal", "")
-                                if val == "admin123":
-                                    st.success("Acceso admin aceptado")
-                                    st.session_state['selected_page'] = "Intranet"
-                                    st.rerun()
+            if st.button("📝 REGISTRO (v2)", key="btn_registro_v2"):
+                st.query_params["page"] = "Registro V2"
+                st.rerun()
 
 # ========== HOME: LANDING + MARKETPLACE + PROYECTOS ==========
 

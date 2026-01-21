@@ -88,6 +88,11 @@ def show_service_provider_registration():
                 st.info("🎉 Ahora puedes cerrar sesión y acceder desde la Home usando el botón 'Acceso' en la parte superior con tu email y contraseña.")
                 st.balloons()
 
+                # Botón para ir a Home
+                if st.button("🏠 Ir a Inicio", key="go_home_after_registration"):
+                    st.query_params["page"] = "🏠 Inicio / Marketplace"
+                    st.rerun()
+
             except Exception as e:
                 st.error(f"Error en el registro: {str(e)}")
 

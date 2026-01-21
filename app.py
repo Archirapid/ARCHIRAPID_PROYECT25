@@ -20,17 +20,19 @@ init_db()
 import streamlit as st
 st.set_page_config(layout='wide')
 
-# Navegación forzada: Priorizar session_state para selected_page
-selected_page = st.session_state.get('selected_page', "🏠 Inicio / Marketplace")
-
-# Forzar página según rol si acabamos de loguearnos
-if st.session_state.get('logged_in') and 'selected_page' not in st.session_state:
-    if st.session_state.get('rol') == 'admin':
-        st.session_state['selected_page'] = "Intranet"
-    elif st.session_state.get('rol') == 'architect':
-        st.session_state['selected_page'] = "Arquitectos (Marketplace)"
-    elif st.session_state.get('rol') == 'services':
-        st.session_state['selected_page'] = "� Registro de Proveedor de Servicios"
+# LÓGICA DE NAVEGACIÓN MAESTRA
+if 'selected_page' not in st.session_state:
+    if st.session_state.get('logged_in'):
+        if st.session_state.get('rol') == 'admin':
+            st.session_state['selected_page'] = "Intranet"
+        elif st.session_state.get('rol') == 'architect':
+            st.session_state['selected_page'] = "Arquitectos (Marketplace)"
+        elif st.session_state.get('rol') == 'services':
+            st.session_state['selected_page'] = "📝 Registro de Proveedor de Servicios"
+        else:
+            st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
+    else:
+        st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
 
 # Detectar si hay una finca seleccionada en los parámetros de consulta
 params = st.query_params
@@ -2305,21 +2307,16 @@ if logged_in:
     page_keys = [k for k in page_keys if k not in ("Iniciar Sesión", "Registro de Usuario")]
 
 # Lógica de navegación robusta
-if "page" in st.query_params:
-    st.session_state["selected_page"] = st.query_params["page"]
-    selected_page = st.query_params["page"]  # Forzar navegación por query param si existe
 
-try:
-    index = page_keys.index(selected_page) if selected_page in page_keys else 0
-except Exception:
-    index = 0
-page = st.sidebar.radio("Navegación", page_keys, index=index, key="main_navigation_v2")
+# El sidebar DEBE leer de session_state obligatoriamente
+selected_page = st.sidebar.radio(
+    "Navegación",
+    page_keys, 
+    index=page_keys.index(st.session_state['selected_page']) if st.session_state['selected_page'] in page_keys else 0
+)
 
-# Botón de cerrar sesión
-if logged_in and st.sidebar.button("🚪 Cerrar Sesión"):
-    st.session_state.clear()
-    st.query_params["page"] = "🏠 Inicio / Marketplace"
-    st.rerun()
+# Sincronizamos por si el usuario cambia el radio manualmente
+st.session_state['selected_page'] = selected_page
 
 # Lógica de Redirección
 if page == "🏠 Inicio / Marketplace":

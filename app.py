@@ -1,6 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+# Navegación forzada: Priorizar session_state para selected_page
+selected_page = st.session_state.get('selected_page', "🏠 Inicio / Marketplace")
+
 import sqlite3
 import pandas as pd
 import os
@@ -2304,7 +2307,7 @@ if logged_in:
 # Lógica de navegación robusta
 if "page" in st.query_params:
     st.session_state["selected_page"] = st.query_params["page"]
-selected_page = st.session_state.get("selected_page", "🏠 Inicio / Marketplace")
+    selected_page = st.query_params["page"]  # Forzar navegación por query param si existe
 
 try:
     index = page_keys.index(selected_page) if selected_page in page_keys else 0
@@ -2471,8 +2474,6 @@ if selected_page == "🏠 Inicio / Marketplace":
         if st.button("🛠️ Buscar Profesionales", key="search_professionals"):
             from modules.marketplace import service_providers
             service_providers.show_services_marketplace()
-
-    st.stop()  # Detener la ejecución para no mostrar el resto de la app
 
 elif selected_page == "Propietario (Gemelo Digital)":
     with st.container():

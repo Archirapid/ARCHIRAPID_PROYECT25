@@ -97,8 +97,9 @@ def show_service_provider_registration():
         st.info("🎉 Ahora puedes cerrar sesión y acceder desde la Home usando el botón 'Acceso' en la parte superior con tu email y contraseña.")
         st.balloons()
 
-        if st.button("🏠 Ir a Inicio", key="go_home_after_registration"):
-            st.session_state["selected_page"] = "🏠 Inicio / Marketplace"
+        if st.button("🏠 Ir a Inicio"):
+            st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
+            st.query_params.clear()  # Limpiamos cualquier rastro en la URL
             st.rerun()
 
 def show_service_provider_panel():

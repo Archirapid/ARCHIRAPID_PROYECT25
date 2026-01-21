@@ -21,7 +21,7 @@ def show_service_provider_registration():
         with col2:
             company = st.text_input("Empresa", key="sp_company")
             specialty = st.selectbox("Especialidad principal *",
-                ["direccion_obra", "visado", "bim", "sostenibilidad", "ssl", "topografia", "estructuras", "instalaciones"],
+                ["direccion_obra", "visado", "bim", "sostenibilidad", "ssl", "topografia", "estructuras", "instalaciones", "electricista", "constructor"],
                 key="sp_specialty")
             experience_years = st.number_input("Años de experiencia", min_value=0, max_value=50, key="sp_experience")
             service_area = st.text_input("Área de servicio (provincia/ciudad)", key="sp_area")
@@ -236,7 +236,7 @@ def show_services_marketplace():
 
     with col1:
         specialty_filter = st.selectbox("Especialidad",
-            ["todas", "direccion_obra", "visado", "bim", "sostenibilidad", "ssl"],
+            ["todas", "direccion_obra", "visado", "bim", "sostenibilidad", "ssl", "electricista", "constructor"],
             format_func=lambda x: "Todas" if x == "todas" else x.replace('_', ' ').title())
 
     with col2:

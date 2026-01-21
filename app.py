@@ -23,7 +23,7 @@ if st.session_state.get('logged_in') and 'selected_page' not in st.session_state
     elif st.session_state.get('rol') == 'architect':
         st.session_state['selected_page'] = "Arquitectos (Marketplace)"
     elif st.session_state.get('rol') == 'services':
-        st.session_state['selected_page'] = "👤 Panel de Proveedor"
+        st.session_state['selected_page'] = "� Registro de Proveedor de Servicios"
 
 # Detectar si hay una finca seleccionada en los parámetros de consulta
 params = st.query_params
@@ -477,7 +477,6 @@ def detalles_proyecto_v2(project_id: str):
             if project_data.get("modelo_3d_glb"):
                 rel = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
                 glb_url = f"http://localhost:8765/{rel}".replace(" ", "%20") + "?v=123"
-                print(f"DEBUG: GLB URL generada: {glb_url}")
                 viewer_url = f"http://localhost:8765/static/vr_viewer.html?model={glb_url}"
                 st.markdown(
                     f'<iframe src="{viewer_url}" width="100%" height="600" allow="accelerometer; gyroscope; xr-spatial-tracking; vr" frameborder="0"></iframe>',
@@ -2102,7 +2101,7 @@ PAGES = {
     "🏠 Inicio / Marketplace": ("modules.marketplace.marketplace", "main"),
     "Intranet": ("modules.marketplace.intranet", "main"),
     "👤 Panel de Proveedor": ("modules.marketplace.service_providers", "show_service_provider_panel"),
-    "📝 Registro de Servicios": ("modules.marketplace.service_providers", "show_service_provider_registration"),
+    "📝 Registro de Proveedor de Servicios": ("modules.marketplace.service_providers", "show_service_provider_registration"),
     "Arquitectos (Marketplace)": ("modules.marketplace.marketplace_upload", "main"),
     "👤 Panel de Cliente": ("modules.marketplace.client_panel_fixed", "main"),
     "Iniciar Sesión": ("modules.marketplace.auth", "show_login"),
@@ -2208,7 +2207,6 @@ def render_portal_cliente_proyecto():
         if model_glb:
             rel = str(model_glb).replace("\\", "/").lstrip("/")
             glb_url = f"http://localhost:8765/{rel}".replace(" ", "%20") + "?v=123"
-            print(f"DEBUG: GLB URL generada: {glb_url}")
             viewer_url = f"http://localhost:8765/static/vr_viewer.html?model={glb_url}"
 
             st.markdown(
@@ -2319,7 +2317,7 @@ if logged_in and st.sidebar.button("🚪 Cerrar Sesión"):
 # Lógica de Redirección
 if page == "🏠 Inicio / Marketplace":
     st.query_params.clear()
-elif page in ["👤 Panel de Proveedor", "📝 Registro de Servicios"]:
+elif page in ["👤 Panel de Proveedor", "📝 Registro de Proveedor de Servicios"]:
     st.query_params["page"] = page
 
 # Inicializar vista_actual si no existe (no altera comportamiento por defecto)

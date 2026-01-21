@@ -10,6 +10,8 @@ def show_service_provider_registration():
     """Formulario de registro para proveedores de servicios"""
     st.header("🏗️ Registro de Proveedor de Servicios")
 
+    registration_success = False
+
     with st.form("service_provider_registration"):
         col1, col2 = st.columns(2)
 
@@ -84,17 +86,20 @@ def show_service_provider_registration():
                 conn.commit()
                 conn.close()
 
-                st.success("✅ ¡Registro completado exitosamente!")
-                st.info("🎉 Ahora puedes cerrar sesión y acceder desde la Home usando el botón 'Acceso' en la parte superior con tu email y contraseña.")
-                st.balloons()
-
-                # Botón para ir a Home
-                if st.button("🏠 Ir a Inicio", key="go_home_after_registration"):
-                    st.query_params["page"] = "🏠 Inicio / Marketplace"
-                    st.rerun()
+                registration_success = True
 
             except Exception as e:
                 st.error(f"Error en el registro: {str(e)}")
+
+    # Mostrar mensajes de éxito y botón fuera del form
+    if registration_success:
+        st.success("✅ ¡Registro completado exitosamente!")
+        st.info("🎉 Ahora puedes cerrar sesión y acceder desde la Home usando el botón 'Acceso' en la parte superior con tu email y contraseña.")
+        st.balloons()
+
+        if st.button("🏠 Ir a Inicio", key="go_home_after_registration"):
+            st.query_params["page"] = "🏠 Inicio / Marketplace"
+            st.rerun()
 
 def show_service_provider_panel():
     """Panel de control para proveedores de servicios"""

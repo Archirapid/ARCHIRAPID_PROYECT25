@@ -84,16 +84,9 @@ def show_service_provider_registration():
                 conn.commit()
                 conn.close()
 
-                # Auto-login del nuevo profesional
-                st.session_state['logged_in'] = True
-                st.session_state['email'] = email
-                st.session_state['rol'] = 'services'
-                st.session_state['user_id'] = provider_id
-                st.session_state['full_name'] = name
-
-                st.success("✅ Registro completado exitosamente!")
-                st.info("Redirigiendo a tu panel de proveedor de servicios...")
-                st.rerun()
+                st.success("✅ ¡Registro completado exitosamente!")
+                st.info("🎉 Ahora puedes cerrar sesión y acceder desde la Home usando el botón 'Acceso' en la parte superior con tu email y contraseña.")
+                st.balloons()
 
             except Exception as e:
                 st.error(f"Error en el registro: {str(e)}")
@@ -149,6 +142,9 @@ def show_service_provider_panel():
     st.divider()
     st.subheader("📋 Asignaciones de Servicios")
 
+    # Nueva conexión para la segunda query
+    conn = db_conn()
+    c = conn.cursor()
     c.execute("""
         SELECT sa.id, sa.servicio_tipo, sa.cliente_email, sa.proyecto_id, sa.precio_servicio,
                sa.estado, sa.fecha_asignacion, sa.fecha_completado, sa.notas,

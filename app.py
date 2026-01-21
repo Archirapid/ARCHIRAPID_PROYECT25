@@ -2433,7 +2433,7 @@ if selected_page == "🏠 Inicio / Marketplace":
             """, unsafe_allow_html=True)
         with col2:
             if st.button("Registrarme como Profesional", key="register_professional"):
-                st.session_state['selected_page'] = 'Registro de Proveedor de Servicios'
+                st.session_state['selected_page'] = "📝 Registro de Proveedor de Servicios"
                 st.rerun()
 
     # Botón para buscar profesionales
@@ -2487,7 +2487,7 @@ elif selected_page == "👤 Panel de Proveedor":
         from modules.marketplace import service_providers
         service_providers.show_service_provider_panel()
 
-elif selected_page == "Registro de Proveedor de Servicios":
+elif selected_page == "📝 Registro de Proveedor de Servicios":
     with st.container():
         from modules.marketplace import service_providers
         service_providers.show_service_provider_registration()

@@ -22,17 +22,7 @@ st.set_page_config(layout='wide')
 
 # LÓGICA DE NAVEGACIÓN MAESTRA
 if 'selected_page' not in st.session_state:
-    if st.session_state.get('logged_in'):
-        if st.session_state.get('rol') == 'admin':
-            st.session_state['selected_page'] = "Intranet"
-        elif st.session_state.get('rol') == 'architect':
-            st.session_state['selected_page'] = "Arquitectos (Marketplace)"
-        elif st.session_state.get('rol') == 'services':
-            st.session_state['selected_page'] = "📝 Registro de Proveedor de Servicios"
-        else:
-            st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
-    else:
-        st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
+    st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
 
 # Detectar si hay una finca seleccionada en los parámetros de consulta
 params = st.query_params
@@ -2116,6 +2106,7 @@ PAGES = {
     "Iniciar Sesión": ("modules.marketplace.auth", "show_login"),
     "Registro de Usuario": ("modules.marketplace.auth", "show_registration"),
 }
+PAGES = list(PAGES.keys())
 
 # Helper: start a simple static server for local assets (with CORS)
 def _start_static_server(root_dir: Path, port: int = 8765):
@@ -2287,42 +2278,23 @@ def render_portal_cliente_proyecto():
 
 
 
-# Navigation state handling (restore `page` variable) - SIMPLIFIED
-PAGES_PUBLIC = ["🏠 Inicio / Marketplace", "Iniciar Sesión", "Registro de Usuario"]
-PAGES_ADMIN = ["🏠 Inicio / Marketplace", "Intranet"]
-PAGES_CLIENT = ["🏠 Inicio / Marketplace", "👤 Panel de Cliente"]
-
-user_role = st.session_state.get('rol')
-logged_in = st.session_state.get('logged_in')
-
-if user_role == 'admin':
-    page_keys = PAGES_ADMIN
-elif user_role == 'client':
-    page_keys = PAGES_CLIENT
-else:
-    page_keys = PAGES_PUBLIC
-
-# Ocultar login/registro si ya está logueado
-if logged_in:
-    page_keys = [k for k in page_keys if k not in ("Iniciar Sesión", "Registro de Usuario")]
-
 # Lógica de navegación robusta
 
 # El sidebar DEBE leer de session_state obligatoriamente
 selected_page = st.sidebar.radio(
     "Navegación",
-    page_keys, 
-    index=page_keys.index(st.session_state['selected_page']) if st.session_state['selected_page'] in page_keys else 0
+    options=PAGES,
+    index=PAGES.index(st.session_state['selected_page']) if st.session_state['selected_page'] in PAGES else 0
 )
 
 # Sincronizamos por si el usuario cambia el radio manualmente
 st.session_state['selected_page'] = selected_page
 
 # Lógica de Redirección
-if page == "🏠 Inicio / Marketplace":
+if selected_page == "🏠 Inicio / Marketplace":
     st.query_params.clear()
-elif page in ["👤 Panel de Proveedor", "📝 Registro de Proveedor de Servicios"]:
-    st.query_params["page"] = page
+elif selected_page in ["👤 Panel de Proveedor", "📝 Registro de Proveedor de Servicios"]:
+    st.query_params["page"] = selected_page
 
 # Inicializar vista_actual si no existe (no altera comportamiento por defecto)
 if "vista_actual" not in st.session_state:

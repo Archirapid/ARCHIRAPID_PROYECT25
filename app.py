@@ -1,10 +1,6 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-# Configurar página con layout amplio
-import streamlit as st
-st.set_page_config(layout='wide')
-
 import sqlite3
 import pandas as pd
 import os
@@ -15,6 +11,17 @@ import functools
 import time
 from pathlib import Path
 from src import db as _db
+
+# Configurar página con layout amplio
+import streamlit as st
+st.set_page_config(layout='wide')
+
+# Forzar página según rol si acabamos de loguearnos
+if st.session_state.get('logged_in') and 'selected_page' not in st.session_state:
+    if st.session_state.get('rol') == 'admin':
+        st.session_state['selected_page'] = "Intranet"
+    elif st.session_state.get('rol') == 'architect':
+        st.session_state['selected_page'] = "Arquitectos (Marketplace)"
 
 # Detectar si hay una finca seleccionada en los parámetros de consulta
 params = st.query_params
@@ -302,7 +309,48 @@ def detalles_proyecto_v2(project_id: str):
     tab_3d, tab_vr, tab_fotos = st.tabs(["🎥 3D", "🥽 VR", "🖼️ Fotos / Planos"])
 
     with tab_3d:
-        if client_logged_in:
+        # Sistema de roles tipo Airbnb - diferenciación de acceso al visor 3D
+        user_role = None
+        has_project_access = False
+
+        if client_logged_in and client_email:
+            # Obtener rol del usuario desde la base de datos
+            try:
+                from modules.marketplace.utils import get_user_by_email
+                user_data = get_user_by_email(client_email)
+                if user_data:
+                    user_role = user_data.get('role')
+            except:
+                user_role = None
+
+            # Verificar acceso según rol
+            if user_role == 'client':
+                # Cliente siempre puede ver el 3D de proyectos que está viendo
+                has_project_access = True
+            elif user_role == 'architect':
+                # Arquitecto puede ver el 3D de sus propios proyectos
+                conn_check = db.get_conn()
+                cursor_check = conn_check.cursor()
+                cursor_check.execute("SELECT architect_id FROM projects WHERE id = ?", (project_id,))
+                project_architect = cursor_check.fetchone()
+                conn_check.close()
+                if project_architect and project_architect[0] == user_data.get('id'):
+                    has_project_access = True
+            elif user_role == 'services':
+                # Proveedor de servicios solo ve 3D si tiene el proyecto asignado
+                conn_check = db.get_conn()
+                cursor_check = conn_check.cursor()
+                cursor_check.execute("""
+                    SELECT sa.id FROM service_assignments sa
+                    JOIN service_providers sp ON sa.proveedor_id = sp.id
+                    WHERE sp.email = ? AND sa.proyecto_id = ?
+                """, (client_email, project_id))
+                assignment = cursor_check.fetchone()
+                conn_check.close()
+                if assignment:
+                    has_project_access = True
+
+        if has_project_access:
             st.markdown("#### 🎥 Visor 3D del Proyecto")
             if project_data.get("modelo_3d_glb"):
                 # Mostrar visor 3D completo
@@ -410,8 +458,15 @@ def detalles_proyecto_v2(project_id: str):
             else:
                 st.info("Este proyecto no tiene modelo 3D disponible.")
         else:
-            st.info("🔒 Para ver el modelo 3D interactivo completo, regístrate como cliente.")
-            st.markdown("**Vista previa limitada:** Los modelos 3D se desbloquean tras registro.")
+            # Mensaje específico según el rol del usuario
+            if user_role == 'services':
+                st.warning("🔒 Como proveedor de servicios, solo puedes ver el modelo 3D de proyectos que tienes asignados.")
+                st.info("Contacta al cliente para que te asigne este proyecto si necesitas acceso al modelo 3D.")
+            elif user_role == 'architect':
+                st.warning("🔒 Solo puedes ver el modelo 3D de tus propios proyectos.")
+            else:
+                st.info("🔒 Para ver el modelo 3D interactivo completo, regístrate como cliente.")
+                st.markdown("**Vista previa limitada:** Los modelos 3D se desbloquean tras registro.")
 
     with tab_vr:
         if client_logged_in:
@@ -727,7 +782,7 @@ def detalles_proyecto_v2(project_id: str):
             with col1:
                 if st.button("👤 Ir a Mi Panel de Cliente", type="primary", width='stretch'):
                     st.query_params.update({
-                        "page": "Panel Cliente V2",
+                        "page": "👤 Panel de Cliente",
                         "selected_project_v2": project_id
                     })
                     st.rerun()
@@ -815,6 +870,49 @@ def detalles_proyecto_v2(project_id: str):
                 for servicio in servicios_seleccionados:
                     st.write(f"• {servicio}")
 
+            # Mostrar proveedores disponibles para servicios adicionales
+            st.markdown("### 🏗️ Proveedores de Servicios Disponibles")
+            proveedores_seleccionados = {}
+
+            for servicio in servicios_seleccionados:
+                # Mapear servicios a especialidades
+                specialty_map = {
+                    "Dirección de Obra": "direccion_obra",
+                    "Visado del Proyecto": "visado",
+                    "Gemelos Digitales (BIM)": "bim",
+                    "Consultoría Sostenibilidad": "sostenibilidad",
+                    "Coordinación SSL": "ssl"
+                }
+
+                specialty = specialty_map.get(servicio, "")
+                if specialty:
+                    st.markdown(f"**{servicio}:**")
+                    # Buscar proveedores disponibles
+                    conn_prov = db_conn()
+                    cursor_prov = conn_prov.cursor()
+                    cursor_prov.execute("""
+                        SELECT id, name, company, experience_years, service_area
+                        FROM service_providers
+                        WHERE specialty = ? AND service_area LIKE ?
+                        ORDER BY experience_years DESC
+                    """, (specialty, f"%{project_data.get('location', '').split(',')[-1].strip()}%"))
+
+                    proveedores = cursor_prov.fetchall()
+                    conn_prov.close()
+
+                    if proveedores:
+                        opciones_proveedores = ["Seleccionar proveedor..."] + [f"{p[1]} ({p[2]}) - {p[3]} años exp." for p in proveedores]
+                        proveedor_idx = st.selectbox(
+                            f"Seleccionar proveedor para {servicio}",
+                            range(len(opciones_proveedores)),
+                            format_func=lambda x: opciones_proveedores[x],
+                            key=f"prov_{servicio}_{project_id}"
+                        )
+                        if proveedor_idx > 0:
+                            proveedores_seleccionados[servicio] = proveedores[proveedor_idx-1]
+                    else:
+                        st.warning(f"No hay proveedores disponibles para {servicio} en esta zona")
+
         st.markdown("---")
 
         from modules.marketplace.utils import db_conn
@@ -845,6 +943,37 @@ def detalles_proyecto_v2(project_id: str):
                         (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
                         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
                     """, (project_id, client_email, "Compra directa", productos_comprados, precio_total_pdf, "Simulado"))
+
+                    # Obtener el ID de la venta recién creada
+                    venta_id = cursor_buy.lastrowid
+
+                    # Registrar asignaciones de servicios si hay proveedores seleccionados
+                    if proveedores_seleccionados:
+                        specialty_prices = {
+                            "Dirección de Obra": 1000,
+                            "Visado del Proyecto": 500,
+                            "Gemelos Digitales (BIM)": 900,
+                            "Consultoría Sostenibilidad": 300,
+                            "Coordinación SSL": 400
+                        }
+
+                        for servicio, proveedor in proveedores_seleccionados.items():
+                            specialty = {
+                                "Dirección de Obra": "direccion_obra",
+                                "Visado del Proyecto": "visado",
+                                "Gemelos Digitales (BIM)": "bim",
+                                "Consultoría Sostenibilidad": "sostenibilidad",
+                                "Coordinación SSL": "ssl"
+                            }.get(servicio, "")
+
+                            precio_servicio = specialty_prices.get(servicio, 0)
+
+                            cursor_buy.execute("""
+                                INSERT INTO service_assignments
+                                (venta_id, servicio_tipo, proveedor_id, cliente_email, proyecto_id, precio_servicio, fecha_asignacion)
+                                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                            """, (venta_id, specialty, proveedor[0], client_email, project_id, precio_servicio))
+
                     conn_buy.commit()
                     conn_buy.close()
                     st.success("🎉 PDF con servicios adicionales comprado exitosamente!")
@@ -865,6 +994,37 @@ def detalles_proyecto_v2(project_id: str):
                         (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
                         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
                     """, (project_id, client_email, "Compra directa", productos_comprados, precio_total_cad, "Simulado"))
+
+                    # Obtener el ID de la venta recién creada
+                    venta_id = cursor_buy.lastrowid
+
+                    # Registrar asignaciones de servicios si hay proveedores seleccionados
+                    if proveedores_seleccionados:
+                        specialty_prices = {
+                            "Dirección de Obra": 1000,
+                            "Visado del Proyecto": 500,
+                            "Gemelos Digitales (BIM)": 900,
+                            "Consultoría Sostenibilidad": 300,
+                            "Coordinación SSL": 400
+                        }
+
+                        for servicio, proveedor in proveedores_seleccionados.items():
+                            specialty = {
+                                "Dirección de Obra": "direccion_obra",
+                                "Visado del Proyecto": "visado",
+                                "Gemelos Digitales (BIM)": "bim",
+                                "Consultoría Sostenibilidad": "sostenibilidad",
+                                "Coordinación SSL": "ssl"
+                            }.get(servicio, "")
+
+                            precio_servicio = specialty_prices.get(servicio, 0)
+
+                            cursor_buy.execute("""
+                                INSERT INTO service_assignments
+                                (venta_id, servicio_tipo, proveedor_id, cliente_email, proyecto_id, precio_servicio, fecha_asignacion)
+                                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                            """, (venta_id, specialty, proveedor[0], client_email, project_id, precio_servicio))
+
                     conn_buy.commit()
                     conn_buy.close()
                     st.success("🎉 CAD con servicios adicionales comprado exitosamente!")
@@ -1315,9 +1475,9 @@ def show_selected_project_panel_v2(client_email: str, project_id: str):
 
 
 def registro_v2():
-    """Página de registro simple - VERSIÓN V2"""
-    st.title("📝 Registro de Cliente - ARCHIRAPID V2")
-    st.info("Regístrate para acceder a todos los proyectos y funcionalidades")
+    """Página de registro de usuario - Versión Profesional"""
+    st.title("📝 Registro de Usuario - ARCHIRAPID")
+    st.info("Regístrate para acceder a todos los proyectos y funcionalidades avanzadas")
 
     with st.form("registro_simple_v2"):
         col1, col2 = st.columns(2)
@@ -1381,8 +1541,8 @@ def registro_v2():
                         if project_id:
                             st.session_state["selected_project_for_panel"] = project_id
 
-                    # Redirigir al panel de cliente
-                    st.query_params["page"] = "Panel Cliente V2"
+                    # Redirigir de vuelta al Marketplace con sesión activa
+                    st.query_params["page"] = "🏠 Inicio / Marketplace"
                     st.rerun()
 
                 except Exception as e:
@@ -1920,14 +2080,14 @@ if "selected_project_v2" in params and not page_from_query:
         st.error(f"Error mostrando detalles del proyecto v2: {e}")
     st.stop()  # Detener la ejecución para no mostrar el resto de la app
 
-if page_from_query == "Panel Cliente V2":
+if page_from_query == "👤 Panel de Cliente":
     try:
         panel_cliente_v2()
         st.stop()
     except Exception as e:
         st.error(f"Error mostrando panel cliente v2: {e}")
 
-if page_from_query == "Registro V2":
+if page_from_query == "Registro de Usuario":
     try:
         registro_v2()
         st.stop()
@@ -1935,13 +2095,16 @@ if page_from_query == "Registro V2":
         st.error(f"Error mostrando registro v2: {e}")
 
 
-# Page configuration and navigation
+# Page configuration and navigation - SIMPLIFIED VERSION
 PAGES = {
-    "Home":  ("modules.marketplace.marketplace", "main"),
-    "Propietarios (Subir Fincas)": ("modules.marketplace.owners", "main"),
-    "Arquitectos (Marketplace)": ("modules.marketplace.marketplace_upload", "main"),
+    "🏠 Inicio / Marketplace": ("modules.marketplace.marketplace", "main"),
     "Intranet": ("modules.marketplace.intranet", "main"),
-    "Fincas Guardadas": ("modules.marketplace.plots_table", "main"),
+    "👤 Panel de Proveedor": ("modules.marketplace.service_providers", "show_service_provider_panel"),
+    "📝 Registro de Servicios": ("modules.marketplace.service_providers", "show_service_provider_registration"),
+    "Arquitectos (Marketplace)": ("modules.marketplace.marketplace_upload", "main"),
+    "👤 Panel de Cliente": ("modules.marketplace.client_panel_fixed", "main"),
+    "Iniciar Sesión": ("modules.marketplace.auth", "show_login"),
+    "Registro de Usuario": ("modules.marketplace.auth", "show_registration"),
 }
 
 # Helper: start a simple static server for local assets (with CORS)
@@ -2114,29 +2277,73 @@ def render_portal_cliente_proyecto():
     st.write("- 🧑‍💼 Propietarios (seguimiento de obra)")
 
 
-# Navigation state handling (restore `page` variable)
-page_keys = list(PAGES.keys())
-default_page = page_from_query or st.session_state.get("auto_select_page", "Home")
-selected_page = st.session_state.get("selected_page", default_page)
+
+# Navigation state handling (restore `page` variable) - SIMPLIFIED
+PAGES_PUBLIC = ["🏠 Inicio / Marketplace", "Iniciar Sesión", "Registro de Usuario"]
+PAGES_ADMIN = ["🏠 Inicio / Marketplace", "Intranet"]
+PAGES_CLIENT = ["🏠 Inicio / Marketplace", "👤 Panel de Cliente"]
+
+user_role = st.session_state.get('rol')
+logged_in = st.session_state.get('logged_in')
+
+if user_role == 'admin':
+    page_keys = PAGES_ADMIN
+elif user_role == 'client':
+    page_keys = PAGES_CLIENT
+else:
+    page_keys = PAGES_PUBLIC
+
+# Ocultar login/registro si ya está logueado
+if logged_in:
+    page_keys = [k for k in page_keys if k not in ("Iniciar Sesión", "Registro de Usuario")]
+
+# Lógica de navegación robusta
+if "page" in st.query_params:
+    st.session_state["selected_page"] = st.query_params["page"]
+selected_page = st.session_state.get("selected_page", "🏠 Inicio / Marketplace")
+
 try:
     index = page_keys.index(selected_page) if selected_page in page_keys else 0
 except Exception:
     index = 0
 page = st.sidebar.radio("Navegación", page_keys, index=index, key="main_navigation_v2")
 
+# Botón de cerrar sesión
+if logged_in and st.sidebar.button("🚪 Cerrar Sesión"):
+    st.session_state.clear()
+    st.query_params["page"] = "🏠 Inicio / Marketplace"
+    st.rerun()
+
+# Lógica de Redirección
+if page == "🏠 Inicio / Marketplace":
+    st.query_params.clear()
+elif page in ["👤 Panel de Proveedor", "📝 Registro de Servicios"]:
+    st.query_params["page"] = page
+
 # Inicializar vista_actual si no existe (no altera comportamiento por defecto)
 if "vista_actual" not in st.session_state:
     st.session_state["vista_actual"] = None
 
-# Añadir botón aditivo en el sidebar para abrir el Portal Cliente (no conectado por defecto)
-if st.sidebar.button("📂 Portal Cliente"):
-    st.query_params["page"] = "👤 Panel de Cliente"
-    st.rerun()
+# Obtener rol del usuario actual para mostrar botones condicionalmente
+current_user_role = None
+client_logged_in = st.session_state.get("client_logged_in", False)
+client_email = st.session_state.get("client_email", "")
+
+if client_logged_in and client_email:
+    try:
+        from modules.marketplace.utils import get_user_by_email
+        user_data = get_user_by_email(client_email)
+        if user_data:
+            current_user_role = user_data.get('role')
+    except:
+        current_user_role = None
+
+# REMOVED: Conditional sidebar buttons for service providers - navigation is now simplified
 
 
 
 # Only handle Home here; other pages delegate to modules
-if selected_page == "Home":
+if selected_page == "🏠 Inicio / Marketplace":
     STATIC_ROOT = Path(r"C:/ARCHIRAPID_PROYECT25")
     STATIC_PORT = _start_static_server(STATIC_ROOT, port=8765)
     # URL base del servidor estático (definida temprano para usar en el header de diagnóstico)
@@ -2163,57 +2370,36 @@ if selected_page == "Home":
             access_col = cols[2]
 
         with access_col:
-            if st.button("📝 REGISTRO (v2)", key="btn_registro_v2"):
-                st.query_params["page"] = "Registro V2"
-                st.rerun()
+            if st.button("� Acceder", key="btn_acceder"):
+                if not st.session_state.get('logged_in', False) or not st.session_state.get('email', ''):
+                    # No hay sesión - ir a login
+                    st.query_params["page"] = "Iniciar Sesión"
+                    st.rerun()
+                else:
+                    # Hay sesión - determinar destino según rol
+                    try:
+                        from modules.marketplace.utils import get_user_by_email
+                        user_data = get_user_by_email(st.session_state.get('email', ''))
+                        if user_data:
+                            user_role = user_data.get('role')
+                            st.session_state["rol"] = user_role  # asegurar persistencia
+                            if user_role == 'admin':
+                                st.query_params["page"] = "Intranet"
+                            elif user_role == 'architect':
+                                st.query_params["page"] = "Arquitectos (Marketplace)"
+                            else:  # client u otros
+                                st.query_params["page"] = "👤 Panel de Cliente"
+                        else:
+                            # Fallback si no se puede determinar rol
+                            st.query_params["page"] = "👤 Panel de Cliente"
+                    except:
+                        # Fallback a panel de cliente
+                        st.query_params["page"] = "👤 Panel de Cliente"
+                    st.rerun()
 
 # ========== HOME: LANDING + MARKETPLACE + PROYECTOS ==========
 
-    # PASO 1: Renderizar los 3 botones de roles
-    st.markdown("---")
-    st.markdown('<div class="role-container">', unsafe_allow_html=True)
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.markdown("""
-        <div class="role-card">
-            <div class="card-icon">🏗️</div>
-            <div class="card-title">Tengo un Terreno</div>
-            <div class="card-text">Publica tu finca y recibe propuestas reales de arquitectos.</div>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.button("Acceso Propietarios", key="btn_prop_home"):
-            st.query_params["page"] = "Propietarios (Subir Fincas)"
-            st.rerun()
-
-    with col2:
-        st.markdown("""
-        <div class="role-card">
-            <div class="card-icon">📐</div>
-            <div class="card-title">Soy Arquitecto</div>
-            <div class="card-text">Sube tus proyectos ejecutables y conecta con clientes reales.</div>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.button("Acceso Arquitectos", key="btn_arq_home"):
-            st.query_params["page"] = "Arquitectos (Marketplace)"
-            st.rerun()
-
-    with col3:
-        st.markdown("""
-        <div class="role-card">
-            <div class="card-icon">🏡</div>
-            <div class="card-title">Busco Casa</div>
-            <div class="card-text">Explora fincas, proyectos compatibles o diseña tu casa con IA.</div>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.button("ACCESO CLIENTE PROYECTO (v2)", key="btn_cli_home"):
-            st.query_params["page"] = "Panel Cliente V2"
-            st.rerun()
-
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown("---")
-
-    # PASO 2: Renderizar MARKETPLACE (miniaturas + mapa)
+    # PASO 1: Renderizar MARKETPLACE (contiene las tarjetas de acceso)
     try:
         from modules.marketplace import marketplace
         marketplace.main()
@@ -2293,6 +2479,29 @@ elif selected_page == "Arquitectos (Marketplace)":
         marketplace_upload.main()
 
 elif selected_page == "Intranet":
+    st.write("Cargando Panel de Control...")
     with st.container():
         from modules.marketplace import intranet
         intranet.main()
+
+elif selected_page == "👤 Panel de Proveedor":
+    with st.container():
+        from modules.marketplace import service_providers
+        service_providers.show_service_provider_panel()
+
+elif selected_page == "📝 Registro de Servicios":
+    with st.container():
+        from modules.marketplace import service_providers
+        service_providers.show_service_provider_registration()
+
+elif selected_page == "Iniciar Sesión":
+    with st.container():
+        from modules.marketplace import auth
+        auth.show_login()
+        st.stop()
+
+elif selected_page == "Registro de Usuario":
+    with st.container():
+        from modules.marketplace import auth
+        auth.show_registration()
+        st.stop()

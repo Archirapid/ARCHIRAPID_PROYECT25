@@ -41,10 +41,15 @@ def init_db():
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
-        name TEXT,
         email TEXT UNIQUE,
-        role TEXT, -- 'architect','owner','client','admin'
+        full_name TEXT,
+        role TEXT, -- 'architect','owner','client','services','admin'
+        is_professional INTEGER DEFAULT 0,
+        password_hash TEXT,
+        phone TEXT,
+        address TEXT,
         company TEXT,
+        specialty TEXT,
         created_at TEXT
     )
     """)
@@ -68,6 +73,22 @@ def init_db():
         plan TEXT,
         plan_limit INTEGER,
         plan_price REAL,
+        created_at TEXT
+    )
+    """)
+    # service providers table (proveedores de servicios profesionales)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS service_providers (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        nif TEXT,
+        specialty TEXT, -- 'direccion_obra', 'visado', 'bim', 'sostenibilidad', 'ssl', etc.
+        company TEXT,
+        phone TEXT,
+        address TEXT,
+        certifications TEXT, -- JSON con certificaciones
+        experience_years INTEGER,
+        service_area TEXT, -- zona geográfica de servicio
         created_at TEXT
     )
     """)
@@ -224,6 +245,25 @@ def init_db():
         precio_venta REAL,
         comision_archirapid REAL,
         fecha TEXT
+    )
+    """)
+
+    # Tabla de asignaciones de servicios adicionales
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS service_assignments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        venta_id INTEGER,
+        servicio_tipo TEXT, -- 'direccion_obra', 'visado', 'bim', etc.
+        proveedor_id TEXT,
+        cliente_email TEXT,
+        proyecto_id TEXT,
+        precio_servicio REAL,
+        estado TEXT DEFAULT 'pendiente', -- 'pendiente', 'en_progreso', 'completado', 'cancelado'
+        fecha_asignacion TEXT,
+        fecha_completado TEXT,
+        notas TEXT,
+        FOREIGN KEY(venta_id) REFERENCES ventas_proyectos(id),
+        FOREIGN KEY(proveedor_id) REFERENCES service_providers(id)
     )
     """)
 

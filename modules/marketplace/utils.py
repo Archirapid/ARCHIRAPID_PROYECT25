@@ -35,23 +35,25 @@ def insert_user(user):
             c.execute("INSERT INTO architects (id,name,email,company,created_at) VALUES (?,?,?,?,?)",
                       (user["id"], user["name"], user["email"], user.get("company",""), datetime.utcnow().isoformat()))
     elif user.get("role") == "owner":
-        # Create owners table if not exists with phone and address fields
-        c.execute("""CREATE TABLE IF NOT EXISTS owners (
-            id TEXT PRIMARY KEY, 
-            name TEXT, 
-            email TEXT UNIQUE, 
-            phone TEXT,
-            address TEXT,
-            created_at TEXT
-        )""")
         c.execute("SELECT id FROM owners WHERE email=?", (user['email'],))
         if not c.fetchone():
             c.execute("INSERT INTO owners (id,name,email,phone,address,created_at) VALUES (?,?,?,?,?,?)",
                       (user["id"], user["name"], user["email"], user.get("phone",""), user.get("address",""), datetime.utcnow().isoformat()))
+    elif user.get("role") == "services":
+        c.execute("SELECT id FROM service_providers WHERE email=?", (user['email'],))
+        if not c.fetchone():
+            c.execute("INSERT INTO service_providers (id,name,email,company,phone,address,created_at) VALUES (?,?,?,?,?,?,?)",
+                      (user["id"], user["name"], user["email"], user.get("company",""), user.get("phone",""), user.get("address",""), datetime.utcnow().isoformat()))
     conn.commit(); conn.close()
 
 def get_user_by_email(email):
     conn = db_conn(); c=conn.cursor()
+    # Check users table first (new unified table)
+    c.execute("SELECT id, full_name, email, role FROM users WHERE email=?", (email,))
+    row = c.fetchone()
+    if row:
+        conn.close()
+        return {"id": row[0], "name": row[1], "email": row[2], "role": row[3]}
     # Check architects table
     c.execute("SELECT id, name, email, company FROM architects WHERE email=?", (email,))
     row = c.fetchone()
@@ -59,37 +61,41 @@ def get_user_by_email(email):
         conn.close()
         return {"id": row[0], "name": row[1], "email": row[2], "company": row[3], "role": "architect"}
     # Check owners table with phone and address
-    c.execute("""CREATE TABLE IF NOT EXISTS owners (
-        id TEXT PRIMARY KEY, 
-        name TEXT, 
-        email TEXT UNIQUE, 
-        phone TEXT,
-        address TEXT,
-        created_at TEXT
-    )""")
     c.execute("SELECT id, name, email, phone, address FROM owners WHERE email=?", (email,))
+    row = c.fetchone()
+    if row:
+        conn.close()
+        return {"id": row[0], "name": row[1], "email": row[2], "phone": row[3], "address": row[4], "role": "owner"}
+    # Check service_providers table
+    c.execute("SELECT id, name, email, company, specialty FROM service_providers WHERE email=?", (email,))
     row = c.fetchone()
     conn.close()
     if row:
-        return {"id": row[0], "name": row[1], "email": row[2], "phone": row[3], "address": row[4], "role": "owner"}
+        return {"id": row[0], "name": row[1], "email": row[2], "company": row[3], "specialty": row[4], "role": "services"}
     return None
 
 def list_projects():
     conn = db_conn(); c=conn.cursor()
     # Join with architects table instead of users
     c.execute("""
-        SELECT p.id, p.title, p.description, p.area_m2, p.price, p.files_json, p.characteristics_json, p.plot_id, p.created_at,
+        SELECT p.id, p.title, p.description, p.area_m2, p.price, p.foto_principal, p.galeria_fotos, p.created_at,
                a.name as architect_name, a.company
         FROM projects p
         LEFT JOIN architects a ON p.architect_id = a.id
         ORDER BY p.created_at DESC
     """)
     rows = c.fetchall(); conn.close()
-    cols = ["id","title","description","area_m2","price","files_json","characteristics_json","plot_id","created_at","architect_name","company"]
+    cols = ["id","title","description","area_m2","price","foto_principal","galeria_fotos","created_at","architect_name","company"]
     projects = [dict(zip(cols,r)) for r in rows]
+    # galeria_fotos puede ser None o JSON
     for proj in projects:
-        proj['files'] = json.loads(proj['files_json']) if proj['files_json'] else {}
-        proj['characteristics'] = json.loads(proj['characteristics_json']) if proj['characteristics_json'] else {}
+        if proj['galeria_fotos']:
+            try:
+                proj['galeria_fotos'] = json.loads(proj['galeria_fotos'])
+            except Exception:
+                proj['galeria_fotos'] = []
+        else:
+            proj['galeria_fotos'] = []
     return projects
 
 def create_plot_record(plot):

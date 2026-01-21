@@ -1,0 +1,6 @@
+DAY 21 CHRIS - Roles and Auth Stabilized
+
+- Punto de restauración tras la unificación de la base de datos y limpieza de botones duplicados en la Home.
+- API Key de Groq protegida: no está escrita en el código, solo se lee de st.secrets o .env.
+- .env y secrets.toml están protegidos por .gitignore.
+- ADVERTENCIA: No mezclar proyectos nuevos con este punto de restauración para evitar conflictos de esquema.

@@ -23,29 +23,24 @@ def main():
         conn = db_conn()
         cursor = conn.cursor()
 
-        # Buscar transacciones (compras/reservas)
-        cursor.execute("SELECT * FROM reservations WHERE buyer_email=?", (auto_email,))
+        # Buscar SOLO transacciones de COMPRA (este panel es exclusivo para compradores)
+        cursor.execute("SELECT * FROM reservations WHERE buyer_email=? AND kind='purchase'", (auto_email,))
         transactions = cursor.fetchall()
 
-        # Si no tiene transacciones, buscar si es propietario con fincas publicadas
-        if not transactions:
-            cursor.execute("SELECT * FROM plots WHERE owner_email=?", (auto_email,))
-            owner_plots = cursor.fetchall()
-        else:
-            owner_plots = []
+        # NO auto-login para propietarios - ellos tienen panel separado
+        owner_plots = []
 
         conn.close()
 
-        # Auto-login si tiene transacciones O fincas como propietario
-        if transactions or owner_plots:
+        # Auto-login SOLO si tiene transacciones de COMPRA verificadas
+        if transactions:
             st.session_state["client_logged_in"] = True
             st.session_state["client_email"] = auto_email
-            st.session_state["user_role"] = "buyer" if transactions else "owner"
+            st.session_state["user_role"] = "buyer"
             st.session_state["has_transactions"] = len(transactions) > 0
-            st.session_state["has_properties"] = len(owner_plots) > 0
+            st.session_state["has_properties"] = False
 
-            role_text = "comprador" if transactions else "propietario"
-            st.info(f"🔄 Auto-acceso concedido como {role_text} para {auto_email}")
+            st.info(f"🔄 Auto-acceso concedido como comprador para {auto_email}")
 
             # Limpiar el estado de auto-login
             del st.session_state["auto_owner_email"]
@@ -71,51 +66,31 @@ def main():
                 conn = db_conn()
                 cursor = conn.cursor()
                 
-                # Buscar transacciones (compras/reservas)
-                cursor.execute("SELECT * FROM reservations WHERE buyer_email=?", (email,))
+                # Verificar si el email tiene transacciones de COMPRA (solo clientes que han comprado)
+                cursor.execute("SELECT * FROM reservations WHERE buyer_email=? AND kind='purchase'", (email,))
                 transactions = cursor.fetchall()
                 
-                # Si no tiene transacciones, buscar si es propietario con fincas publicadas
-                if not transactions:
-                    cursor.execute("SELECT * FROM plots WHERE owner_email=?", (email,))
-                    owner_plots = cursor.fetchall()
-                else:
-                    owner_plots = []
+                # NO permitir acceso a propietarios aquí - ellos tienen su propio panel
+                owner_plots = []  # No buscar propiedades de propietario
                 
-                # Si no tiene transacciones ni propiedades, verificar si está registrado como cliente
+                # NO verificar registro como cliente genérico - solo compras reales
                 is_registered_client = False
-                if not transactions and not owner_plots:
-                    cursor.execute("SELECT id, name FROM clients WHERE email = ?", (email,))
-                    client_record = cursor.fetchone()
-                    is_registered_client = client_record is not None
                 
                 conn.close()
                 
-                # Permitir acceso si tiene transacciones, fincas como propietario O está registrado como cliente
-                if transactions or owner_plots or is_registered_client:
+                # Permitir acceso SOLO si tiene transacciones de COMPRA verificadas
+                if transactions:
                     st.session_state["client_logged_in"] = True
                     st.session_state["client_email"] = email
-                    
-                    # Determinar el rol basado en la prioridad: transacciones > propiedades > cliente registrado
-                    if transactions:
-                        user_role = "buyer"
-                        role_text = "comprador"
-                    elif owner_plots:
-                        user_role = "owner" 
-                        role_text = "propietario"
-                    else:
-                        # Cliente registrado sin transacciones ni propiedades
-                        user_role = "buyer"  # Por defecto buyer para poder comprar proyectos
-                        role_text = "cliente registrado"
-                    
-                    st.session_state["user_role"] = user_role
+                    st.session_state["user_role"] = "buyer"
                     st.session_state["has_transactions"] = len(transactions) > 0
-                    st.session_state["has_properties"] = len(owner_plots) > 0
+                    st.session_state["has_properties"] = False  # No es propietario en este panel
                     
-                    st.success(f"✅ Acceso concedido como {role_text} para {email}")
+                    st.success(f"✅ Acceso concedido como cliente para {email}")
                     st.rerun()
                 else:
-                    st.error("No se encontraron transacciones, propiedades ni registro para este email")
+                    st.error("❌ Acceso denegado. Este panel es exclusivo para clientes que han realizado compras.")
+                    st.info("Si eres propietario, accede desde la página principal. Si has comprado un proyecto, verifica tu email.")
             else:
                 st.error("Por favor introduce tu email")
         
@@ -779,6 +754,79 @@ def show_client_project_purchases(client_email):
                         st.markdown("**Fecha N/D**")
 
                 st.markdown("---")
+
+    # Mostrar servicios contratados con proveedores
+    st.markdown("### 🏗️ Servicios Profesionales Contratados")
+
+    conn = db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT sa.id, sa.servicio_tipo, sa.proveedor_id, sa.precio_servicio, sa.estado,
+               sa.fecha_asignacion, sa.fecha_completado, sa.notas,
+               sp.name as proveedor_name, sp.company, sp.phone, sp.specialty,
+               vp.productos_comprados, p.title as project_title
+        FROM service_assignments sa
+        JOIN service_providers sp ON sa.proveedor_id = sp.id
+        JOIN ventas_proyectos vp ON sa.venta_id = vp.id
+        LEFT JOIN projects p ON sa.proyecto_id = p.id
+        WHERE sa.cliente_email = ?
+        ORDER BY sa.fecha_asignacion DESC
+    """, (client_email,))
+
+    services = cursor.fetchall()
+    conn.close()
+
+    if services:
+        for service in services:
+            (assignment_id, servicio_tipo, proveedor_id, precio_servicio, estado,
+             fecha_asignacion, fecha_completado, notas,
+             proveedor_name, company, phone, specialty,
+             productos_comprados, project_title) = service
+
+            estado_emoji = {
+                "pendiente": "⏳",
+                "en_progreso": "🔄",
+                "completado": "✅",
+                "cancelado": "❌"
+            }.get(estado, "❓")
+
+            servicio_nombre = {
+                "direccion_obra": "Dirección de Obra",
+                "visado": "Visado del Proyecto",
+                "bim": "Gemelos Digitales (BIM)",
+                "sostenibilidad": "Consultoría Sostenibilidad",
+                "ssl": "Coordinación SSL"
+            }.get(servicio_tipo, servicio_tipo.replace('_', ' ').title())
+
+            with st.expander(f"{estado_emoji} {servicio_nombre} - {proveedor_name}", expanded=True):
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.write(f"**🏢 Proveedor:** {proveedor_name}")
+                    if company:
+                        st.write(f"**Empresa:** {company}")
+                    st.write(f"**Especialidad:** {specialty.replace('_', ' ').title()}")
+                    st.write(f"**Teléfono:** {phone}")
+                    st.write(f"**Proyecto:** {project_title or f'ID: {productos_comprados}'}")
+
+                with col2:
+                    st.write(f"**💰 Precio:** €{precio_servicio:,.0f}")
+                    st.write(f"**📊 Estado:** {estado.title()}")
+                    st.write(f"**📅 Asignado:** {fecha_asignacion[:10]}")
+                    if fecha_completado:
+                        st.write(f"**✅ Completado:** {fecha_completado[:10]}")
+
+                if notas:
+                    st.write("**📝 Notas del proveedor:**")
+                    for nota in notas.split('\n'):
+                        if nota.strip():
+                            st.write(f"• {nota.strip()}")
+
+                # Información de contacto
+                st.markdown("---")
+                st.info(f"📞 **Contacto:** {phone} | Para consultas sobre el progreso del servicio")
+    else:
+        st.info("No tienes servicios profesionales contratados.")
 
     st.markdown("### 📥 Descargas Disponibles")
     st.info("Las descargas de tus proyectos estarán disponibles próximamente en esta sección.")

@@ -8,6 +8,13 @@ import os
 import json
 from pathlib import Path
 
+# Función de navegación unificada
+def navigate_to(page_name):
+    """Navegación unificada usando query params y session state"""
+    st.query_params["page"] = page_name
+    st.session_state["selected_page"] = page_name
+    st.rerun()
+
 # Helper to read query params (compatible con varias versiones de Streamlit)
 def get_query_params():
     """
@@ -370,15 +377,52 @@ def main():
         return
 
     # 2. Título principal
-    st.title("ARCHIRAPID — Marketplace de Fincas y Proyectos")
+    st.title("🏠 ARCHIRAPID — Marketplace de Fincas y Proyectos")
 
-    # 3. Configurar filtros del sidebar
+    # 3. Tres tarjetas de acceso directo (única fila de navegación)
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("### 🏠 Tengo un Terreno")
+        st.write("Publica tu finca y recibe propuestas de arquitectos")
+        if st.button("Subir mi Finca", key="upload_plot", use_container_width=True):
+            navigate_to("Propietarios (Subir Fincas)")
+
+    with col2:
+        st.markdown("### 🏗️ Soy Arquitecto")
+        st.write("Vende tus proyectos y conecta con clientes")
+        if st.button("Mis Proyectos", key="architect_portal", use_container_width=True):
+            navigate_to("Arquitectos (Marketplace)")
+
+    with col3:
+        st.markdown("### 🏡 Busco Casa")
+        st.write("Explora proyectos disponibles en el marketplace")
+
+        # Verificar si el usuario está logueado
+        logged_in = st.session_state.get("logged_in", False)
+        email = st.session_state.get("email", "")
+
+        if logged_in and email:
+            # Usuario logueado - mostrar Mis Favoritos
+            if st.button("Mis Favoritos", key="browse_projects", use_container_width=True):
+                navigate_to("👤 Panel de Cliente")
+        else:
+            # Usuario no logueado - mostrar mensaje de registro
+            if st.button("Ver Proyectos", key="browse_projects", use_container_width=True):
+                st.info("¡Bienvenido! Puedes explorar todos los proyectos abajo. Si quieres guardar tus favoritos o contactar con arquitectos, regístrate aquí.")
+                if st.button("📝 Registrarme", key="register_from_marketplace"):
+                    navigate_to("Registro de Usuario")
+
+    # 4. Marketplace de proyectos (siempre visible debajo)
+    st.markdown("---")
+
+    # Configurar filtros del sidebar
     min_surface, max_surface, search_query = setup_filters()
 
-    # 4. Obtener fincas filtradas
+    # Obtener fincas filtradas
     plots = get_filtered_plots(min_surface, max_surface, search_query)
 
-    # 5. Layout principal: dos columnas
+    # Layout principal: dos columnas
     left_col, right_col = st.columns([1, 2])
 
     with left_col:
@@ -387,14 +431,5 @@ def main():
     with right_col:
         render_map(plots)
 
-    # 6. Panel de cliente (si hay transacción completada)
-    render_client_panel()
-
-    # 7. Sección de proyectos (desactivada temporalmente)
+    # Sección de proyectos adicionales
     render_projects_section()
-
-    # 8. Verificar nuevamente si hay finca seleccionada (por si cambió durante la ejecución)
-    if selected_plot_local:
-        from modules.marketplace.plot_detail import show_plot_detail_page
-        show_plot_detail_page(selected_plot_local)
-        return  # No mostrar el mapa si estamos viendo detalles

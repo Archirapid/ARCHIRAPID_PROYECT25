@@ -229,3 +229,61 @@ def update_proposal_status(proposal_id, status):
     c.execute("UPDATE proposals SET status = ?, responded_at = ? WHERE id = ?", 
               (status, datetime.utcnow().isoformat(), proposal_id))
     conn.commit(); conn.close()
+
+def init_db():
+    """Crear tablas necesarias si no existen"""
+    conn = db_conn()
+    c = conn.cursor()
+    
+    # Tabla service_providers
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS service_providers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            nif TEXT,
+            specialty TEXT,
+            company TEXT,
+            phone TEXT,
+            address TEXT,
+            certifications TEXT,
+            experience_years INTEGER,
+            service_area TEXT,
+            created_at TEXT
+        )
+    """)
+    
+    # Tabla service_assignments
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS service_assignments (
+            id TEXT PRIMARY KEY,
+            venta_id TEXT,
+            proveedor_id TEXT,
+            servicio_tipo TEXT,
+            cliente_email TEXT,
+            proyecto_id TEXT,
+            precio_servicio REAL,
+            estado TEXT DEFAULT 'pendiente',
+            fecha_asignacion TEXT,
+            fecha_completado TEXT,
+            notas TEXT,
+            FOREIGN KEY (venta_id) REFERENCES ventas_proyectos (id),
+            FOREIGN KEY (proveedor_id) REFERENCES service_providers (id)
+        )
+    """)
+    
+    # Asegurar que la tabla users tenga el rol 'services' soportado
+    # (Ya debería existir de db_setup.py, pero por si acaso)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            email TEXT UNIQUE,
+            role TEXT,
+            company TEXT,
+            created_at TEXT
+        )
+    """)
+    
+    conn.commit()
+    conn.close()

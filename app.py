@@ -11,6 +11,10 @@ import functools
 import time
 from pathlib import Path
 from src import db as _db
+from modules.marketplace.utils import init_db
+
+# Inicializar base de datos
+init_db()
 
 # Configurar página con layout amplio
 import streamlit as st

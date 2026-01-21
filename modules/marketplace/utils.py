@@ -277,10 +277,15 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
-            name TEXT,
             email TEXT UNIQUE,
+            full_name TEXT,
             role TEXT,
+            is_professional INTEGER DEFAULT 0,
+            password_hash TEXT,
+            phone TEXT,
+            address TEXT,
             company TEXT,
+            specialty TEXT,
             created_at TEXT
         )
     """)

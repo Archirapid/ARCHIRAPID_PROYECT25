@@ -61,7 +61,7 @@ def show_service_provider_registration():
 
                 # También insertar en tabla users general
                 c.execute("""
-                    INSERT INTO users (id, name, email, role, company, created_at)
+                    INSERT INTO users (id, full_name, email, role, company, created_at)
                     VALUES (?, ?, ?, 'services', ?, ?)
                 """, (provider_id, name, email, company, datetime.utcnow().isoformat()))
 

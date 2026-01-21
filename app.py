@@ -22,6 +22,8 @@ if st.session_state.get('logged_in') and 'selected_page' not in st.session_state
         st.session_state['selected_page'] = "Intranet"
     elif st.session_state.get('rol') == 'architect':
         st.session_state['selected_page'] = "Arquitectos (Marketplace)"
+    elif st.session_state.get('rol') == 'services':
+        st.session_state['selected_page'] = "👤 Panel de Proveedor"
 
 # Detectar si hay una finca seleccionada en los parámetros de consulta
 params = st.query_params
@@ -2444,7 +2446,29 @@ if selected_page == "🏠 Inicio / Marketplace":
     except Exception as e:
         st.error(f"Error cargando proyectos: {e}")
 
-    
+    # Banner de captación para profesionales
+    st.markdown("---")
+    with st.container():
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("""
+            <div style="background-color: #f0f8ff; padding: 20px; border-radius: 10px; border-left: 5px solid #007bff;">
+                <h3 style="color: #007bff; margin-top: 0;">¿Eres profesional de la construcción o reformas?</h3>
+                <p style="margin-bottom: 0;">Únete a nuestra red de proveedores y conecta con clientes que necesitan tus servicios.</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            if st.button("Registrarme como Profesional", key="register_professional"):
+                st.session_state['selected_page'] = 'Registro de Proveedor de Servicios'
+                st.rerun()
+
+    # Botón para buscar profesionales
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("🛠️ Buscar Profesionales", key="search_professionals"):
+            from modules.marketplace import service_providers
+            service_providers.show_services_marketplace()
 
 elif selected_page == "Propietario (Gemelo Digital)":
     with st.container():
@@ -2489,7 +2513,7 @@ elif selected_page == "👤 Panel de Proveedor":
         from modules.marketplace import service_providers
         service_providers.show_service_provider_panel()
 
-elif selected_page == "📝 Registro de Servicios":
+elif selected_page == "Registro de Proveedor de Servicios":
     with st.container():
         from modules.marketplace import service_providers
         service_providers.show_service_provider_registration()

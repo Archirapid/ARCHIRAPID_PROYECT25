@@ -79,7 +79,7 @@ def show_service_provider_panel():
     st.header("🏗️ Panel de Proveedor de Servicios")
 
     # Obtener datos del proveedor actual
-    user_email = st.session_state.get("client_email", "")
+    user_email = st.session_state.get("email", "")
     if not user_email:
         st.error("Debes iniciar sesión primero")
         return

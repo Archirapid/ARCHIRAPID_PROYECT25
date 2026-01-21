@@ -2472,6 +2472,8 @@ if selected_page == "🏠 Inicio / Marketplace":
             from modules.marketplace import service_providers
             service_providers.show_services_marketplace()
 
+    st.stop()  # Detener la ejecución para no mostrar el resto de la app
+
 elif selected_page == "Propietario (Gemelo Digital)":
     with st.container():
         # Flujo principal: Propietario sube finca → IA genera plan

@@ -3,6 +3,7 @@ import streamlit as st
 import sqlite3
 from datetime import datetime
 from .utils import db_conn, save_upload
+from werkzeug.security import generate_password_hash
 import json
 
 def show_service_provider_registration():
@@ -30,11 +31,25 @@ def show_service_provider_registration():
         certifications = st.text_area("Certificaciones (una por línea)", key="sp_certifications",
             help="Ej: Arquitecto Superior, Aparejador, Coordinador SSL, etc.")
 
+        col3, col4 = st.columns(2)
+        with col3:
+            password = st.text_input("Contraseña *", type="password", key="sp_password")
+        with col4:
+            confirm_password = st.text_input("Confirmar Contraseña *", type="password", key="sp_confirm_password")
+
         submitted = st.form_submit_button("Registrar como Proveedor de Servicios")
 
         if submitted:
-            if not all([name, email, phone, nif, specialty]):
+            if not all([name, email, phone, nif, specialty, password, confirm_password]):
                 st.error("Por favor complete todos los campos obligatorios (*)")
+                return
+
+            if password != confirm_password:
+                st.error("Las contraseñas no coinciden")
+                return
+
+            if len(password) < 6:
+                st.error("La contraseña debe tener al menos 6 caracteres")
                 return
 
             try:
@@ -60,16 +75,25 @@ def show_service_provider_registration():
                       certifications, experience_years, service_area, datetime.utcnow().isoformat()))
 
                 # También insertar en tabla users general
+                password_hash = generate_password_hash(password)
                 c.execute("""
-                    INSERT INTO users (id, email, full_name, role, created_at)
-                    VALUES (?, ?, ?, 'services', ?)
-                """, (provider_id, email, name, datetime.utcnow().isoformat()))
+                    INSERT INTO users (id, email, password_hash, full_name, role, created_at)
+                    VALUES (?, ?, ?, ?, 'services', ?)
+                """, (provider_id, email, password_hash, name, datetime.utcnow().isoformat()))
 
                 conn.commit()
                 conn.close()
 
+                # Auto-login del nuevo profesional
+                st.session_state['logged_in'] = True
+                st.session_state['email'] = email
+                st.session_state['rol'] = 'services'
+                st.session_state['user_id'] = provider_id
+                st.session_state['full_name'] = name
+
                 st.success("✅ Registro completado exitosamente!")
-                st.info("Ahora puedes acceder al panel de proveedores de servicios con tus credenciales.")
+                st.info("Redirigiendo a tu panel de proveedor de servicios...")
+                st.rerun()
 
             except Exception as e:
                 st.error(f"Error en el registro: {str(e)}")

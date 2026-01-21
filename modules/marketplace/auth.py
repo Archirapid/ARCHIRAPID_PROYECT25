@@ -33,6 +33,8 @@ def show_login():
                     st.query_params["page"] = "Intranet"
                 elif user_role == 'architect':
                     st.query_params["page"] = "Arquitectos (Marketplace)"
+                elif user_role == 'services':
+                    st.query_params["page"] = "👤 Panel de Proveedor"
                 else:
                     st.query_params["page"] = "👤 Panel de Cliente"
                 st.rerun()

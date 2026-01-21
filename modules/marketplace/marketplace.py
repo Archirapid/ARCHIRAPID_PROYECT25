@@ -379,6 +379,21 @@ def main():
     # 2. Título principal
     st.title("🏠 ARCHIRAPID — Marketplace de Fincas y Proyectos")
 
+    # Mensaje de bienvenida si está logueado
+    if st.session_state.get('logged_in'):
+        user_name = st.session_state.get('full_name', st.session_state.get('email', 'Usuario'))
+        role = st.session_state.get('rol', '')
+        if role == 'services':
+            panel_name = "Panel de Proveedor"
+        elif role == 'architect':
+            panel_name = "Panel de Arquitecto"
+        elif role == 'admin':
+            panel_name = "Intranet"
+        else:
+            panel_name = "Panel de Cliente"
+        
+        st.success(f"👋 ¡Hola, {user_name}! | [Ir a Mi {panel_name}](?page={panel_name.replace(' ', '%20')})")
+
     # 3. Tres tarjetas de acceso directo (única fila de navegación)
     col1, col2, col3 = st.columns(3)
 

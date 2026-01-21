@@ -98,7 +98,7 @@ def show_service_provider_registration():
         st.balloons()
 
         if st.button("🏠 Ir a Inicio", key="go_home_after_registration"):
-            st.query_params["page"] = "🏠 Inicio / Marketplace"
+            st.session_state["selected_page"] = "🏠 Inicio / Marketplace"
             st.rerun()
 
 def show_service_provider_panel():

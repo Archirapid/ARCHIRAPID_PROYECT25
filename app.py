@@ -1,9 +1,6 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-# Navegación forzada: Priorizar session_state para selected_page
-selected_page = st.session_state.get('selected_page', "🏠 Inicio / Marketplace")
-
 import sqlite3
 import pandas as pd
 import os
@@ -22,6 +19,9 @@ init_db()
 # Configurar página con layout amplio
 import streamlit as st
 st.set_page_config(layout='wide')
+
+# Navegación forzada: Priorizar session_state para selected_page
+selected_page = st.session_state.get('selected_page', "🏠 Inicio / Marketplace")
 
 # Forzar página según rol si acabamos de loguearnos
 if st.session_state.get('logged_in') and 'selected_page' not in st.session_state:

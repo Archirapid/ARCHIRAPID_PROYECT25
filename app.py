@@ -21,7 +21,7 @@ import streamlit as st
 st.set_page_config(layout='wide')
 
 # LÓGICA DE NAVEGACIÓN MAESTRA
-if 'selected_page' not in st.session_state:
+if 'selected_page' not in st.session_state or st.session_state['selected_page'] == "":
     st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
 
 # Detectar si hay una finca seleccionada en los parámetros de consulta
@@ -2291,10 +2291,10 @@ selected_page = st.sidebar.radio(
 st.session_state['selected_page'] = selected_page
 
 # Lógica de Redirección
-if selected_page == "🏠 Inicio / Marketplace":
+if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
     st.query_params.clear()
-elif selected_page in ["👤 Panel de Proveedor", "📝 Registro de Proveedor de Servicios"]:
-    st.query_params["page"] = selected_page
+elif st.session_state.get('selected_page') in ["👤 Panel de Proveedor", "📝 Registro de Proveedor de Servicios"]:
+    st.query_params["page"] = st.session_state.get('selected_page')
 
 # Inicializar vista_actual si no existe (no altera comportamiento por defecto)
 if "vista_actual" not in st.session_state:
@@ -2319,7 +2319,7 @@ if client_logged_in and client_email:
 
 
 # Only handle Home here; other pages delegate to modules
-if selected_page == "🏠 Inicio / Marketplace":
+if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
     STATIC_ROOT = Path(r"C:/ARCHIRAPID_PROYECT25")
     STATIC_PORT = _start_static_server(STATIC_ROOT, port=8765)
     # URL base del servidor estático (definida temprano para usar en el header de diagnóstico)
@@ -2444,19 +2444,19 @@ if selected_page == "🏠 Inicio / Marketplace":
             from modules.marketplace import service_providers
             service_providers.show_services_marketplace()
 
-elif selected_page == "Propietario (Gemelo Digital)":
+elif st.session_state.get('selected_page') == "Propietario (Gemelo Digital)":
     with st.container():
         # Flujo principal: Propietario sube finca → IA genera plan
         from modules.marketplace import gemelo_digital
         gemelo_digital.main()
 
-elif selected_page == "Propietarios (Subir Fincas)":
+elif st.session_state.get('selected_page') == "Propietarios (Subir Fincas)":
     with st.container():
         # Propietarios suben fincas al marketplace inmobiliario
         from modules.marketplace import owners
         owners.main()
 
-elif selected_page == "Diseñador de Vivienda":
+elif st.session_state.get('selected_page') == "Diseñador de Vivienda":
     with st.container():
         # Flujo secundario: Cliente diseña vivienda personalizada
         from modules.marketplace import disenador_vivienda
@@ -2464,41 +2464,41 @@ elif selected_page == "Diseñador de Vivienda":
 
 # "Inmobiliaria (Mapa)" route removed — Home now uses `marketplace.main()` directly.
 
-elif selected_page == "👤 Panel de Cliente":
+elif st.session_state.get('selected_page') == "👤 Panel de Cliente":
     with st.container():
         # Panel de cliente con acceso a transacciones y servicios
         from modules.marketplace import client_panel_fixed as client_panel
         client_panel.main()
 
-elif selected_page == "Arquitectos (Marketplace)":
+elif st.session_state.get('selected_page') == "Arquitectos (Marketplace)":
     with st.container():
         # Use the new main() entrypoint which handles auth, plans and upload flow
         from modules.marketplace import marketplace_upload
         marketplace_upload.main()
 
-elif selected_page == "Intranet":
+elif st.session_state.get('selected_page') == "Intranet":
     st.write("Cargando Panel de Control...")
     with st.container():
         from modules.marketplace import intranet
         intranet.main()
 
-elif selected_page == "👤 Panel de Proveedor":
+elif st.session_state.get('selected_page') == "👤 Panel de Proveedor":
     with st.container():
         from modules.marketplace import service_providers
         service_providers.show_service_provider_panel()
 
-elif selected_page == "📝 Registro de Proveedor de Servicios":
+elif st.session_state.get('selected_page') == "📝 Registro de Proveedor de Servicios":
     with st.container():
         from modules.marketplace import service_providers
         service_providers.show_service_provider_registration()
 
-elif selected_page == "Iniciar Sesión":
+elif st.session_state.get('selected_page') == "Iniciar Sesión":
     with st.container():
         from modules.marketplace import auth
         auth.show_login()
         st.stop()
 
-elif selected_page == "Registro de Usuario":
+elif st.session_state.get('selected_page') == "Registro de Usuario":
     with st.container():
         from modules.marketplace import auth
         auth.show_registration()

@@ -97,10 +97,7 @@ def show_service_provider_registration():
         st.info("🎉 Ahora puedes cerrar sesión y acceder desde la Home usando el botón 'Acceso' en la parte superior con tu email y contraseña.")
         st.balloons()
 
-        if st.button("🏠 Ir a Inicio"):
-            st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
-            st.query_params.clear()  # Limpiamos cualquier rastro en la URL
-            st.rerun()
+        st.markdown('<a href="/" target="_self" style="text-decoration:none;"><button style="width:100%; border-radius:5px; background-color:#f0f2f6; border:1px solid #dcdfe6; padding:10px;">🏠 Volver a la Home Principal</button></a>', unsafe_allow_html=True)
 
 def show_service_provider_panel():
     """Panel de control para proveedores de servicios"""

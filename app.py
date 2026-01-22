@@ -2356,6 +2356,65 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
 
 # ========== HOME: LANDING + MARKETPLACE + PROYECTOS ==========
 
+    # Mostrar formulario de login si viewing_login es True
+    if st.session_state.get('viewing_login', False):
+        st.markdown("---")
+        st.header(f"🔐 Iniciar Sesión - {st.session_state.get('login_role', '').title()}")
+        
+        with st.form("login_form"):
+            email = st.text_input("📧 Email", key="login_email")
+            password = st.text_input("🔒 Contraseña", type="password", key="login_password")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                submitted = st.form_submit_button("🚀 Entrar", type="primary")
+            with col2:
+                if st.form_submit_button("⬅️ Volver al selector"):
+                    st.session_state['viewing_login'] = False
+                    st.session_state['show_role_selector'] = True
+                    st.rerun()
+        
+        if submitted:
+            if not email or not password:
+                st.error("Por favor, completa todos los campos.")
+            else:
+                # Verificar credenciales en la base de datos
+                conn = _db.get_conn()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, email, rol, nombre FROM users 
+                    WHERE email = ? AND password = ? AND rol = ?
+                """, (email, password, st.session_state.get('login_role')))
+                user = cursor.fetchone()
+                conn.close()
+                
+                if user:
+                    # Login exitoso
+                    st.session_state['user_id'] = user[0]
+                    st.session_state['user_email'] = user[1]
+                    st.session_state['rol'] = user[2]
+                    st.session_state['user_name'] = user[3]
+                    st.session_state['logged_in'] = True
+                    st.session_state['viewing_login'] = False
+                    st.session_state['show_role_selector'] = False
+                    
+                    # Redirigir según el rol
+                    if st.session_state['rol'] == 'client':
+                        st.session_state['selected_page'] = "👤 Panel de Cliente"
+                    elif st.session_state['rol'] == 'architect':
+                        st.session_state['selected_page'] = "Arquitectos (Marketplace)"
+                    elif st.session_state['rol'] == 'services':
+                        st.session_state['selected_page'] = "👤 Panel de Proveedor"
+                    elif st.session_state['rol'] == 'admin':
+                        st.session_state['selected_page'] = "Intranet"
+                    
+                    st.success(f"¡Bienvenido {user[3]}!")
+                    st.rerun()
+                else:
+                    st.error("Credenciales incorrectas o rol no coincide.")
+        
+        st.stop()  # Detener el resto de la Home
+
     if st.session_state.get('show_role_selector', False):
         # Pantalla de Selector de Rol
         st.markdown("---")
@@ -2367,28 +2426,25 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
         with col1:
             st.markdown("### 🏠 Soy Cliente/Propietario")
             st.markdown("Accede a tus proyectos y visor 3D.")
-            if st.button("Seleccionar Cliente", key="select_client", use_container_width=True):
+            if st.button("🔑 Acceso Clientes", key="select_client", use_container_width=True):
                 st.session_state['login_role'] = 'client'
-                st.session_state['show_role_selector'] = False
-                st.query_params["page"] = "Iniciar Sesión"
+                st.session_state['viewing_login'] = True
                 st.rerun()
 
         with col2:
             st.markdown("### 🏗️ Soy Arquitecto")
             st.markdown("Gestiona tus diseños y fincas.")
-            if st.button("Seleccionar Arquitecto", key="select_architect", use_container_width=True):
+            if st.button("🔑 Acceso Arquitectos", key="select_architect", use_container_width=True):
                 st.session_state['login_role'] = 'architect'
-                st.session_state['show_role_selector'] = False
-                st.query_params["page"] = "Iniciar Sesión"
+                st.session_state['viewing_login'] = True
                 st.rerun()
 
         with col3:
             st.markdown("### 🛠️ Soy Profesional")
             st.markdown("Gestiona tus servicios y obras.")
-            if st.button("Seleccionar Profesional", key="select_professional", use_container_width=True):
+            if st.button("🔑 Acceso Profesionales", key="select_professional", use_container_width=True):
                 st.session_state['login_role'] = 'services'
-                st.session_state['show_role_selector'] = False
-                st.query_params["page"] = "Iniciar Sesión"
+                st.session_state['viewing_login'] = True
                 st.rerun()
             if st.button("Regístrate aquí", key="register_here"):
                 st.session_state['selected_page'] = "📝 Registro de Proveedor de Servicios"
@@ -2400,8 +2456,7 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
         with col_admin:
             if st.button("🔐 Admin", key="admin_access"):
                 st.session_state['login_role'] = 'admin'
-                st.session_state['show_role_selector'] = False
-                st.session_state['selected_page'] = "Iniciar Sesión"
+                st.session_state['viewing_login'] = True
                 st.rerun()
 
         # Botón para volver

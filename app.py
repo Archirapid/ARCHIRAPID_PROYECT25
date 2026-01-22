@@ -2378,37 +2378,31 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
             if not email or not password:
                 st.error("Por favor, completa todos los campos.")
             else:
-                # Verificar credenciales en la base de datos
-                conn = _db.get_conn()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT id, email, rol, nombre FROM users 
-                    WHERE email = ? AND password = ? AND rol = ?
-                """, (email, password, st.session_state.get('login_role')))
-                user = cursor.fetchone()
-                conn.close()
+                # Usar la función de autenticación existente
+                from modules.marketplace.auth import authenticate_user
+                user_data = authenticate_user(email, password)
                 
-                if user:
+                if user_data and user_data.get('role') == st.session_state.get('login_role'):
                     # Login exitoso
-                    st.session_state['user_id'] = user[0]
-                    st.session_state['user_email'] = user[1]
-                    st.session_state['rol'] = user[2]
-                    st.session_state['user_name'] = user[3]
+                    st.session_state['user_id'] = user_data['id']
+                    st.session_state['user_email'] = user_data['email']
+                    st.session_state['role'] = user_data['role']
+                    st.session_state['user_name'] = user_data['full_name']
                     st.session_state['logged_in'] = True
                     st.session_state['viewing_login'] = False
                     st.session_state['show_role_selector'] = False
                     
                     # Redirigir según el rol
-                    if st.session_state['rol'] == 'client':
+                    if st.session_state['role'] == 'client':
                         st.session_state['selected_page'] = "👤 Panel de Cliente"
-                    elif st.session_state['rol'] == 'architect':
+                    elif st.session_state['role'] == 'architect':
                         st.session_state['selected_page'] = "Arquitectos (Marketplace)"
-                    elif st.session_state['rol'] == 'services':
+                    elif st.session_state['role'] == 'services':
                         st.session_state['selected_page'] = "👤 Panel de Proveedor"
-                    elif st.session_state['rol'] == 'admin':
+                    elif st.session_state['role'] == 'admin':
                         st.session_state['selected_page'] = "Intranet"
                     
-                    st.success(f"¡Bienvenido {user[3]}!")
+                    st.success(f"¡Bienvenido {user_data['full_name']}!")
                     st.rerun()
                 else:
                     st.error("Credenciales incorrectas o rol no coincide.")

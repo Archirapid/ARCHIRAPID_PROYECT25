@@ -2346,51 +2346,75 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
             access_col = cols[2]
 
         with access_col:
-            if st.button("� Acceder", key="btn_acceder"):
-                if not st.session_state.get('logged_in', False) or not st.session_state.get('email', ''):
-                    # No hay sesión - ir a login
-                    st.query_params["page"] = "Iniciar Sesión"
-                    st.rerun()
-                else:
-                    # Hay sesión - determinar destino según rol
-                    try:
-                        from modules.marketplace.utils import get_user_by_email
-                        user_data = get_user_by_email(st.session_state.get('email', ''))
-                        if user_data:
-                            user_role = user_data.get('role')
-                            st.session_state["rol"] = user_role  # asegurar persistencia
-                            if user_role == 'admin':
-                                st.query_params["page"] = "Intranet"
-                            elif user_role == 'architect':
-                                st.query_params["page"] = "Arquitectos (Marketplace)"
-                            else:  # client u otros
-                                st.query_params["page"] = "👤 Panel de Cliente"
-                        else:
-                            # Fallback si no se puede determinar rol
-                            st.query_params["page"] = "👤 Panel de Cliente"
-                    except:
-                        # Fallback a panel de cliente
-                        st.query_params["page"] = "👤 Panel de Cliente"
-                    st.rerun()
+            if st.button("🔑 Acceder", key="btn_acceder"):
+                st.session_state['show_role_selector'] = True
+                st.rerun()
 
 # ========== HOME: LANDING + MARKETPLACE + PROYECTOS ==========
 
-    # PASO 1: Renderizar MARKETPLACE (contiene las tarjetas de acceso)
-    try:
-        from modules.marketplace import marketplace
-        marketplace.main()
-    except Exception as e:
-        import traceback
-        st.error(f"❌ Error cargando marketplace:  {e}")
-        st.code(traceback.format_exc())
+    if st.session_state.get('show_role_selector', False):
+        # Pantalla de Selector de Rol
+        st.markdown("---")
+        st.header("🔐 Selecciona tu Perfil de Acceso")
+        st.markdown("Elige el tipo de usuario que eres para acceder a las funcionalidades correspondientes.")
 
-    # PASO 3: Renderizar PROYECTOS ARQUITECTÓNICOS
-    st.markdown("---")
-    st.header("🏗️ Proyectos Arquitectónicos Disponibles")
+        col1, col2, col3 = st.columns(3)
 
-    try:
-        from src import db
-        projects = db.get_featured_projects(limit=6)
+        with col1:
+            st.markdown("### 🏠 Soy Cliente/Propietario")
+            st.markdown("Accede a tus proyectos y visor 3D.")
+            if st.button("Seleccionar Cliente", key="select_client", use_container_width=True):
+                st.session_state['login_role'] = 'client'
+                st.session_state['show_role_selector'] = False
+                st.query_params["page"] = "Iniciar Sesión"
+                st.rerun()
+
+        with col2:
+            st.markdown("### 🏗️ Soy Arquitecto")
+            st.markdown("Gestiona tus diseños y fincas.")
+            if st.button("Seleccionar Arquitecto", key="select_architect", use_container_width=True):
+                st.session_state['login_role'] = 'architect'
+                st.session_state['show_role_selector'] = False
+                st.query_params["page"] = "Iniciar Sesión"
+                st.rerun()
+
+        with col3:
+            st.markdown("### 🛠️ Soy Profesional")
+            st.markdown("Gestiona tus servicios y obras.")
+            if st.button("Seleccionar Profesional", key="select_professional", use_container_width=True):
+                st.session_state['login_role'] = 'services'
+                st.session_state['show_role_selector'] = False
+                st.query_params["page"] = "Iniciar Sesión"
+                st.rerun()
+            st.markdown("¿Aún no eres proveedor? [Regístrate aquí](?page=📝%20Registro%20de%20Proveedor%20de%20Servicios)")
+
+        # Botón discreto para admin
+        st.markdown("---")
+        col_admin = st.columns([10, 1])[1]
+        with col_admin:
+            if st.button("🔐 Admin", key="admin_access"):
+                st.session_state['login_role'] = 'admin'
+                st.session_state['show_role_selector'] = False
+                st.query_params["page"] = "Iniciar Sesión"
+                st.rerun()
+
+    else:
+        # PASO 1: Renderizar MARKETPLACE (contiene las tarjetas de acceso)
+        try:
+            from modules.marketplace import marketplace
+            marketplace.main()
+        except Exception as e:
+            import traceback
+            st.error(f"❌ Error cargando marketplace:  {e}")
+            st.code(traceback.format_exc())
+
+        # PASO 3: Renderizar PROYECTOS ARQUITECTÓNICOS
+        st.markdown("---")
+        st.header("🏗️ Proyectos Arquitectónicos Disponibles")
+
+        try:
+            from src import db
+            projects = db.get_featured_projects(limit=6)
         
         if projects: 
             cols = st.columns(3)

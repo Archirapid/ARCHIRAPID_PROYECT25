@@ -2386,7 +2386,9 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
                 st.session_state['show_role_selector'] = False
                 st.query_params["page"] = "Iniciar Sesión"
                 st.rerun()
-            st.markdown("¿Aún no eres proveedor? [Regístrate aquí](?page=📝%20Registro%20de%20Proveedor%20de%20Servicios)")
+            if st.button("Regístrate aquí", key="register_here"):
+                st.session_state['selected_page'] = "📝 Registro de Proveedor de Servicios"
+                st.rerun()
 
         # Botón discreto para admin
         st.markdown("---")
@@ -2397,6 +2399,13 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
                 st.session_state['show_role_selector'] = False
                 st.query_params["page"] = "Iniciar Sesión"
                 st.rerun()
+
+        # Botón para volver
+        st.markdown("---")
+        if st.button("⬅️ Volver", key="back_to_home"):
+            st.session_state['show_role_selector'] = False
+            st.rerun()
+        st.stop()  # Detenemos el resto de la Home
 
     else:
         # PASO 1: Renderizar MARKETPLACE (contiene las tarjetas de acceso)

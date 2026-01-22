@@ -19,7 +19,7 @@ def main():
         st.success("✅ Acceso autorizado a Intranet")
 
     # PANEL DE GESTIÓN INTERNA
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Gestión de Fincas", "🏗️ Gestión de Proyectos", "💰 Ventas y Transacciones", "📞 Consultas"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Gestión de Fincas", "🏗️ Gestión de Proyectos", "💰 Ventas y Transacciones", "📞 Consultas", "🛠️ Profesionales"])
 
     with tab1:
         try:
@@ -94,3 +94,52 @@ def main():
             st.info("Próximamente. Panel de consultas y soporte.")
         except Exception as e:
             st.error(f"Error en Consultas y Soporte: {e}")
+
+    with tab5:
+        try:
+            st.header("🛠️ Gestión de Profesionales Registrados")
+            
+            # Función para obtener profesionales
+            def get_service_providers():
+                conn = db_conn()
+                c = conn.cursor()
+                c.execute("""
+                    SELECT name, company, specialty, experience_years, service_area, certifications
+                    FROM service_providers
+                    ORDER BY name
+                """)
+                providers = c.fetchall()
+                conn.close()
+                return providers
+            
+            providers = get_service_providers()
+            
+            if providers:
+                # Filtro por especialidad
+                specialties = list(set([p[2] for p in providers if p[2]]))  # Especialidades únicas
+                selected_specialty = st.selectbox("Filtrar por Especialidad", ["Todas"] + sorted(specialties), key="filter_specialty")
+                
+                # Filtrar datos
+                if selected_specialty != "Todas":
+                    filtered_providers = [p for p in providers if p[2] == selected_specialty]
+                else:
+                    filtered_providers = providers
+                
+                # Preparar datos para tabla
+                table_data = []
+                for p in filtered_providers:
+                    table_data.append({
+                        "Nombre": p[0],
+                        "Empresa": p[1] or "Independiente",
+                        "Especialidad": p[2],
+                        "Años Exp.": p[3],
+                        "Ciudad": p[4] or "No especificada",
+                        "Certificaciones": p[5] or "Ninguna"
+                    })
+                
+                st.dataframe(table_data, use_container_width=True)
+                st.success(f"Mostrando {len(filtered_providers)} profesionales")
+            else:
+                st.info("No hay profesionales registrados aún.")
+        except Exception as e:
+            st.error(f"Error en Gestión de Profesionales: {e}")

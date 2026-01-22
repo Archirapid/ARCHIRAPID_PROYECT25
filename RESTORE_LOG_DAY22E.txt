@@ -1,0 +1,21 @@
+DAY 22E SESSION SYNC FIX - Punto de Restauración Crítico
+
+Fecha: Enero 22, 2026
+
+Estado del Proyecto:
+- ✅ Sincronización de variables corregida: service_providers.py usa 'logged_in' y 'role'
+- ✅ Candado de seguridad actualizado: Verifica st.session_state.get('logged_in') and role == 'services'
+- ✅ Variable user_email corregida: Usa st.session_state.get('user_email') en lugar de 'email'
+- ✅ Eliminación de bucle de expulsión: Variables unificadas en todo el proyecto
+- ✅ Persistencia confirmada: Variables se guardan ANTES del st.rerun() en login
+
+Variables Unificadas:
+- logged_in (booleano)
+- role (string: 'admin', 'services', 'architect', 'client')
+- user_email (string)
+
+Cambios Técnicos:
+- service_providers.py: Añadida verificación de logged_in y role == 'services'
+- Cambiada user_email de st.session_state.get("email") a st.session_state.get("user_email")
+
+Problema Resuelto: El panel de proveedores ahora reconoce el login desde la Home y no expulsa al usuario.

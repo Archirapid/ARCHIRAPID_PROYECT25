@@ -1,0 +1,20 @@
+DAY 22B ROLES FIX - Punto de Restauración Crítico
+
+Fecha: Enero 22, 2026
+
+Estado del Proyecto:
+- ✅ Selector de Roles funcional: Los 3 botones ahora activan viewing_login = True
+- ✅ Formulario de Login Unificado: Muestra Email + Contraseña con validación de rol
+- ✅ Textos de Botones actualizados: '🔑 Acceso Clientes', '🔑 Acceso Arquitectos', '🔑 Acceso Profesionales'
+- ✅ Flujo Lineal implementado: Acceder -> Selector -> Login -> Panel
+- ✅ Verificación de Credenciales: Busca en users con email, password y rol coincidente
+- ✅ Redirección por Rol: Client -> Panel Cliente, Architect -> Arquitectos Marketplace, Services -> Panel Proveedor, Admin -> Intranet
+- ✅ Botón Volver: Permite regresar al selector desde el formulario
+
+Cambios Técnicos:
+- app.py: Añadido bloque viewing_login con formulario st.form
+- Selector: Cambiada lógica a st.session_state['viewing_login'] = True
+- Login: Verificación en tabla users con rol específico
+- Redirección: Usando páginas existentes del diccionario PAGES
+
+Problema Resuelto: Los botones del selector ya no redirigen a Home, sino que muestran formulario de login y validan credenciales correctamente.

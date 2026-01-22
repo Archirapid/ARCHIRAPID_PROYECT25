@@ -851,33 +851,6 @@ ESTIMACIÓN DE PRESUPUESTO:
     
     st.markdown("---")
     
-    # Funcionalidades de IA
-    st.subheader("🤖 Herramientas de IA")
-    
-    col_gemelo, col_diseno = st.columns(2)
-    
-    with col_gemelo:
-        st.markdown("### 🏗️ Gemelo Digital")
-        st.markdown("Crea una réplica virtual 3D de tu proyecto")
-        if st.button("🚀 Crear Gemelo Digital", key="btn_gemelo", type="secondary"):
-            # Guardar el ID de la parcela actual para el gemelo digital
-            st.session_state["selected_plot_for_gemelo"] = plot_id
-            st.session_state["page"] = "gemelo_digital"
-            st.success("🔄 Redirigiendo al Gemelo Digital...")
-            st.info("Allí podrás diseñar tu vivienda en 3D con IA")
-            st.rerun()
-    
-    with col_diseno:
-        st.markdown("### 🏠 Diseño con IA")
-        st.markdown("Arquitecto virtual para diseñar tu casa")
-        if st.button("🎨 Diseñar con IA", key="btn_diseno", type="secondary"):
-            # Guardar el ID de la parcela actual para el diseñador
-            st.session_state["selected_plot_for_design"] = plot_id
-            st.session_state["page"] = "disenador_vivienda"
-            st.success("🔄 Redirigiendo al Arquitecto Virtual...")
-            st.info("Un asistente IA te guiará paso a paso")
-            st.rerun()
-    
     # Nuevo botón para análisis de terreno
     st.markdown("### 📊 Análisis Técnico de Terreno")
     st.markdown("Análisis profesional de viabilidad basado en datos catastrales validados")

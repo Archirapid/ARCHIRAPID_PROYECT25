@@ -1,5 +1,5 @@
 import fitz  # PyMuPDF
-# import google.genai as genai  # Ya no se usa, ahora usamos Groq
+import google.genai as genai  # Para visión con Gemini
 from groq import Groq
 from PIL import Image
 import io
@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 import streamlit as st
 from src.models.finca import FincaMVP
 
+# Forzar recarga de variables de entorno
+load_dotenv(override=True)
+
 def extraer_datos_catastral(pdf_path):
     """
     Función simplificada al máximo para extraer datos catastrales
@@ -18,7 +21,6 @@ def extraer_datos_catastral(pdf_path):
     try:
         # Cargar variables de entorno desde .env
         load_dotenv()
-        print("DEBUG API KEY:", os.getenv("GEMINI_API_KEY"))
 
         api_key = None
 

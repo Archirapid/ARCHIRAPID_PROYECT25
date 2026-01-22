@@ -116,6 +116,16 @@ page_from_query = params.get("page")
 
 # === FUNCIONES V2 (COPIA EXACTA DEL CONTENIDO ORIGINAL) ===
 
+# Interceptar navegación desde mapa (selected_plot en query params)
+if "selected_plot" in params:
+    plot_id = params["selected_plot"]
+    if isinstance(plot_id, list):
+        plot_id = plot_id[0]
+    st.session_state['selected_plot'] = plot_id
+    st.session_state['selected_page'] = '🔍 Detalle de Finca'
+    st.query_params.clear()  # Limpiar params para evitar loops
+    st.rerun()
+
 def detalles_proyecto_v2(project_id: str):
     """Muestra la página de vista previa de un proyecto arquitectónico - VERSIÓN V2"""
     # modules/marketplace/project_detail.py
@@ -2098,6 +2108,7 @@ if page_from_query == "Registro de Usuario":
 # Page configuration and navigation - SIMPLIFIED VERSION
 PAGES = {
     "🏠 Inicio / Marketplace": ("modules.marketplace.marketplace", "main"),
+    "🔍 Detalle de Finca": ("modules.marketplace.plot_detail", "show_plot_detail_page"),
     "Intranet": ("modules.marketplace.intranet", "main"),
     "👤 Panel de Proveedor": ("modules.marketplace.service_providers", "show_service_provider_panel"),
     "📝 Registro de Proveedor de Servicios": ("modules.marketplace.service_providers", "show_service_provider_registration"),
@@ -2319,7 +2330,17 @@ if client_logged_in and client_email:
 
 
 
-# Only handle Home here; other pages delegate to modules
+# Only handle special pages here; other pages delegate to modules
+if st.session_state.get('selected_page') == "🔍 Detalle de Finca":
+    if 'selected_plot' in st.session_state:
+        from modules.marketplace.plot_detail import show_plot_detail_page
+        show_plot_detail_page(st.session_state['selected_plot'])
+        st.stop()
+    else:
+        st.error("No se ha seleccionado ninguna finca para mostrar detalles.")
+        st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
+        st.rerun()
+
 if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
     STATIC_ROOT = Path(r"C:/ARCHIRAPID_PROYECT25")
     STATIC_PORT = _start_static_server(STATIC_ROOT, port=8765)

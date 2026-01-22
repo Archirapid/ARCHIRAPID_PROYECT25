@@ -1,0 +1,49 @@
+# RESTORE LOG - DIA 22G HYBRID AI & FLOW
+# Fecha: 22 de enero de 2026
+# Commit: 'DIA 22G HYBRID AI & FLOW'
+
+## ✅ ESTABILIDAD LOGRADA
+
+### 🤖 Convivencia Exitosa de Groq (Dossiers) y Gemini (Visión Catastral)
+- **Groq API**: Integrada para generación de textos y dossiers arquitectónicos
+- **Gemini API**: Integrada para visión y extracción de datos catastrales desde PDFs
+- **Hibridación**: Ambas APIs conviven sin conflictos, usando claves desde .env
+- **Seguridad**: Claves nunca hardcodeadas, siempre via os.getenv()
+- **Validación**: Debug prints de claves eliminados, .env en .gitignore
+
+### 👥 Registro de Propietarios Unificado
+- **Flujo Completo**: Login/registro sin password para propietarios
+- **Integración IA**: Extracción automática de datos catastrales con Gemini
+- **Geolocalización**: Coordenadas GPS obtenidas automáticamente o manuales
+- **Validación**: Referencias catastrales verificadas contra Catastro oficial
+- **Persistencia**: Datos guardados en database.db con integridad
+
+### 🗺️ Mapa con Geolocalización Funcional tras Extracción IA
+- **Visualización**: Mapa Folium con popups interactivos
+- **Navegación**: 'Ver más detalles' redirige correctamente a páginas de detalle
+- **Geocodificación**: Múltiples métodos (session_state, manual, geopy, Catastro API)
+- **Fallback**: Coordenadas por defecto para Madrid centro si falla geocodificación
+- **Interactividad**: Buy/Reserve buttons conectan a intranet de clientes
+
+## 🔒 SEGURIDAD MÁXIMA IMPLEMENTADA
+- ✅ .env en .gitignore
+- ✅ No hay claves hardcodeadas en código
+- ✅ API keys accedidas solo via os.getenv()
+- ✅ Debug prints de claves eliminados
+
+## 🚀 FUNCIONALIDADES CLAVE OPERATIVAS
+- Extracción automática de datos catastrales con Gemini Vision
+- Generación de descripciones con Groq
+- Mapa marketplace con geolocalización
+- Panel de propietarios con subida de fincas
+- Navegación fluida entre marketplace y detalles
+- Integración con base de datos SQLite
+
+## 📊 ESTADO DEL SISTEMA
+- **Arquitectura**: Modular y escalable
+- **Tecnologías**: Streamlit, Folium, SQLite, Google Gemini, Groq
+- **Base de Datos**: Funcional con plots, users, proposals
+- **API Keys**: Seguras y no expuestas
+- **Commit Ready**: Código limpio y preparado para producción
+
+ARCHIRAPID es ahora un sistema inteligente y seguro para la gestión de suelo urbano.

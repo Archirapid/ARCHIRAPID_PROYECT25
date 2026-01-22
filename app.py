@@ -2347,8 +2347,12 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
 
         with access_col:
             if st.button("🔑 Acceder", key="btn_acceder"):
-                st.session_state['show_role_selector'] = True
-                st.rerun()
+                if st.session_state.get('rol') == 'admin':
+                    st.session_state['selected_page'] = 'Intranet'
+                    st.rerun()
+                else:
+                    st.session_state['show_role_selector'] = True
+                    st.rerun()
 
 # ========== HOME: LANDING + MARKETPLACE + PROYECTOS ==========
 
@@ -2397,7 +2401,7 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
             if st.button("🔐 Admin", key="admin_access"):
                 st.session_state['login_role'] = 'admin'
                 st.session_state['show_role_selector'] = False
-                st.query_params["page"] = "Iniciar Sesión"
+                st.session_state['selected_page'] = "Iniciar Sesión"
                 st.rerun()
 
         # Botón para volver

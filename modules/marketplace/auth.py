@@ -9,6 +9,20 @@ def navigate_to(page_name):
     st.rerun()
 
 def show_login():
+    if st.session_state.get('login_role') == 'admin':
+        # Login especial para admin
+        st.title("🔐 Acceso Administrativo")
+        admin_password = st.text_input("Contraseña de Acceso Administrativo", type="password", key="admin_pass")
+        if st.button("🚀 Acceder como Admin", key="admin_login_btn"):
+            if admin_password == "admin123":
+                st.session_state['rol'] = 'admin'
+                st.session_state['logged_in'] = True
+                st.session_state['selected_page'] = "Intranet"
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta")
+        return
+    
     st.title("🔐 Iniciar Sesión")
 
     with st.form("login_form"):

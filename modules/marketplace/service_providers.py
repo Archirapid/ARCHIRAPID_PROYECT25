@@ -103,10 +103,15 @@ def show_service_provider_panel():
     """Panel de control para proveedores de servicios"""
     st.header("🏗️ Panel de Proveedor de Servicios")
 
+    # Verificar autenticación
+    if not st.session_state.get('logged_in') or st.session_state.get('role') != 'services':
+        st.error("Debes iniciar sesión como proveedor de servicios primero")
+        return
+
     # Obtener datos del proveedor actual
-    user_email = st.session_state.get("email", "")
+    user_email = st.session_state.get("user_email", "")
     if not user_email:
-        st.error("Debes iniciar sesión primero")
+        st.error("Error: Email no encontrado en la sesión")
         return
 
     conn = db_conn()

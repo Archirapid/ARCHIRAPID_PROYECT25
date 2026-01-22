@@ -2387,7 +2387,7 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
                     st.session_state['user_id'] = user_data['id']
                     st.session_state['user_email'] = user_data['email']
                     st.session_state['role'] = user_data['role']
-                    st.session_state['user_name'] = user_data['full_name']
+                    st.session_state['user_name'] = user_data.get('full_name') or user_data.get('name') or user_data.get('email', 'Usuario')
                     st.session_state['logged_in'] = True
                     st.session_state['viewing_login'] = False
                     st.session_state['show_role_selector'] = False
@@ -2402,7 +2402,7 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
                     elif st.session_state['role'] == 'admin':
                         st.session_state['selected_page'] = "Intranet"
                     
-                    st.success(f"¡Bienvenido {user_data['full_name']}!")
+                    st.success(f"¡Bienvenido {st.session_state['user_name']}!")
                     st.rerun()
                 else:
                     st.error("Credenciales incorrectas o rol no coincide.")

@@ -70,7 +70,7 @@ def authenticate_user(email, password):
             return {
                 "id": row[0],
                 "email": row[1],
-                "name": row[2],
+                "full_name": row[2],
                 "role": row[3]
             }
     except Exception as e:

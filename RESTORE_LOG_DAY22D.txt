@@ -1,0 +1,17 @@
+DAY 22D KEYERROR FIX - Punto de Restauración Crítico
+
+Fecha: Enero 22, 2026
+
+Estado del Proyecto:
+- ✅ KeyError 'full_name' resuelto: Uso de .get() seguro en app.py
+- ✅ Función authenticate_user corregida: Retorna 'full_name' en lugar de 'name'
+- ✅ Mensaje de éxito actualizado: Usa st.session_state['user_name']
+- ✅ Redirección post-login confirmada: Profesional -> "👤 Panel de Proveedor"
+- ✅ Limpieza de caché: __pycache__ eliminados para forzar recarga
+
+Cambios Técnicos:
+- app.py: st.session_state['user_name'] = user_data.get('full_name') or user_data.get('name') or user_data.get('email', 'Usuario')
+- auth.py: return { "full_name": row[2] } en lugar de "name"
+- Mensaje: st.success(f"¡Bienvenido {st.session_state['user_name']}!")
+
+Problema Resuelto: No más errores rojos en login, entrada directa al panel del profesional.

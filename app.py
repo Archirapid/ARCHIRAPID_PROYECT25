@@ -11,7 +11,7 @@ import functools
 import time
 from pathlib import Path
 from src import db as _db
-from modules.marketplace.utils import init_db
+from modules.marketplace.utils import init_db, db_conn
 
 # Inicializar base de datos
 init_db()
@@ -2103,6 +2103,7 @@ PAGES = {
     "📝 Registro de Proveedor de Servicios": ("modules.marketplace.service_providers", "show_service_provider_registration"),
     "Arquitectos (Marketplace)": ("modules.marketplace.marketplace_upload", "main"),
     "👤 Panel de Cliente": ("modules.marketplace.client_panel_fixed", "main"),
+    "🏠 Propietarios": ("modules.marketplace.owners", "main"),
     "Iniciar Sesión": ("modules.marketplace.auth", "show_login"),
     "Registro de Usuario": ("modules.marketplace.auth", "show_registration"),
 }
@@ -2361,51 +2362,123 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
         st.markdown("---")
         st.header(f"🔐 Iniciar Sesión - {st.session_state.get('login_role', '').title()}")
         
-        with st.form("login_form"):
-            email = st.text_input("📧 Email", key="login_email")
-            password = st.text_input("🔒 Contraseña", type="password", key="login_password")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                submitted = st.form_submit_button("🚀 Entrar", type="primary")
-            with col2:
-                if st.form_submit_button("⬅️ Volver al selector"):
-                    st.session_state['viewing_login'] = False
-                    st.session_state['show_role_selector'] = True
-                    st.rerun()
+        modo_registro = st.checkbox("¿Es tu primera vez? Activa el modo registro", key="modo_registro")
         
-        if submitted:
-            if not email or not password:
-                st.error("Por favor, completa todos los campos.")
-            else:
-                # Usar la función de autenticación existente
-                from modules.marketplace.auth import authenticate_user
-                user_data = authenticate_user(email, password)
+        with st.form("login_form"):
+            if modo_registro:
+                st.subheader("📝 Registro de Nuevo Usuario")
+                name = st.text_input("Nombre completo *", placeholder="Tu nombre completo")
+                email = st.text_input("Email *", placeholder="tu@email.com")
+                password = st.text_input("Contraseña *", type="password", placeholder="Mínimo 6 caracteres")
+                password_confirm = st.text_input("Confirmar contraseña *", type="password", placeholder="Repite tu contraseña")
                 
-                if user_data and user_data.get('role') == st.session_state.get('login_role'):
-                    # Login exitoso
-                    st.session_state['user_id'] = user_data['id']
-                    st.session_state['user_email'] = user_data['email']
-                    st.session_state['role'] = user_data['role']
-                    st.session_state['user_name'] = user_data.get('full_name') or user_data.get('name') or user_data.get('email', 'Usuario')
-                    st.session_state['logged_in'] = True
-                    st.session_state['viewing_login'] = False
-                    st.session_state['show_role_selector'] = False
-                    
-                    # Redirigir según el rol
-                    if st.session_state['role'] == 'client':
-                        st.session_state['selected_page'] = "👤 Panel de Cliente"
-                    elif st.session_state['role'] == 'architect':
-                        st.session_state['selected_page'] = "Arquitectos (Marketplace)"
-                    elif st.session_state['role'] == 'services':
-                        st.session_state['selected_page'] = "👤 Panel de Proveedor"
-                    elif st.session_state['role'] == 'admin':
-                        st.session_state['selected_page'] = "Intranet"
-                    
-                    st.success(f"¡Bienvenido {st.session_state['user_name']}!")
-                    st.rerun()
-                else:
-                    st.error("Credenciales incorrectas o rol no coincide.")
+                col1, col2 = st.columns(2)
+                with col1:
+                    submitted = st.form_submit_button("🚀 Registrarme y Acceder", type="primary")
+                with col2:
+                    if st.form_submit_button("⬅️ Volver al login"):
+                        st.session_state['modo_registro'] = False
+                        st.rerun()
+                
+                if submitted:
+                    if not name or not email or not password:
+                        st.error("Por favor, completa los campos obligatorios marcados con *.")
+                    elif password != password_confirm:
+                        st.error("Las contraseñas no coinciden.")
+                    elif len(password) < 6:
+                        st.error("La contraseña debe tener al menos 6 caracteres.")
+                    else:
+                        try:
+                            from werkzeug.security import generate_password_hash
+                            hashed_password = generate_password_hash(password)
+                            
+                            conn = db_conn()
+                            c = conn.cursor()
+                            
+                            c.execute("""
+                                INSERT INTO users (email, full_name, role, is_professional, password_hash, created_at)
+                                VALUES (?, ?, ?, ?, ?, datetime('now'))
+                            """, (
+                                email, name, 'client',
+                                0,  # is_professional
+                                hashed_password
+                            ))
+                            
+                            user_id = c.lastrowid
+                            conn.commit()
+                            conn.close()
+                            
+                            st.success("🎉 ¡Registro completado exitosamente!")
+                            
+                            # Login automático
+                            st.session_state['user_id'] = user_id
+                            st.session_state['user_email'] = email
+                            st.session_state['role'] = 'client'
+                            st.session_state['user_name'] = name
+                            st.session_state['logged_in'] = True
+                            st.session_state['viewing_login'] = False
+                            st.session_state['show_role_selector'] = False
+                            
+                            # Redirigir según el rol
+                            if st.session_state['role'] == 'client':
+                                st.session_state['selected_page'] = "🏠 Propietarios"
+                            elif st.session_state['role'] == 'architect':
+                                st.session_state['selected_page'] = "Arquitectos (Marketplace)"
+                            elif st.session_state['role'] == 'services':
+                                st.session_state['selected_page'] = "👤 Panel de Proveedor"
+                            elif st.session_state['role'] == 'admin':
+                                st.session_state['selected_page'] = "Intranet"
+                            
+                            st.success(f"¡Bienvenido {name}!")
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"Error en el registro: {e}")
+            else:
+                email = st.text_input("📧 Email", key="login_email")
+                password = st.text_input("🔒 Contraseña", type="password", key="login_password")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    submitted = st.form_submit_button("🚀 Entrar", type="primary")
+                with col2:
+                    if st.form_submit_button("⬅️ Volver al selector"):
+                        st.session_state['viewing_login'] = False
+                        st.session_state['show_role_selector'] = True
+                        st.rerun()
+                
+                if submitted:
+                    if not email or not password:
+                        st.error("Por favor, completa todos los campos.")
+                    else:
+                        # Usar la función de autenticación existente
+                        from modules.marketplace.auth import authenticate_user
+                        user_data = authenticate_user(email, password)
+                        
+                        if user_data and user_data.get('role') == st.session_state.get('login_role'):
+                            # Login exitoso
+                            st.session_state['user_id'] = user_data['id']
+                            st.session_state['user_email'] = user_data['email']
+                            st.session_state['role'] = user_data['role']
+                            st.session_state['user_name'] = user_data.get('full_name') or user_data.get('name') or user_data.get('email', 'Usuario')
+                            st.session_state['logged_in'] = True
+                            st.session_state['viewing_login'] = False
+                            st.session_state['show_role_selector'] = False
+                            
+                            # Redirigir según el rol
+                            if st.session_state['role'] == 'client':
+                                st.session_state['selected_page'] = "🏠 Propietarios"
+                            elif st.session_state['role'] == 'architect':
+                                st.session_state['selected_page'] = "Arquitectos (Marketplace)"
+                            elif st.session_state['role'] == 'services':
+                                st.session_state['selected_page'] = "👤 Panel de Proveedor"
+                            elif st.session_state['role'] == 'admin':
+                                st.session_state['selected_page'] = "Intranet"
+                            
+                            st.success(f"¡Bienvenido {st.session_state['user_name']}!")
+                            st.rerun()
+                        else:
+                            st.error("Credenciales incorrectas o rol no coincide.")
         
         st.stop()  # Detener el resto de la Home
 
@@ -2538,7 +2611,7 @@ elif st.session_state.get('selected_page') == "Propietario (Gemelo Digital)":
         from modules.marketplace import gemelo_digital
         gemelo_digital.main()
 
-elif st.session_state.get('selected_page') == "Propietarios (Subir Fincas)":
+elif st.session_state.get('selected_page') == "🏠 Propietarios":
     with st.container():
         # Propietarios suben fincas al marketplace inmobiliario
         from modules.marketplace import owners

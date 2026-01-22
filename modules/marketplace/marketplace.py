@@ -401,7 +401,12 @@ def main():
         st.markdown("### 🏠 Tengo un Terreno")
         st.write("Publica tu finca y recibe propuestas de arquitectos")
         if st.button("Subir mi Finca", key="upload_plot", use_container_width=True):
-            navigate_to("Propietarios (Subir Fincas)")
+            if st.session_state.get("logged_in") and st.session_state.get("role") == "client":
+                navigate_to("🏠 Propietarios")
+            else:
+                st.session_state['login_role'] = 'client'
+                st.session_state['viewing_login'] = True
+                st.rerun()
 
     with col2:
         st.markdown("### 🏗️ Soy Arquitecto")

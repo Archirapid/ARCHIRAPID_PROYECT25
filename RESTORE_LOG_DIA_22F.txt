@@ -1,0 +1,42 @@
+RESTORE LOG - DIA 22F FULL FLOW
+
+Fecha: 22 de enero de 2026
+
+ESTADO DEL SISTEMA:
+==================
+
+✅ LOGIN DE ROLES ESTABLE:
+- Admin: Acceso a Intranet con pestañas de Profesionales, Proyectos, Ventas
+- Client: Registro unificado → Panel de Propietarios sin redundancias
+- Services: Panel de Proveedor funcional
+
+✅ REGISTRO DE PROPIETARIOS UNIFICADO:
+- Un solo formulario de registro en app.py
+- Herencia automática de datos en owners.py
+- Completación opcional de teléfono/dirección
+- Salto directo al formulario de subida de fincas
+
+✅ ACCESO A INTRANET:
+- Pestaña de Profesionales funcionando
+- Gestión de usuarios y proyectos
+- Seguridad de roles implementada
+
+FLUJO COMPLETO FUNCIONAL:
+1. Usuario selecciona rol 'client'
+2. Registra con email/nombre/password
+3. Login automático → Panel Propietarios
+4. Subida de finca con IA (Gemini Vision)
+5. Validación catastral y geocodificación
+6. Publicación en marketplace
+
+SEGURIDAD:
+- Credenciales en variables de entorno
+- No hay API keys hardcodeadas
+- Conexiones DB seguras
+
+ARCHIVOS MODIFICADOS:
+- app.py: Navegación y registro
+- owners.py: Herencia de datos y flujo unificado
+- auth.py: Login estable
+
+PUNTO DE RESTAURACIÓN ESTABLE - LISTO PARA RETROCEDER SI NECESARIO

@@ -135,9 +135,12 @@ def guardar_datos_catastrales(data_extracted, pdf_path):
 
 def main():
     st.header("Panel de Propietarios — Venta de Suelo")
+    
+    # Aviso de comisión
+    st.info("📢 ARCHIRAPID gestiona la venta y el desarrollo de tu finca. Por el uso de la plataforma y la gestión comercial, se aplicará una comisión del 7% al 10% sobre el precio de venta final.")
 
     # --- 1. LOGIN / IDENTIFICACIÓN ---
-    if "owner_id" not in st.session_state:
+    if not (st.session_state.get('logged_in') and st.session_state.get('role') == 'client'):
         st.info("Para empezar, identifícate como propietario.")
         
         col_a, col_b = st.columns(2)
@@ -170,7 +173,7 @@ def main():
                         "id": new_id, 
                         "name": name, 
                         "email": email, 
-                        "role": "owner", 
+                        "role": "client", 
                         "company": "",
                         "phone": phone,
                         "address": address
@@ -184,6 +187,34 @@ def main():
                 sleep(1)
                 st.rerun()
         return
+
+    # --- HERENCIA DE DATOS PARA USUARIOS LOGUEADOS ---
+    else:
+        # Usuario ya logueado como cliente, heredar datos
+        st.session_state["owner_id"] = st.session_state.get("user_id")
+        st.session_state["owner_email"] = st.session_state.get("user_email")
+        st.session_state["owner_name"] = st.session_state.get("user_name")
+        
+        # Completar datos faltantes si es necesario
+        if not st.session_state.get("owner_phone") or not st.session_state.get("owner_address"):
+            st.info("💡 Completa tus datos de contacto para una mejor experiencia.")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                phone = st.text_input("Teléfono", value=st.session_state.get("owner_phone", ""), placeholder="+34 600 000 000")
+            with col_b:
+                address = st.text_input("Dirección completa", value=st.session_state.get("owner_address", ""), placeholder="Calle, CP, Ciudad, Provincia")
+            
+            if st.button("Guardar Datos de Contacto"):
+                if phone and address:
+                    st.session_state["owner_phone"] = phone
+                    st.session_state["owner_address"] = address
+                    # Opcional: actualizar en BD si es necesario
+                    st.success("Datos guardados correctamente.")
+                    sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Por favor completa ambos campos.")
+            return  # No continuar hasta completar datos
 
     # --- 2. LOGGED IN VIEW ---
     st.write(f"Conectado como: **{st.session_state.owner_name}** ({st.session_state.owner_email})")
@@ -522,7 +553,7 @@ def main():
                 db.insert_plot(finca.a_dict())
                 # 6. Feedback y recarga
                 st.success(f"✅ Finca Publicada. Precio: {price}€ (Comisión est.: {commission_val}€). Disponible en mapa y gestión.")
-                st.session_state['current_page'] = 'mis_fincas'
+                st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
                 sleep(1.5)
                 st.rerun()
 

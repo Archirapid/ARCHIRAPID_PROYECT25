@@ -1,0 +1,20 @@
+DAY 22A ROLES - Punto de Restauración Crítico
+
+Fecha: Enero 22, 2026
+
+Estado del Proyecto:
+- ✅ API Key de Groq protegida: No está escrita en código, se lee de st.secrets o .env
+- ✅ Limpieza de temporales: __pycache__ y .pyc eliminados
+- ✅ Navegación de roles funcional: Selector de roles implementado, admin bypass operativo
+- ✅ Intranet admin: Tabs para fincas, proyectos, ventas, profesionales
+- ✅ Service providers: Registro y panel operativo
+- ✅ Redirección de roles resuelta: No más loops a Home, navegación consistente
+
+Archivos clave modificados:
+- app.py: Selector de roles, bypass admin, navegación unificada
+- modules/marketplace/auth.py: Login admin directo, redirecciones por rol
+- modules/marketplace/intranet.py: Tab de profesionales con filtro de especialidad
+- modules/marketplace/service_providers.py: Botón "Ir a Inicio" corregido
+
+Punto funcional: El conflicto de redirección de roles y navegación de la Home está resuelto.
+El sistema de roles permite acceso directo a admin sin pasar por selector, y navegación consistente para todos los usuarios.

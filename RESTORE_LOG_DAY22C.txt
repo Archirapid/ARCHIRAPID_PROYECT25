@@ -1,0 +1,18 @@
+DAY 22C ROLE COLUMN FIX - Punto de Restauración Crítico
+
+Fecha: Enero 22, 2026
+
+Estado del Proyecto:
+- ✅ Error "no such column: rol" resuelto: Cambiada consulta SQL de 'rol' a 'role'
+- ✅ Autenticación corregida: Uso de authenticate_user() con check_password_hash
+- ✅ Sesión sincronizada: st.session_state['role'] en lugar de 'rol'
+- ✅ Verificación de tabla users: Columna 'role' confirmada como TEXT
+- ✅ Login de profesional funcional: Verificación email + password hash + role
+
+Cambios Técnicos:
+- app.py: Reemplazada consulta directa por authenticate_user()
+- auth.py: Corregida asignación st.session_state['role'] = 'admin'
+- Eliminados __pycache__ para forzar recarga de código
+- Verificada estructura de tabla users: role (TEXT), password_hash (TEXT)
+
+Problema Resuelto: El error rojo de SQLite ya no aparece, login funciona correctamente con verificación de hash de contraseña.

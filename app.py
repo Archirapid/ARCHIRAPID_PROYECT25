@@ -2415,34 +2415,34 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
         try:
             from src import db
             projects = db.get_featured_projects(limit=6)
-        
-        if projects: 
-            cols = st.columns(3)
-            for idx, p in enumerate(projects):
-                with cols[idx % 3]:
-                    # Usar la misma lógica que en plot_detail.py para obtener imágenes válidas
-                    from modules.marketplace.plot_detail import get_project_images
-                    
-                    # Convertir el formato del proyecto para que sea compatible con get_project_images
-                    proyecto_compat = {
-                        'foto_principal': p.get('files', {}).get('fotos', [])[0] if p.get('files', {}).get('fotos') else None,
-                        'galeria_fotos': p.get('files', {}).get('fotos', [])[1:] if p.get('files', {}).get('fotos') else []
-                    }
-                    
-                    project_images = get_project_images(proyecto_compat)
-                    thumbnail = project_images[0] if project_images else "assets/fincas/image1.jpg"
-                    
-                    st.image(thumbnail, width=250)
-                    st.subheader(p.get('title', 'Proyecto'))
-                    st.write(f"**€{p.get('price', 0):,.0f}** | {p.get('area_m2', 0)} m²")
-                    if st.button("DETALLES (v2)", key=f"proj_home_{p['id']}"):
-                        # Abrir en "nueva ventana" usando query params V2
-                        st.query_params["selected_project_v2"] = p['id']
-                        st.rerun()
-        else:
-            st.info("No hay proyectos arquitectónicos disponibles aún.")
-    except Exception as e:
-        st.error(f"Error cargando proyectos: {e}")
+            
+            if projects: 
+                cols = st.columns(3)
+                for idx, p in enumerate(projects):
+                    with cols[idx % 3]:
+                        # Usar la misma lógica que en plot_detail.py para obtener imágenes válidas
+                        from modules.marketplace.plot_detail import get_project_images
+                        
+                        # Convertir el formato del proyecto para que sea compatible con get_project_images
+                        proyecto_compat = {
+                            'foto_principal': p.get('files', {}).get('fotos', [])[0] if p.get('files', {}).get('fotos') else None,
+                            'galeria_fotos': p.get('files', {}).get('fotos', [])[1:] if p.get('files', {}).get('fotos') else []
+                        }
+                        
+                        project_images = get_project_images(proyecto_compat)
+                        thumbnail = project_images[0] if project_images else "assets/fincas/image1.jpg"
+                        
+                        st.image(thumbnail, width=250)
+                        st.subheader(p.get('title', 'Proyecto'))
+                        st.write(f"**€{p.get('price', 0):,.0f}** | {p.get('area_m2', 0)} m²")
+                        if st.button("DETALLES (v2)", key=f"proj_home_{p['id']}"):
+                            # Abrir en "nueva ventana" usando query params V2
+                            st.query_params["selected_project_v2"] = p['id']
+                            st.rerun()
+            else:
+                st.info("No hay proyectos arquitectónicos disponibles aún.")
+        except Exception as e:
+            st.error(f"Error cargando proyectos: {e}")
 
     # Banner de captación para profesionales
     st.markdown("---")
@@ -2467,6 +2467,8 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
         if st.button("🛠️ Buscar Profesionales", key="search_professionals"):
             from modules.marketplace import service_providers
             service_providers.show_services_marketplace()
+
+    st.stop()  # Detener ejecución para Home
 
 elif st.session_state.get('selected_page') == "Propietario (Gemelo Digital)":
     with st.container():

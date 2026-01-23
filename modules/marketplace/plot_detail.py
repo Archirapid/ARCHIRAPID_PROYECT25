@@ -1,16 +1,15 @@
-# modules/marketplace/plot_detail.py
 """
 Página de detalles completa de una finca
 Muestra toda la información necesaria para que el cliente decida comprar
 """
+from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 import os
 import json
 import base64
 import re
-from pathlib import Path
-from modules.marketplace.utils import calculate_edificability, reserve_plot
+from modules.marketplace.utils import calculate_edificability, reserve_plot, create_or_update_client_user
 from modules.marketplace.catastro_api import fetch_by_ref_catastral
 from modules.marketplace.marketplace import get_plot_image_path
 from modules.marketplace.compatibilidad import get_proyectos_compatibles
@@ -214,6 +213,125 @@ def show_plot_detail_page(plot_id: str):
 
     st.markdown("---")
 
+    # ========================================================================
+    # VERIFICACIÓN CON IA (antes de comprar)
+    # ========================================================================
+
+    st.subheader("🔍 Verificación Técnica con IA")
+
+    # Estado de verificación IA
+    ia_verified = st.session_state.get(f'ia_verified_{plot_id}', False)
+
+    if ia_verified:
+        st.success("✅ Datos verificados con IA - La información catastral coincide con los datos publicados")
+    else:
+        st.info("📋 Recomendado: Verifica que los datos de la finca coincidan con la nota catastral antes de comprar")
+
+        if st.button("🔍 Verificar con Nota Catastral", key=f"verify_ia_{plot_id}", type="secondary"):
+            with st.spinner("Analizando datos catastrales completos con IA..."):
+                try:
+                    from modules.marketplace.ai_engine import extraer_datos_catastral_completo
+
+                    # Buscar archivos PDF catastrales
+                    import os
+                    from pathlib import Path
+
+                    pdf_paths = [
+                        Path("archirapid_extract/catastro_output/nota_catastral.pdf"),
+                        Path("uploads/nota_catastral.pdf"),
+                        Path("catastro_output/nota_catastral.pdf")
+                    ]
+
+                    pdf_encontrado = None
+                    for pdf_path in pdf_paths:
+                        if pdf_path.exists():
+                            pdf_encontrado = pdf_path
+                            break
+
+                    if pdf_encontrado:
+                        datos_extraidos = extraer_datos_catastral_completo(str(pdf_encontrado))
+
+                        if datos_extraidos and "error" not in datos_extraidos:
+                            # Comparar datos extraídos con datos de la finca
+                            superficie_pdf = datos_extraidos.get("superficie_m2", 0)
+                            ref_catastral_pdf = datos_extraidos.get("referencia_catastral", "")
+
+                            superficie_finca = plot.get('surface_m2') or plot.get('m2') or 0
+                            ref_catastral_finca = plot.get('catastral_ref', '')
+
+                            # Verificar coincidencias
+                            superficie_ok = abs(superficie_pdf - superficie_finca) < 10  # Tolerancia de 10m²
+                            ref_ok = ref_catastral_pdf.strip() == ref_catastral_finca.strip()
+
+                            with st.expander("📊 Resultados de Verificación IA Completa", expanded=True):
+                                st.markdown("### 📋 Datos Extraídos de la Nota Catastral")
+
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.write(f"**Superficie:** {superficie_pdf} m²")
+                                    st.write(f"**Referencia Catastral:** {ref_catastral_pdf}")
+                                    st.write(f"**Municipio:** {datos_extraidos.get('municipio', 'No detectado')}")
+
+                                with col2:
+                                    st.write(f"**Forma Geométrica:** {datos_extraidos.get('forma_geometrica', 'No detectada')}")
+                                    st.write(f"**Vértices:** {datos_extraidos.get('vertices', 0)}")
+                                    dims = datos_extraidos.get('dimensiones', {})
+                                    st.write(f"**Dimensiones:** {dims.get('ancho_m', 0):.1f}m × {dims.get('largo_m', 0):.1f}m")
+
+                                st.markdown("### 🏗️ Información de Edificabilidad")
+                                ed = datos_extraidos.get('edificabilidad', {})
+                                st.write(f"**Máx. Edificable:** {ed.get('max_edificable_m2', 0):.1f} m²")
+                                st.write(f"**Porcentaje:** {ed.get('porcentaje_edificable', 0):.1f}%")
+
+                                st.markdown("### 🧭 Orientación y Plano")
+                                st.write(f"**Orientación Norte:** {datos_extraidos.get('orientacion_norte', 'No detectada')}")
+
+                                # Mostrar plano vectorizado si existe
+                                archivos = datos_extraidos.get('archivos_generados', {})
+                                plano_visualizado = archivos.get('plano_vectorizado')
+                                plano_limpio = archivos.get('plano_limpio')
+
+                                if plano_visualizado and Path(plano_visualizado).exists():
+                                    st.markdown("### 📐 Plano Catastral Vectorizado")
+                                    st.image(str(plano_visualizado), caption="Plano con contornos detectados", use_container_width=True)
+
+                                    # Opción de descarga del plano técnico
+                                    if plano_limpio and Path(plano_limpio).exists():
+                                        with open(plano_limpio, "rb") as file:
+                                            st.download_button(
+                                                label="📄 Descargar Plano Técnico (PNG)",
+                                                data=file,
+                                                file_name="plano_catastral_limpio.png",
+                                                mime="image/png",
+                                                help="Plano limpio con medidas para uso arquitectónico"
+                                            )
+
+                                st.markdown("### 🔍 Comparación con Datos Publicados")
+                                st.write(f"**Superficie Finca:** {superficie_finca} m²")
+                                st.write(f"**Referencia Catastral Finca:** {ref_catastral_finca}")
+
+                                if superficie_ok and ref_ok:
+                                    st.success("✅ VERIFICACIÓN EXITOSA: Los datos coinciden perfectamente")
+                                    st.session_state[f'ia_verified_{plot_id}'] = True
+                                    st.balloons()
+                                elif superficie_ok:
+                                    st.warning("⚠️ Superficie correcta, pero referencia catastral diferente")
+                                    st.info("Los datos de superficie coinciden, pero verifica la referencia catastral")
+                                else:
+                                    st.error("❌ DISCREPANCIA: Los datos de superficie no coinciden")
+                                    st.warning("Revisa la información antes de proceder con la compra")
+                        else:
+                            error_msg = datos_extraidos.get("error", "Error desconocido")
+                            st.error(f"❌ Error en extracción completa: {error_msg}")
+                    else:
+                        st.warning("⚠️ No se encontró archivo PDF de nota catastral")
+                        st.info("Sube un archivo 'nota_catastral.pdf' a la carpeta uploads/ o archirapid_extract/catastro_output/")
+
+                except Exception as e:
+                    st.error(f"Error en verificación IA completa: {str(e)}")
+
+    st.markdown("---")
+
     # Botón de acción principal: Reservar o Comprar
     st.subheader("📝 ¿Interesado en esta finca?")
 
@@ -233,6 +351,8 @@ def show_plot_detail_page(plot_id: str):
         with col_form1:
             buyer_name = st.text_input("Nombre completo *", key=f"name_{plot_id}")
             buyer_email = st.text_input("Email *", key=f"email_{plot_id}")
+            buyer_password = st.text_input("Contraseña de acceso *", type="password", key=f"password_{plot_id}",
+                                         help="Esta será tu contraseña para acceder a tu panel de cliente")
 
         with col_form2:
             buyer_phone = st.text_input("Teléfono", key=f"phone_{plot_id}")
@@ -253,8 +373,10 @@ def show_plot_detail_page(plot_id: str):
         st.markdown(f"**Importe a pagar:** {amount_text}")
 
         if st.button("✅ Confirmar y Proceder", type="primary", key=f"confirm_{plot_id}"):
-            if not buyer_name or not buyer_email:
-                st.error("Por favor completa nombre y email")
+            if not buyer_name or not buyer_email or not buyer_password:
+                st.error("Por favor completa nombre, email y contraseña (todos los campos marcados con * son obligatorios)")
+            elif len(buyer_password) < 6:
+                st.error("La contraseña debe tener al menos 6 caracteres")
             else:
                 try:
                     kind = "reservation" if "Reserva" in reservation_type else "purchase"
@@ -265,304 +387,24 @@ def show_plot_detail_page(plot_id: str):
                         amount,
                         kind=kind
                     )
-                    st.success(f"✅ Operación realizada exitosamente!")
-                    st.info(f"**ID de Transacción:** `{rid}`")
-                    st.info(f"**Importe:** {amount_text}")
-                    st.info(f"📧 Recibirás un email de confirmación en {buyer_email}")
-                    st.info(f"🔗 Accede a tu portal de cliente para gestionar tu operación")
 
-                    # Guardar email en session_state para auto-login
-                    st.session_state['auto_owner_email'] = buyer_email
-                    st.balloons()
-                    st.info("🔄 Redirigiendo a tu portal de cliente...")
-                    # Redirigir a portal cliente (será manejado en app.py)
-                    st.session_state['role'] = 'cliente'
-                    st.session_state['current_page'] = 'client_portal'
+                    # Crear/actualizar usuario cliente con contraseña
+                    create_or_update_client_user(buyer_email, buyer_name, buyer_password)
+
+                    # SESIÓN REFORZADA - Asegurar acceso inmediato al panel
+                    st.session_state['payment_confirmed'] = True
+                    st.session_state['active_purchase_id'] = rid
+
+                    # FLUJO DE ENTRADA OBLIGATORIO - CERO FRICCIÓN
+                    st.session_state['logged_in'] = True
+                    st.session_state['user_email'] = buyer_email
+                    st.session_state['role'] = 'client'
+                    st.session_state['auto_owner_email'] = buyer_email  # ESTA ES LA LLAVE QUE FALTA
+                    st.session_state['user_name'] = buyer_name  # Guardar nombre del usuario
+                    st.session_state['selected_page'] = '👤 Panel de Cliente'
                     st.rerun()
+
                 except Exception as e:
                     st.error(f"Error al procesar la operación: {str(e)}")
 
     st.markdown("---")
-
-    # ========================================================================
-    # SECCIÓN 2: HERRAMIENTAS DE PROYECTO (Condicional)
-    # ========================================================================
-
-    # Control de visibilidad de la sección 2
-    show_tools = st.session_state.get(f'tools_expanded_{plot_id}', False)
-
-    # Botón para mostrar/ocultar herramientas de proyecto
-    col_tools_toggle, _ = st.columns([1, 3])
-    with col_tools_toggle:
-        if st.button("🔧 Explorar Posibilidades de Proyecto", type="secondary"):
-            st.session_state[f'tools_expanded_{plot_id}'] = not show_tools
-            st.rerun()
-
-    if show_tools:
-        st.header("🏗️ Herramientas de Proyecto")
-
-        # Diseño IA
-        st.subheader("🎨 Diseño con IA")
-
-        col_cfg1, col_cfg2 = st.columns(2)
-
-        with col_cfg1:
-            habitaciones = st.slider("Número de habitaciones", 1, 6, 3, key=f"hab_{plot_id}")
-            banos = st.slider("Número de baños", 1, 4, 2, key=f"banos_{plot_id}")
-            superficie_deseada = st.number_input("Superficie construida deseada (m²)",
-                                               min_value=40, max_value=int(max_edificable),
-                                               value=min(120, int(max_edificable)),
-                                               key=f"sup_{plot_id}")
-
-        with col_cfg2:
-            estilo = st.selectbox("Estilo arquitectónico",
-                                ["Moderno", "Mediterráneo", "Minimalista", "Rústico"],
-                                key=f"estilo_{plot_id}")
-            extras = st.multiselect("Extras opcionales",
-                                  ["Piscina", "Garaje", "Sótano", "Terraza", "Porche"],
-                                  key=f"extras_{plot_id}")
-            presupuesto_max = st.number_input("Presupuesto máximo (€)",
-                                            min_value=50000, max_value=2000000, value=250000,
-                                            key=f"presupuesto_{plot_id}")
-
-        st.info("La IA revisará tus requisitos y generará una propuesta arquitectónica conceptual.")
-
-        if st.button("✨ Generar Propuesta IA", key=f"generate_{plot_id}"):
-
-            with st.spinner("Generando propuesta arquitectónica con IA..."):
-
-                from modules.marketplace import ai_engine_groq as ai_engine
-
-                # Lógica de corrección de m² construidos
-                m2_deseados = superficie_deseada
-
-                if not m2_deseados or m2_deseados <= 0:
-                    m2_correccion = max_edificable
-                    motivo_correccion = (
-                        "No se especificó superficie construida; se ha usado el máximo permitido por la edificabilidad."
-                    )
-                elif m2_deseados > max_edificable:
-                    m2_correccion = max_edificable
-                    motivo_correccion = (
-                        f"El usuario solicitó {m2_deseados} m² construidos, pero la edificabilidad máxima es de "
-                        f"{max_edificable} m². La propuesta se ha ajustado automáticamente a ese límite."
-                    )
-                else:
-                    m2_correccion = m2_deseados
-                    motivo_correccion = (
-                        f"El usuario solicitó {m2_deseados} m² construidos, dentro del máximo permitido de "
-                        f"{max_edificable} m²."
-                    )
-
-                # Mostrar en UI
-                st.write(f"**Superficie usada para el diseño:** {m2_correccion} m²")
-                st.write(motivo_correccion)
-
-                prompt = f"""
-Actúas como arquitecto especializado en vivienda unifamiliar.
-
-DATOS DEL SOLAR
-- Superficie total de parcela: {superficie:.0f} m²
-- Superficie máxima construible (33%): {max_edificable:.0f} m²
-- Ubicación: {localidad}, {provincia}
-- Tipo de solar: {plot.get('type') or "No especificado"}
-- Referencia catastral: {plot.get('catastral_ref') or "No especificada"}
-
-CONFIGURACIÓN DE LA VIVIENDA
-- Superficie deseada por el usuario: {m2_deseados or "No especificada"} m²
-- Superficie sobre la que se diseña el proyecto: {m2_correccion:.0f} m²
-- Motivo de ajuste: {motivo_correccion}
-
-1) PROPUESTA ARQUITECTÓNICA
-Describe de forma clara y profesional:
-- Concepto general de la vivienda.
-- Número de plantas y reparto aproximado de m² por planta.
-- Distribución básica (zona de día, zona de noche, espacios exteriores).
-- Criterios de orientación, luz natural y ventilación.
-- Materiales y estilo arquitectónico sugerido.
-- Consideraciones de sostenibilidad.
-
-2) SUPERFICIE Y NORMATIVA
-Explica brevemente:
-- Que el diseño se basa en {m2_correccion:.0f} m² construidos.
-- Qué pasaría si se intentara superar esa superficie.
-
-3) ESTIMACIÓN DE PRESUPUESTO
-- Usa un rango de coste por m² razonable (por ejemplo, estándar y calidad media-alta).
-- Calcula un rango aproximado de presupuesto para {m2_correccion:.0f} m²:
-  - Presupuesto orientativo mínimo.
-  - Presupuesto orientativo máximo.
-- Explica claramente que es una estimación orientativa, no vinculante.
-
-4) PLANO DE DISTRIBUCIÓN (SVG DESPUÉS DE ===SVG_DISTRIBUCION===)
-
-Después de la línea:
-===SVG_DISTRIBUCION===
-
-Genera un SVG que represente la distribución interior de la vivienda siguiendo ESTRICTAMENTE estas reglas:
-
-**REGLAS OBLIGATORIAS:**
-
-1. **Estructura base:**
-   - Dibuja UN SOLO rectángulo principal (stroke negro, grosor 4) que representa el perímetro exterior de la vivienda
-   - Dimensiones del viewBox: 600x400
-   - Dimensiones del rectángulo principal: ancho=500, alto=300, posición x=50, y=50
-   - Todas las estancias DEBEN estar DENTRO de este rectángulo, sin salirse ni flotar
-
-2. **Organización de estancias (EJEMPLO OBLIGATORIO A SEGUIR):**
-   - Divide el rectángulo principal en rectángulos contiguos (pegados entre sí, sin espacios vacíos)
-   - Distribución típica recomendada:
-     * FILA SUPERIOR (y=50, altura=150):
-       - Salón:  x=50, width=200 (~40 m²)
-       - Comedor: x=250, width=150 (~25 m²)
-       - Cocina: x=400, width=150 (~20 m²)
-     * FILA INFERIOR (y=200, altura=150):
-       - Habitación 1: x=50, width=150 (~30 m²)
-       - Habitación 2: x=200, width=150 (~30 m²)
-       - Habitación 3: x=350, width=100 (~25 m²)
-       - Baño: x=450, width=100 (~20 m²)
-
-3. **Proporciones:**
-   - Cada estancia debe ser proporcional a sus m² reales
-   - La suma total de superficies debe aproximarse a {m2_correccion:.0f} m²
-   - Si una estancia ocupa 40m² de 120m² totales, debe ocupar ~33% del área visual
-
-4. **Etiquetado (OBLIGATORIO):**
-   - Dentro de cada rectángulo de estancia, escribe con <text>:
-     * Formato exacto: "Nombre (XX m²)"
-     * text-anchor="middle"
-     * Posición centrada en el rectángulo
-     * font-size="12" o "14"
-     * fill="black" o "#333"
-
-5. **Elementos arquitectónicos:**
-   - Puerta principal:  rectángulo pequeño (width=10, height=20) en x=295, y=345 (centro inferior), fill="brown"
-   - Texto debajo: "Puerta principal" en y=385
-   - Ventanas: líneas gruesas (stroke="blue", stroke-width="4") en bordes exteriores del perímetro
-     * Ejemplo: <line x1="150" y1="50" x2="200" y2="50" stroke="blue" stroke-width="4"/>
-
-6. **Formato técnico ESTRICTO:**
-   - Comenzar EXACTAMENTE con:  <svg viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
-   - Terminar EXACTAMENTE con: </svg>
-   - Sin comentarios HTML dentro del SVG
-"""
-
-                try:
-                    respuesta = ai_engine.generate_text(prompt)
-
-                    # Mostrar respuesta
-                    st.markdown("### 🏠 Propuesta Arquitectónica Generada")
-
-                    # Separar texto y SVG
-                    if "===SVG_DISTRIBUCION===" in respuesta:
-                        partes = respuesta.split("===SVG_DISTRIBUCION===")
-                        texto_respuesta = partes[0].strip()
-                        svg_plano = partes[1].strip() if len(partes) > 1 else ""
-
-                        st.markdown(texto_respuesta)
-
-                        if svg_plano:
-                            st.markdown("### 📐 Plano de Distribución")
-                            components.html(svg_plano, height=450)
-                    else:
-                        st.markdown(respuesta)
-
-                except Exception as e:
-                    st.error(f"Error generando propuesta: {str(e)}")
-
-        st.markdown("---")
-
-        # Proyectos Compatibles
-        st.subheader("🏢 Proyectos Compatibles")
-
-        # Filtrar proyectos cuya superficie construida <= 33% de la finca actual
-        proyectos_compatibles = get_proyectos_compatibles(max_edificable)
-
-        if proyectos_compatibles:
-            st.info(f"Se encontraron {len(proyectos_compatibles)} proyectos compatibles con esta finca (superficie ≤ {max_edificable:.0f} m²)")
-
-            for proyecto in proyectos_compatibles[:5]:  # Máximo 5 proyectos
-                with st.expander(f"🏗️ {proyecto.get('titulo', 'Proyecto sin título')}"):
-
-                    col_proj1, col_proj2 = st.columns(2)
-
-                    with col_proj1:
-                        st.write(f"**Superficie:** {proyecto.get('superficie_construida', 0)} m²")
-                        st.write(f"**Presupuesto:** €{proyecto.get('presupuesto_estimado', 0):,.0f}")
-                        st.write(f"**Arquitecto:** {proyecto.get('arquitecto', 'No especificado')}")
-
-                    with col_proj2:
-                        # Mostrar imágenes del proyecto
-                        imagenes_proyecto = get_project_images(proyecto)
-                        if imagenes_proyecto:
-                            st.image(imagenes_proyecto[0], width=200, caption=proyecto.get('titulo', ''))
-
-                    if proyecto.get('descripcion'):
-                        st.markdown(f"**Descripción:** {proyecto['descripcion']}")
-
-                    if st.button(f"📋 Ver Detalles Completos", key=f"detail_{proyecto.get('id', 'unknown')}"):
-                        st.info("Funcionalidad de detalles completos pendiente de implementación")
-        else:
-            st.info("No se encontraron proyectos compatibles en la base de datos.")
-
-        st.markdown("---")
-
-        # Gemelo Digital
-        st.subheader("🤖 Gemelo Digital")
-
-        st.markdown("Crea una réplica virtual 3D de tu proyecto arquitectónico")
-
-        if st.button(f"🚀 Crear Gemelo Digital", key=f"btn_gemelo_{plot_id}", type="secondary"):
-            # Guardar el ID de la parcela actual para el gemelo digital
-            st.session_state["selected_plot_for_gemelo"] = plot_id
-            st.session_state["page"] = "gemelo_digital"
-            st.success("🔄 Redirigiendo al Gemelo Digital...")
-            st.info("Allí podrás diseñar tu vivienda en 3D con IA")
-            st.rerun()
-
-        st.markdown("---")
-
-        # Análisis Técnico de Terreno
-        st.subheader("📊 Análisis Técnico de Terreno")
-        st.markdown("Análisis profesional de viabilidad basado en datos catastrales validados")
-
-        import json
-        from pathlib import Path
-
-        # Ruta quirúrgica al reporte generado por tu script
-        PATH_VALIDACION = Path("catastro_output/validation_report.json")
-
-        if st.button("🪄 Análisis Experto (Datos Verificados)", key=f"analysis_{plot_id}", type="primary"):
-            if PATH_VALIDACION.exists():
-                with open(PATH_VALIDACION, "r", encoding="utf-8") as f:
-                    datos_finca = json.load(f)
-
-                with st.spinner("Consultando inteligencia técnica..."):
-                    # Intentar obtener contexto OCR para análisis más completo
-                    ocr_context = ""
-                    ocr_paths = [
-                        Path("archirapid_extract/catastro_output/ocr_text.txt"),
-                        Path("archirapid_extract/catastro_output/extracted_text.txt")
-                    ]
-
-                    for ocr_path in ocr_paths:
-                        if ocr_path.exists():
-                            try:
-                                with open(ocr_path, "r", encoding="utf-8") as f:
-                                    ocr_context = f.read()[:2000]  # Limitar a 2000 caracteres
-                                break
-                            except Exception:
-                                continue
-
-                    # Usar análisis completo si hay contexto OCR, sino usar versión ligera
-                    from modules.marketplace.ai_engine_groq import generate_validated_analysis, generar_analisis_ligero
-
-                    if ocr_context.strip():
-                        respuesta = generate_validated_analysis(datos_finca, ocr_context)
-                    else:
-                        respuesta = generar_analisis_ligero(datos_finca)
-
-                    st.info("### 📋 Informe de Viabilidad")
-                    st.markdown(respuesta)
-            else:
-                st.warning("⚠️ No se encuentra el reporte de validación. Ejecuta primero 'compute_edificability.py'.")

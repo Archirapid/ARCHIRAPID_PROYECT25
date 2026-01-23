@@ -44,7 +44,7 @@ python-dotenv==1.0.0
 flask==3.0.3
 
 # AI and ML
-google-genai==1.56.0  # Nueva API de Google Gemini (reemplaza google-generativeai)
+google-genai==1.60.0  # Nueva API de Google Gemini (reemplaza google-generativeai)
 groq==0.9.0
 
 # Date and time

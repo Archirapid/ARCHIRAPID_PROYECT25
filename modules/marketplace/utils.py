@@ -189,6 +189,42 @@ def reserve_plot(plot_id, buyer_name, buyer_email, amount, kind="reservation"):
     conn.commit(); conn.close()
     return rid
 
+def create_client_user_if_not_exists(email, full_name, transaction_id=None):
+    """
+    Crea un usuario cliente automáticamente si no existe.
+    Retorna True si se creó el usuario, False si ya existía.
+    """
+    conn = db_conn(); c = conn.cursor()
+
+    # Verificar si el usuario ya existe
+    c.execute("SELECT id FROM users WHERE email = ?", (email,))
+    existing_user = c.fetchone()
+
+    if existing_user:
+        conn.close()
+        return False  # Usuario ya existe
+
+    # Crear usuario nuevo
+    import uuid
+    from datetime import datetime
+    import hashlib
+
+    user_id = uuid.uuid4().hex
+
+    # Generar contraseña temporal (usando el transaction_id o un hash del email)
+    temp_password = transaction_id or hashlib.md5(email.encode()).hexdigest()[:8]
+    password_hash = hashlib.sha256(temp_password.encode()).hexdigest()
+
+    c.execute("""
+        INSERT INTO users (id, email, full_name, role, password_hash, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (user_id, email, full_name, 'client', password_hash, datetime.utcnow().isoformat()))
+
+    conn.commit()
+    conn.close()
+
+    return True, temp_password  # Retorna True y la contraseña temporal
+
 def get_client_proposals(client_email):
     """Obtener propuestas recibidas por un cliente (owner) usando owner_email en plots"""
     conn = db_conn(); c = conn.cursor()
@@ -290,5 +326,46 @@ def init_db():
         )
     """)
     
+    conn.commit()
+    conn.close()
+
+def create_or_update_client_user(email, name, password=None):
+    """
+    Crea o actualiza un usuario cliente automáticamente.
+    Siempre asegura que el usuario existe con rol 'client'.
+    Si se proporciona password, se actualiza.
+    """
+    from werkzeug.security import generate_password_hash
+    import uuid
+    from datetime import datetime
+
+    conn = db_conn()
+    c = conn.cursor()
+
+    # Verificar si el usuario ya existe
+    c.execute("SELECT id, password_hash FROM users WHERE email = ?", (email,))
+    existing_user = c.fetchone()
+
+    if existing_user:
+        # Usuario existe - actualizar rol y nombre
+        c.execute("UPDATE users SET role = 'client', full_name = ? WHERE email = ?", (name, email))
+
+        # Si se proporciona nueva password, actualizarla
+        if password:
+            password_hash = generate_password_hash(password)
+            c.execute("UPDATE users SET password_hash = ? WHERE email = ?", (password_hash, email))
+    else:
+        # Crear usuario nuevo - password es obligatoria para nuevos usuarios
+        if not password:
+            raise ValueError("Se requiere contraseña para crear un nuevo usuario cliente")
+
+        user_id = str(uuid.uuid4())
+        password_hash = generate_password_hash(password)
+
+        c.execute("""
+            INSERT INTO users (id, email, full_name, role, password_hash, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, email, name, 'client', password_hash, datetime.utcnow().isoformat()))
+
     conn.commit()
     conn.close()

@@ -52,14 +52,6 @@ page_from_query = params.get("page")
 #     except Exception as e:
 #         st.error(f"Error mostrando panel de compra: {e}")
 
-# if page_from_query == "👤 Panel de Cliente":
-#     try:
-#         from modules.marketplace import client_panel_fixed as client_panel
-#         client_panel.main()
-#         st.stop()
-#     except Exception as e:
-#         st.error(f"Error mostrando panel de cliente: {e}")
-
 # === RUTAS VIEJAS COMENTADAS (NO USAR - VERSIONES ANTIGUAS) ===
 # if "selected_plot" in params:
 #     try:
@@ -87,14 +79,6 @@ page_from_query = params.get("page")
 #         st.stop()
 #     except Exception as e:
 #         st.error(f"Error mostrando panel de compra: {e}")
-
-# if page_from_query == "👤 Panel de Cliente":
-#     try:
-#         from modules.marketplace import client_panel_fixed as client_panel
-#         client_panel.main()
-#         st.stop()
-#     except Exception as e:
-#         st.error(f"Error mostrando panel de cliente: {e}")
 
 # if "selected_plot" in params:
 #     try:
@@ -1068,39 +1052,62 @@ def panel_cliente_v2():
 
     st.title("👤 Panel de Cliente - ARCHIRAPID V2")
 
-    # Auto-login si viene de query params con owner_email
-    if "auto_owner_email" in st.session_state and not st.session_state.get("client_logged_in", False):
-        auto_email = st.session_state["auto_owner_email"]
-        # Verificar si el email tiene transacciones O es propietario con fincas
-        conn = db_conn()
-        cursor = conn.cursor()
+    # PRIMERO: Verificar si ya está logueado con credenciales (sistema de passwords)
+    if st.session_state.get('logged_in') and st.session_state.get('role') == 'client':
+        user_email = st.session_state.get('user_email')
+        user_name = st.session_state.get('user_name', 'Cliente')
 
-        # Buscar transacciones (compras/reservas)
-        cursor.execute("SELECT * FROM reservations WHERE buyer_email=?", (auto_email,))
-        transactions = cursor.fetchall()
+        # Mostrar directamente el panel profesional
+        show_client_dashboard(user_email, user_name)
+        return
 
-        # Si no tiene transacciones, buscar si es propietario con fincas publicadas
-        if not transactions:
-            cursor.execute("SELECT * FROM plots WHERE owner_email=?", (auto_email,))
-            owner_plots = cursor.fetchall()
-        else:
-            owner_plots = []
+    # BYPASS PARA PAGO CONFIRMADO - Acceso inmediato sin consultas DB
+    if st.session_state.get('payment_confirmed'):
+        user_email = st.session_state.get('user_email')
+        user_name = st.session_state.get('user_name', 'Cliente')
 
-        conn.close()
+        # Limpiar el flag para evitar loops
+        del st.session_state['payment_confirmed']
 
-        # Auto-login si tiene transacciones O fincas como propietario
-        if transactions or owner_plots:
-            st.session_state["client_logged_in"] = True
-            st.session_state["client_email"] = auto_email
-            st.session_state["user_role"] = "buyer" if transactions else "owner"
-            st.session_state["has_transactions"] = len(transactions) > 0
-            st.session_state["has_properties"] = len(owner_plots) > 0
+        # Mostrar directamente el panel profesional
+        show_client_dashboard(user_email, user_name)
+        return
 
-            role_text = "comprador" if transactions else "propietario"
-            st.info(f"🔄 Auto-acceso concedido como {role_text} para {auto_email}")
+    # SEGUNDO: Auto-login si viene de query params con owner_email (sistema legacy)
+    # SOLO SI NO TIENE CREDENCIALES VÁLIDAS
+    if not (st.session_state.get('logged_in') and st.session_state.get('role') == 'client'):
+        if "auto_owner_email" in st.session_state and not st.session_state.get("client_logged_in", False):
+            auto_email = st.session_state["auto_owner_email"]
+            # Verificar si el email tiene transacciones O es propietario con fincas
+            conn = db_conn()
+            cursor = conn.cursor()
 
-            # Limpiar el estado de auto-login
-            del st.session_state["auto_owner_email"]
+            # Buscar transacciones (compras/reservas)
+            cursor.execute("SELECT * FROM reservations WHERE buyer_email=?", (auto_email,))
+            transactions = cursor.fetchall()
+
+            # Si no tiene transacciones, buscar si es propietario con fincas publicadas
+            if not transactions:
+                cursor.execute("SELECT * FROM plots WHERE owner_email=?", (auto_email,))
+                owner_plots = cursor.fetchall()
+            else:
+                owner_plots = []
+
+            conn.close()
+
+            # Auto-login si tiene transacciones O fincas como propietario
+            if transactions or owner_plots:
+                st.session_state["client_logged_in"] = True
+                st.session_state["client_email"] = auto_email
+                st.session_state["user_role"] = "buyer" if transactions else "owner"
+                st.session_state["has_transactions"] = len(transactions) > 0
+                st.session_state["has_properties"] = len(owner_plots) > 0
+
+                role_text = "comprador" if transactions else "propietario"
+                st.info(f"🔄 Auto-acceso concedido como {role_text} para {auto_email}")
+
+                # Limpiar el estado de auto-login
+                del st.session_state["auto_owner_email"]
 
     # Verificar si viene de vista previa de proyecto
     selected_project = st.query_params.get("selected_project_v2")
@@ -1108,73 +1115,75 @@ def panel_cliente_v2():
         st.info("🔍 Proyecto seleccionado detectado. Por favor inicia sesión para continuar.")
 
     # Login simple por email
-    if "client_logged_in" not in st.session_state:
-        st.session_state["client_logged_in"] = False
+    # SOLO SI NO TIENE CREDENCIALES VÁLIDAS
+    if not (st.session_state.get('logged_in') and st.session_state.get('role') == 'client'):
+        if "client_logged_in" not in st.session_state:
+            st.session_state["client_logged_in"] = False
 
-    if not st.session_state["client_logged_in"]:
-        st.subheader("🔐 Acceso al Panel de Cliente V2")
-        st.info("Introduce el email que usaste al realizar tu compra/reserva")
+        if not st.session_state["client_logged_in"]:
+            st.subheader("🔐 Acceso al Panel de Cliente V2")
+            st.info("Introduce el email que usaste al realizar tu compra/reserva")
 
-        email = st.text_input("Email de cliente", placeholder="tu@email.com")
+            email = st.text_input("Email de cliente", placeholder="tu@email.com")
 
-        if st.button("Acceder", type="primary"):
-            if email:
-                # Verificar si el email tiene transacciones, propiedades O está registrado como cliente
-                conn = db_conn()
-                cursor = conn.cursor()
+            if st.button("Acceder", type="primary"):
+                if email:
+                    # Verificar si el email tiene transacciones, propiedades O está registrado como cliente
+                    conn = db_conn()
+                    cursor = conn.cursor()
 
-                # Buscar transacciones (compras/reservas)
-                cursor.execute("SELECT * FROM reservations WHERE buyer_email=?", (email,))
-                transactions = cursor.fetchall()
+                    # Buscar transacciones (compras/reservas)
+                    cursor.execute("SELECT * FROM reservations WHERE buyer_email=?", (email,))
+                    transactions = cursor.fetchall()
 
-                # Si no tiene transacciones, buscar si es propietario con fincas publicadas
-                if not transactions:
-                    cursor.execute("SELECT * FROM plots WHERE owner_email=?", (email,))
-                    owner_plots = cursor.fetchall()
-                else:
-                    owner_plots = []
-
-                # Si no tiene transacciones ni propiedades, verificar si está registrado como cliente
-                is_registered_client = False
-                if not transactions and not owner_plots:
-                    cursor.execute("SELECT id, name FROM clients WHERE email = ?", (email,))
-                    client_record = cursor.fetchone()
-                    is_registered_client = client_record is not None
-
-                conn.close()
-
-                # Permitir acceso si tiene transacciones, fincas como propietario O está registrado como cliente
-                if transactions or owner_plots or is_registered_client:
-                    st.session_state["client_logged_in"] = True
-                    st.session_state["client_email"] = email
-
-                    # Determinar el rol basado en la prioridad: transacciones > propiedades > cliente registrado
-                    if transactions:
-                        user_role = "buyer"
-                        role_text = "comprador"
-                    elif owner_plots:
-                        user_role = "owner"
-                        role_text = "propietario"
+                    # Si no tiene transacciones, buscar si es propietario con fincas publicadas
+                    if not transactions:
+                        cursor.execute("SELECT * FROM plots WHERE owner_email=?", (email,))
+                        owner_plots = cursor.fetchall()
                     else:
-                        # Cliente registrado sin transacciones ni propiedades
-                        user_role = "buyer"  # Por defecto buyer para poder comprar proyectos
-                        role_text = "cliente registrado"
+                        owner_plots = []
 
-                    st.session_state["user_role"] = user_role
-                    st.session_state["has_transactions"] = len(transactions) > 0
-                    st.session_state["has_properties"] = len(owner_plots) > 0
+                    # Si no tiene transacciones ni propiedades, verificar si está registrado como cliente
+                    is_registered_client = False
+                    if not transactions and not owner_plots:
+                        cursor.execute("SELECT id, name FROM clients WHERE email = ?", (email,))
+                        client_record = cursor.fetchone()
+                        is_registered_client = client_record is not None
 
-                    st.success(f"✅ Acceso concedido como {role_text} para {email}")
-                    st.rerun()
+                    conn.close()
+
+                    # Permitir acceso si tiene transacciones, fincas como propietario O está registrado como cliente
+                    if transactions or owner_plots or is_registered_client:
+                        st.session_state["client_logged_in"] = True
+                        st.session_state["client_email"] = email
+
+                        # Determinar el rol basado en la prioridad: transacciones > propiedades > cliente registrado
+                        if transactions:
+                            user_role = "buyer"
+                            role_text = "comprador"
+                        elif owner_plots:
+                            user_role = "owner"
+                            role_text = "propietario"
+                        else:
+                            # Cliente registrado sin transacciones ni propiedades
+                            user_role = "buyer"  # Por defecto buyer para poder comprar proyectos
+                            role_text = "cliente registrado"
+
+                        st.session_state["user_role"] = user_role
+                        st.session_state["has_transactions"] = len(transactions) > 0
+                        st.session_state["has_properties"] = len(owner_plots) > 0
+
+                        st.success(f"✅ Acceso concedido como {role_text} para {email}")
+                        st.rerun()
+                    else:
+                        st.error("No se encontraron transacciones, propiedades ni registro para este email")
                 else:
-                    st.error("No se encontraron transacciones, propiedades ni registro para este email")
-            else:
-                st.error("Por favor introduce tu email")
+                    st.error("Por favor introduce tu email")
 
-        st.markdown("---")
-        st.info("💡 **Nota:** Si acabas de realizar una compra, usa el email que proporcionaste en el formulario de datos personales.")
-        st.info("Por favor inicia sesión para acceder al panel.")
-        # st.stop()  # Comentado para permitir que la página se cargue
+            st.markdown("---")
+            st.info("💡 **Nota:** Si acabas de realizar una compra, usa el email que proporcionaste en el formulario de datos personales.")
+            st.info("Por favor inicia sesión para acceder al panel.")
+            # st.stop()  # Comentado para permitir que la página se cargue
 
     if st.session_state["client_logged_in"]:
         # Panel de cliente logueado
@@ -2113,7 +2122,7 @@ PAGES = {
     "👤 Panel de Proveedor": ("modules.marketplace.service_providers", "show_service_provider_panel"),
     "📝 Registro de Proveedor de Servicios": ("modules.marketplace.service_providers", "show_service_provider_registration"),
     "Arquitectos (Marketplace)": ("modules.marketplace.marketplace_upload", "main"),
-    "👤 Panel de Cliente": ("modules.marketplace.client_panel_fixed", "main"),
+    "👤 Panel de Cliente": ("modules.marketplace.client_panel", "main"),
     "🏠 Propietarios": ("modules.marketplace.owners", "main"),
     "Iniciar Sesión": ("modules.marketplace.auth", "show_login"),
     "Registro de Usuario": ("modules.marketplace.auth", "show_registration"),
@@ -2442,7 +2451,7 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
                             
                             # Redirigir según el rol
                             if st.session_state['role'] == 'client':
-                                st.session_state['selected_page'] = "🏠 Propietarios"
+                                st.session_state['selected_page'] = "👤 Panel de Cliente"
                             elif st.session_state['role'] == 'architect':
                                 st.session_state['selected_page'] = "Arquitectos (Marketplace)"
                             elif st.session_state['role'] == 'services':
@@ -2488,7 +2497,7 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
                             
                             # Redirigir según el rol
                             if st.session_state['role'] == 'client':
-                                st.session_state['selected_page'] = "🏠 Propietarios"
+                                st.session_state['selected_page'] = "👤 Panel de Cliente"
                             elif st.session_state['role'] == 'architect':
                                 st.session_state['selected_page'] = "Arquitectos (Marketplace)"
                             elif st.session_state['role'] == 'services':
@@ -2626,7 +2635,7 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
 
     st.stop()  # Detener ejecución para Home
 
-elif st.session_state.get('selected_page') == "Propietario (Gemelo Digital)":
+if st.session_state.get('selected_page') == "Propietario (Gemelo Digital)":
     with st.container():
         # Flujo principal: Propietario sube finca → IA genera plan
         from modules.marketplace import gemelo_digital
@@ -2648,8 +2657,8 @@ elif st.session_state.get('selected_page') == "Diseñador de Vivienda":
 
 elif st.session_state.get('selected_page') == "👤 Panel de Cliente":
     with st.container():
-        # Panel de cliente con acceso a transacciones y servicios
-        from modules.marketplace import client_panel_fixed as client_panel
+        # Importar y ejecutar el panel de cliente
+        from modules.marketplace import client_panel
         client_panel.main()
 
 elif st.session_state.get('selected_page') == "Arquitectos (Marketplace)":

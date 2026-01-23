@@ -39,22 +39,33 @@ def show_login():
             user = authenticate_user(email, password)
             if user:
                 st.session_state["logged_in"] = True
-                st.session_state["email"] = email
-                st.session_state["rol"] = user['role']
-                
+                st.session_state["user_email"] = email
+                st.session_state["user_name"] = user['full_name']  # Guardar nombre del usuario
+                st.session_state["role"] = user['role']
+
                 user_role = user.get('role')
                 if user_role == 'admin':
                     st.query_params["page"] = "Intranet"
+                    st.session_state['selected_page'] = "Intranet"
                 elif user_role == 'architect':
                     st.query_params["page"] = "Arquitectos (Marketplace)"
+                    st.session_state['selected_page'] = "Arquitectos (Marketplace)"
                 elif user_role == 'services':
                     st.query_params["page"] = "👤 Panel de Proveedor"
+                    st.session_state['selected_page'] = "👤 Panel de Proveedor"
+                elif user_role == 'client':
+                    st.query_params["page"] = "👤 Panel de Cliente"
+                    st.session_state['selected_page'] = "👤 Panel de Cliente"
                 else:
                     st.query_params["page"] = "👤 Panel de Cliente"
+                    st.session_state['selected_page'] = "👤 Panel de Cliente"
                 st.rerun()
             else:
                 st.error("Credenciales incorrectas. Verifica tu email y contraseña.")
 
+    st.markdown("---")
+    st.markdown("### 💡 ¿Acabas de comprar una finca/proyecto?")
+    st.info("**Ya estabas diseñando?** Usa el email y la contraseña que configuraste durante el pago y accede para avanzar con tu proyecto.")
     st.markdown("---")
     st.markdown("¿No tienes cuenta? [Regístrate aquí](?page=Registro%20de%20Usuario)")
 

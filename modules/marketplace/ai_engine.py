@@ -216,6 +216,267 @@ Devuelve solo JSON: {"referencia_catastral":"codigo","superficie_grafica_m2":num
     except Exception as e:
         return {"error": f"Error al procesar la nota catastral: {str(e)}"}
 
+def extraer_datos_catastral_completo(pdf_path: str) -> dict:
+    """
+    Extrae datos catastrales completos incluyendo plano, medidas, geometría y orientación norte.
+
+    Args:
+        pdf_path (str): Ruta al archivo PDF de la nota catastral
+
+    Returns:
+        dict: Diccionario con datos completos extraídos o error
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+    import shutil
+    import os
+
+    try:
+        # Verificar que el PDF existe
+        pdf_path = Path(pdf_path)
+        if not pdf_path.exists():
+            return {"error": f"PDF no encontrado: {pdf_path}"}
+
+        # Crear directorio de trabajo (ruta absoluta)
+        work_dir = Path.cwd() / "archirapid_extract"
+        output_dir = work_dir / "catastro_output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copiar PDF al directorio de trabajo como "Catastro.pdf"
+        target_pdf = work_dir / "Catastro.pdf"
+        shutil.copy2(pdf_path, target_pdf)
+
+        # Cambiar al directorio de trabajo
+        original_cwd = os.getcwd()
+        os.chdir(work_dir)
+
+        try:
+            # Ejecutar pipeline de extracción completo
+            scripts = [
+                ("extract_pdf.py", "Extracción de PDF"),
+                ("ocr_and_preprocess.py", "OCR y preprocesado"),
+                ("vectorize_plan.py", "Vectorización de plano"),
+                ("compute_edificability.py", "Cálculo de edificabilidad")
+            ]
+
+            for script, description in scripts:
+                print(f"Ejecutando {description}...")
+                try:
+                    result = subprocess.run(
+                        [sys.executable, script],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        encoding='utf-8',
+                        errors='replace'
+                    )
+                    print(f"✓ {description} completado")
+                except subprocess.CalledProcessError as e:
+                    # Solo fallar si es un error real, no una advertencia sobre librerías opcionales
+                    if "module named 'pdfplumber'" in e.stderr or "module named 'pdf2image'" in e.stderr:
+                        print(f"⚠️ {description} completado con advertencias (librerías opcionales faltantes)")
+                    else:
+                        print(f"✗ Error en {description}: {e}")
+                        return {"error": f"Error ejecutando {description}: {e.stderr}"}
+
+            # Verificar que se generaron los archivos esperados intentando leerlos
+            actual_output_dir = work_dir / "catastro_output"
+            
+            try:
+                # Leer datos de edificabilidad
+                edificability_path = actual_output_dir / "edificability.json"
+                with open(edificability_path, 'r', encoding='utf-8') as f:
+                    edificability = json.load(f)
+
+                # Leer datos del polígono
+                geojson_path = actual_output_dir / "plot_polygon.geojson"
+                with open(geojson_path, 'r', encoding='utf-8') as f:
+                    geojson_data = json.load(f)
+
+                # Leer reporte de validación
+                validation_path = actual_output_dir / "validation_report.json"
+                with open(validation_path, 'r', encoding='utf-8') as f:
+                    validation = json.load(f)
+                    
+            except FileNotFoundError as e:
+                return {"error": f"Archivo requerido no encontrado: {e.filename}"}
+            except Exception as e:
+                return {"error": f"Error leyendo archivos generados: {str(e)}"}
+
+            # Leer datos de edificabilidad
+            with open(actual_output_dir / "edificability.json", 'r', encoding='utf-8') as f:
+                edificability = json.load(f)
+
+            # Leer datos del polígono
+            with open(actual_output_dir / "plot_polygon.geojson", 'r', encoding='utf-8') as f:
+                geojson_data = json.load(f)
+
+            # Leer reporte de validación
+            with open(actual_output_dir / "validation_report.json", 'r', encoding='utf-8') as f:
+                validation = json.load(f)
+
+            # Extraer medidas del polígono
+            coords = geojson_data['geometry']['coordinates'][0]
+            vertices = len(coords) - 1  # Último punto repite el primero
+
+            # Calcular medidas aproximadas
+            if vertices >= 3:
+                # Para formas simples, estimar ancho y largo
+                if vertices == 4:  # Rectángulo/cuadrado
+                    # Calcular distancias entre puntos consecutivos
+                    distances = []
+                    for i in range(len(coords)-1):
+                        p1 = coords[i]
+                        p2 = coords[(i+1) % (len(coords)-1)]
+                        dist = ((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)**0.5
+                        distances.append(dist)
+
+                    # Tomar las dos distancias más largas como ancho y largo
+                    distances.sort(reverse=True)
+                    ancho_px = distances[0]
+                    largo_px = distances[1] if len(distances) > 1 else distances[0]
+
+                    # Estimar escala (asumiendo finca típica)
+                    superficie_real = edificability.get('surface_m2', 1000)
+                    area_px = geojson_data['properties'].get('area_px2', 100000)
+
+                    if area_px > 0:
+                        scale_factor = (superficie_real / area_px) ** 0.5
+                        ancho_m = ancho_px * scale_factor
+                        largo_m = largo_px * scale_factor
+                    else:
+                        ancho_m = largo_m = (superficie_real ** 0.5)
+                else:
+                    # Para formas irregulares, aproximar como cuadrado
+                    lado_m = (edificability.get('surface_m2', 1000) ** 0.5)
+                    ancho_m = largo_m = lado_m
+            else:
+                ancho_m = largo_m = (edificability.get('surface_m2', 1000) ** 0.5)
+
+            # Determinar forma geométrica
+            if vertices == 4:
+                # Verificar si es aproximadamente cuadrado
+                ratio = min(ancho_m, largo_m) / max(ancho_m, largo_m) if max(ancho_m, largo_m) > 0 else 1
+                if ratio > 0.9:
+                    forma = "Cuadrado"
+                else:
+                    forma = "Rectangular"
+            elif vertices == 3:
+                forma = "Triangular"
+            else:
+                forma = "Irregular"
+
+            # Extraer datos de texto si existe
+            texto_extraido = ""
+            texto_path = actual_output_dir / "extracted_text.txt"
+            if texto_path.exists():
+                with open(texto_path, 'r', encoding='utf-8') as f:
+                    texto_extraido = f.read()
+
+            # Buscar referencia catastral en texto
+            import re
+            ref_pattern = r'(\d{14,20})'  # Patrón para referencias catastrales
+            ref_match = re.search(ref_pattern, texto_extraido)
+            referencia = ref_match.group(1) if ref_match else edificability.get('cadastral_ref', '')
+
+            # Buscar superficie en texto
+            superficie_pattern = r'(\d{1,6}(?:[.,]\d{1,2})?)\s*m²'
+            superficie_match = re.search(superficie_pattern, texto_extraido)
+            if superficie_match:
+                superficie_texto = float(superficie_match.group(1).replace(',', '.'))
+            else:
+                superficie_texto = edificability.get('surface_m2', 0)
+
+            # Extraer municipio del texto (búsqueda simple)
+            municipios = ["Madrid", "Barcelona", "Valencia", "Sevilla", "Zaragoza", "Málaga", "Murcia", "Palma", "Bilbao", "Alicante"]
+            municipio = ""
+            for m in municipios:
+                if m.lower() in texto_extraido.lower():
+                    municipio = m
+                    break
+
+            # Generar información de orientación norte (estimada)
+            # En planos catastrales españoles, normalmente norte está arriba
+            orientacion_norte = "Arriba (estándar en planos catastrales)"
+
+            # Preparar resultado completo
+            resultado = {
+                "referencia_catastral": referencia,
+                "superficie_m2": superficie_texto,
+                "municipio": municipio,
+                "forma_geometrica": forma,
+                "vertices": vertices,
+                "dimensiones": {
+                    "ancho_m": round(ancho_m, 2),
+                    "largo_m": round(largo_m, 2)
+                },
+                "edificabilidad": {
+                    "max_edificable_m2": edificability.get('max_buildable_m2', 0),
+                    "porcentaje_edificable": edificability.get('buildable_percentage', 0)
+                },
+                "orientacion_norte": orientacion_norte,
+                "coordenadas_poligono": coords,
+                "archivos_generados": {
+                    "plano_vectorizado": str(actual_output_dir / "contours_visualization.png"),
+                    "plano_limpio": str(actual_output_dir / "contours_clean.png"),
+                    "geojson": str(actual_output_dir / "plot_polygon.geojson")
+                },
+                "pipeline_completado": True
+            }
+
+            # Mejorar el plano limpio agregando medidas
+            try:
+                import cv2
+                import numpy as np
+
+                plano_limpio_path = actual_output_dir / "contours_clean.png"
+                if plano_limpio_path.exists():
+                    # Leer la imagen existente
+                    img = cv2.imread(str(plano_limpio_path))
+
+                    if img is not None:
+                        # Agregar texto con medidas
+                        height, width = img.shape[:2]
+
+                        # Texto principal con dimensiones
+                        texto_principal = f"{ancho_m:.1f}m × {largo_m:.1f}m"
+                        cv2.putText(img, texto_principal, (width//2 - 100, height//2),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 3, cv2.LINE_AA)
+
+                        # Texto con superficie
+                        texto_superficie = f"Superficie: {superficie_texto:.0f} m²"
+                        cv2.putText(img, texto_superficie, (50, height - 100),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 2, cv2.LINE_AA)
+
+                        # Texto con referencia catastral
+                        if referencia:
+                            texto_ref = f"Ref: {referencia}"
+                            cv2.putText(img, texto_ref, (50, height - 50),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2, cv2.LINE_AA)
+
+                        # Agregar indicador de norte si es posible
+                        cv2.putText(img, "NORTE", (width - 100, 50),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2, cv2.LINE_AA)
+                        # Dibujar flecha hacia arriba
+                        cv2.arrowedLine(img, (width - 50, 80), (width - 50, 30), (255, 0, 0), 3, tipLength=0.3)
+
+                        # Guardar la imagen mejorada
+                        cv2.imwrite(str(plano_limpio_path), img)
+                        print(f"✅ Plano técnico mejorado con medidas: {plano_limpio_path}")
+
+            except Exception as e:
+                print(f"⚠️ No se pudo mejorar el plano técnico: {e}")
+
+            return resultado
+
+        finally:
+            # Restaurar directorio original
+            os.chdir(original_cwd)
+
+    except Exception as e:
+        return {"error": f"Error en extracción completa: {str(e)}"}
+
 def get_ai_response(prompt: str, model_name: str = 'models/gemini-2.5-flash') -> str:
     """
     Función genérica para obtener respuesta de IA usando Gemini API.

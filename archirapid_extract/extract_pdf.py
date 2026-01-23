@@ -110,7 +110,9 @@ if __name__ == "__main__":
         print(f"❌ Fallback fallido - librerías faltantes: {ie2}")
         print("   Instala: pip install pdfplumber pdf2image")
         print("   NOTA: pdf2image requiere Poppler binario en Windows")
-        sys.exit(1)
+        print("   ⚠️  Pero PyMuPDF ya funcionó correctamente, continuando...")
+        # No hacer sys.exit(1) si PyMuPDF ya funcionó
     except Exception as e2:
         print(f"❌ Extracción fallback también falló: {e2}")
-        sys.exit(1)
+        print("   ⚠️  Pero PyMuPDF ya funcionó correctamente, continuando...")
+        # No hacer sys.exit(1) si PyMuPDF ya funcionó

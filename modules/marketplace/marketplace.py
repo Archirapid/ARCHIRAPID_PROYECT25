@@ -208,25 +208,61 @@ def render_map(plots):
     # Crear mapa con Folium
     m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level, tiles="CartoDB positron")
 
+    # Obtener fincas vendidas/reservadas para marcar en el mapa
+    from modules.marketplace.utils import db_conn
+    conn = db_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT plot_id FROM reservations")
+    sold_plot_ids = {row[0] for row in cursor.fetchall()}
+    conn.close()
+
     for plot in plots_with_coords:
         lat = float(plot['lat'])
         lon = float(plot['lon'])
+        plot_id = plot['id']
         img_path = get_plot_image_path(plot)
-        icon = folium.Icon(color='red', icon='home', prefix='fa')
+
+        # VERIFICAR SI LA FINCA ESTÁ VENDIDA/RESERVADA
+        is_sold = plot_id in sold_plot_ids
+
+        if is_sold:
+            # FINCA VENDIDA/RESERVADA: Color rojo y cartel
+            icon = folium.Icon(color='red', icon='ban', prefix='fa')
+            status_text = "🏠 VENDIDA / RESERVADA"
+            button_disabled = True
+        else:
+            # FINCA DISPONIBLE: Color normal
+            icon = folium.Icon(color='red', icon='home', prefix='fa')
+            status_text = ""
+            button_disabled = False
 
         # Crear popup HTML con imagen y enlace a detalles
         img_src = get_popup_image_url(plot)  # URL completa o relativa para la imagen
         detail_url = get_plot_detail_url(plot['id'])
+
+        if button_disabled:
+            # Botón deshabilitado para fincas vendidas
+            button_html = f'''
+            <span style="margin-top:5px; padding:5px 10px; background:#cccccc; color:#666666; text-decoration:none; border-radius:3px; display:inline-block; cursor:not-allowed;">
+                No disponible
+            </span>
+            '''
+        else:
+            # Botón normal para fincas disponibles
+            button_html = f'''
+            <a href="{detail_url}" target="_blank"
+               style="margin-top:5px; padding:5px 10px; background:#ff4b4b; color:white; text-decoration:none; border-radius:3px; display:inline-block;">
+                Ver más detalles
+            </a>
+            '''
 
         popup_html = f'''
         <div style="width:160px; text-align:center;">
             <img src="{img_src}" style="width:100%; border-radius:5px;" alt="Imagen de {plot['title']}">
             <br><b>{plot['title']}</b><br>
             <small>{plot.get('m2', 'N/A')} m²</small><br>
-            <a href="{detail_url}" target="_blank"
-               style="margin-top:5px; padding:5px 10px; background:#ff4b4b; color:white; text-decoration:none; border-radius:3px; display:inline-block;">
-                Ver más detalles
-            </a>
+            {f'<div style="color:red; font-weight:bold;">{status_text}</div>' if is_sold else ''}
+            {button_html}
         </div>
         '''
 

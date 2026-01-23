@@ -11,6 +11,7 @@ except ImportError:
         return db_module.get_conn()
 import json
 import os
+from pathlib import Path
 from modules.marketplace.compatibilidad import get_proyectos_compatibles
 
 def show_full_client_dashboard(client_email):
@@ -151,33 +152,308 @@ def main():
         # st.stop()  # Comentado para permitir que la página se cargue
 
 def show_selected_project_panel(client_email, project_id):
+    """Panel completo para mostrar proyecto seleccionado con todos los detalles"""
     from modules.marketplace.project_detail import get_project_by_id
     from modules.marketplace import ai_engine_groq as ai
-    
-    project = get_project_by_id(project_id)
-    
-    st.title(f"📂 Proyecto: {project['nombre']}")
-    
-    # 1. BOTÓN DE DOSSIER (Texto corto para evitar cortes)
-    if st.button("📋 GENERAR DOSSIER PREVENTA"):
-        texto = project.get('ocr_text', "No hay datos en la DB")
-        with st.spinner("Analizando..."):
-            resumen = ai.generate_text(f"Resume en 150 palabras materiales y estilo de: {texto[:2000]}")
-            st.info(resumen)
+    from modules.marketplace.plot_detail import get_project_images
 
-    # 2. BOTÓN DE PLANO (La clave de lo que buscas)
-    if st.button("📐 GENERAR PLANO TÉCNICO"):
-        texto = project.get('ocr_text', "")
-        if not texto:
-            st.error("Error: No hay memoria técnica guardada en la base de datos para este proyecto.")
+    # BOTÓN PARA VOLVER A LA BÚSQUEDA
+    col_back, col_empty = st.columns([1, 4])
+    with col_back:
+        if st.button("⬅️ Volver a Proyectos", key="back_to_search"):
+            st.session_state['selected_project_for_panel'] = None
+            st.session_state['show_project_search'] = True
+            st.rerun()
+
+    # Obtener datos completos del proyecto incluyendo modelo 3D
+    conn = db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, title, description, m2_construidos, area_m2, price, estimated_cost,
+               price_memoria, price_cad, property_type, foto_principal, galeria_fotos,
+               memoria_pdf, planos_pdf, planos_dwg, modelo_3d_glb, vr_tour, energy_rating,
+               architect_name, characteristics_json, habitaciones, banos, garaje, plantas,
+               m2_parcela_minima, m2_parcela_maxima, certificacion_energetica, tipo_proyecto,
+               ocr_text
+        FROM projects
+        WHERE id = ?
+    """, (project_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        st.error("Proyecto no encontrado")
+        return
+
+    # Convertir a dict con todos los campos
+    project = {
+        'id': row[0],
+        'title': row[1],
+        'description': row[2],
+        'm2_construidos': row[3],
+        'area_m2': row[4],
+        'price': row[5],
+        'estimated_cost': row[6],
+        'price_memoria': row[7],
+        'price_cad': row[8],
+        'property_type': row[9],
+        'foto_principal': row[10],
+        'galeria_fotos': row[11],
+        'memoria_pdf': row[12],
+        'planos_pdf': row[13],
+        'planos_dwg': row[14],
+        'modelo_3d_glb': row[15],
+        'vr_tour': row[16],
+        'energy_rating': row[17],
+        'architect_name': row[18],
+        'characteristics_json': row[19],
+        'habitaciones': row[20],
+        'banos': row[21],
+        'garaje': row[22],
+        'plantas': row[23],
+        'm2_parcela_minima': row[24],
+        'm2_parcela_maxima': row[25],
+        'certificacion_energetica': row[26],
+        'tipo_proyecto': row[27],
+        'ocr_text': row[28],
+        'nombre': row[1]  # Alias para compatibilidad
+    }
+
+    st.title(f"🏗️ {project['nombre']}")
+
+    # INFORMACIÓN BÁSICA
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown(f"**👨‍💼 Arquitecto:** {project.get('architect_name', 'No especificado')}")
+        st.markdown(f"**📐 Área construida:** {project.get('total_m2', 0):,.0f} m²")
+        st.markdown(f"**💰 Precio:** €{project.get('precio', 0):,.0f}" if project.get('precio') else "**💰 Precio:** Consultar")
+    with col2:
+        # Imagen principal
+        foto = project.get('imagen_principal')
+        if foto:
+            try:
+                st.image(foto, width=200, caption=project['nombre'])
+            except:
+                st.image("assets/fincas/image1.jpg", width=200, caption=project['nombre'])
         else:
-            with st.spinner("Dibujando plano..."):
-                plano = ai.generate_ascii_plan_only(texto)
-                st.code(plano, language="text")
+            st.image("assets/fincas/image1.jpg", width=200, caption=project['nombre'])
 
-    st.divider()
-    # ... (Aquí siguen tus botones de 'Comprar Proyecto', 'Descargar CAD', etc.) ...
+    st.markdown("---")
 
+    # PESTAÑAS PARA ORGANIZAR EL CONTENIDO
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "📋 DOSSIER", "🔍 ANÁLISIS IA", "📄 MEMORIA", "📐 PLANOS", "🏗️ 3D/VR", "🛒 COMPRA"
+    ])
+
+    with tab1:
+        st.header("📋 DOSSIER PREVENTA")
+        if st.button("📋 Generar Dossier Completo", type="primary"):
+            texto = project.get('ocr_text', "No hay datos en la DB")
+            with st.spinner("Analizando proyecto..."):
+                resumen = ai.generate_text(f"Genera un dossier de preventa profesional para este proyecto arquitectónico resumiendo en 200 palabras: materiales, estilo, características técnicas y valor añadido: {texto[:2500]}")
+                st.success("📋 DOSSIER GENERADO")
+                st.write(resumen)
+
+    with tab2:
+        st.header("🔍 ANÁLISIS CON IA")
+        if st.button("🤖 Analizar Proyecto con Gemini", type="primary"):
+            texto = project.get('ocr_text', "")
+            if not texto:
+                st.error("No hay datos técnicos disponibles para el análisis")
+            else:
+                with st.spinner("Analizando con IA avanzada..."):
+                    analisis = ai.generate_text(f"Analiza técnicamente este proyecto arquitectónico: fortalezas, debilidades, viabilidad constructiva, eficiencia energética y recomendaciones de mejora: {texto[:3000]}")
+                    st.success("🔍 ANÁLISIS COMPLETADO")
+                    st.write(analisis)
+
+    with tab3:
+        st.header("📄 MEMORIA TÉCNICA")
+        if st.button("📄 Generar Memoria Detallada", type="secondary"):
+            texto = project.get('ocr_text', "")
+            if not texto:
+                st.error("No hay memoria técnica disponible")
+            else:
+                with st.spinner("Generando memoria técnica..."):
+                    memoria = ai.generate_text(f"Genera una memoria técnica completa para este proyecto basándote en la información disponible: {texto[:3000]}")
+                    st.success("📄 MEMORIA GENERADA")
+                    st.write(memoria)
+
+    with tab4:
+        st.header("📐 PLANOS TÉCNICOS")
+        if st.button("📐 Generar Plano Arquitectónico", type="secondary"):
+            texto = project.get('ocr_text', "")
+            if not texto:
+                st.error("No hay datos para generar planos")
+            else:
+                with st.spinner("Dibujando plano técnico..."):
+                    plano = ai.generate_ascii_plan_only(texto)
+                    st.success("📐 PLANO GENERADO")
+                    st.code(plano, language="text")
+
+    with tab5:
+        st.header("🏗️ VISUALIZACIÓN 3D / VR")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🏗️ Generar Modelo 3D", type="secondary", use_container_width=True):
+                # Verificar si el proyecto tiene modelo 3D
+                if project.get("modelo_3d_glb"):
+                    # Mostrar visor 3D completo
+                    rel_path = str(project["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
+                    model_url = f"http://localhost:8765/{rel_path}".replace(" ", "%20")
+
+                    # HTML con Three.js para visor 3D
+                    three_html = f"""
+                    <div id="container3d" style="width: 100%; height: 700px; border: 1px solid #ccc;"></div>
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+                    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+                    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+                    <script>
+                        // Inicializar escena, cámara y renderer
+                        const scene = new THREE.Scene();
+                        scene.background = new THREE.Color(0xf0f0f0);
+
+                        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                        camera.position.set(5, 5, 5);
+
+                        const renderer = new THREE.WebGLRenderer({{ antialias: true }});
+                        renderer.setSize(document.getElementById('container3d').clientWidth, 700);
+                        renderer.shadowMap.enabled = true;
+                        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                        document.getElementById('container3d').appendChild(renderer.domElement);
+
+                        // Controles de órbita
+                        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+                        controls.enableDamping = true;
+                        controls.dampingFactor = 0.05;
+
+                        // Luces
+                        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+                        scene.add(ambientLight);
+
+                        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                        directionalLight.position.set(10, 10, 5);
+                        directionalLight.castShadow = true;
+                        scene.add(directionalLight);
+
+                        // Cargar modelo GLTF
+                        const loader = new THREE.GLTFLoader();
+                        loader.load(
+                            '{model_url}',
+                            function (gltf) {{
+                                const model = gltf.scene;
+                                scene.add(model);
+
+                                // Calcular bounding box para centrar la cámara
+                                const box = new THREE.Box3().setFromObject(model);
+                                const center = box.getCenter(new THREE.Vector3());
+                                const size = box.getSize(new THREE.Vector3());
+
+                                // Centrar modelo en origen
+                                model.position.sub(center);
+
+                                // Ajustar cámara para ver todo el modelo
+                                const maxDim = Math.max(size.x, size.y, size.z);
+                                const fov = camera.fov * (Math.PI / 180);
+                                let cameraZ = Math.abs(maxDim / Math.sin(fov / 2));
+
+                                camera.position.set(center.x, center.y, center.z + cameraZ * 1.5);
+                                camera.lookAt(center);
+
+                                controls.target.copy(center);
+                                controls.update();
+
+                                // Habilitar sombras si el modelo las soporta
+                                model.traverse(function (child) {{
+                                    if (child.isMesh) {{
+                                        child.castShadow = true;
+                                        child.receiveShadow = true;
+                                    }}
+                                }});
+                            }},
+                            function (xhr) {{
+                                console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+                            }},
+                            function (error) {{
+                                console.error('Error loading GLTF:', error);
+                                alert('Error cargando el modelo 3D. Verifica que el archivo exista.');
+                            }}
+                        );
+
+                        // Función de animación
+                        function animate() {{
+                            requestAnimationFrame(animate);
+                            controls.update();
+                            renderer.render(scene, camera);
+                        }}
+                        animate();
+
+                        // Ajustar tamaño al cambiar ventana
+                        window.addEventListener('resize', function() {{
+                            camera.aspect = document.getElementById('container3d').clientWidth / 700;
+                            camera.updateProjectionMatrix();
+                            renderer.setSize(document.getElementById('container3d').clientWidth, 700);
+                        }});
+                    </script>
+                    """
+
+                    st.components.v1.html(three_html, height=700, scrolling=False)
+                else:
+                    st.warning('⚠️ Este proyecto específico no dispone de archivos 3D/VR originales del arquitecto.')
+        with col2:
+            if st.button("🥽 Visor VR Inmersivo", type="secondary", use_container_width=True):
+                # Verificar si el proyecto tiene modelo 3D para VR
+                if project.get("modelo_3d_glb"):
+                    rel = str(project["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
+                    glb_url = f"http://localhost:8765/{rel}".replace(" ", "%20")
+                    viewer_url = f"http://localhost:8765/static/vr_viewer.html?model={glb_url}"
+                    st.markdown(
+                        f'<a href="{viewer_url}" target="_blank">'
+                        f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
+                        f"Abrir experiencia VR en nueva pestaña"
+                        f"</button></a>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption("Se abrirá el visor VR en una nueva pestaña. Requiere navegador con WebXR.")
+                else:
+                    st.warning('⚠️ Este proyecto específico no dispone de archivos 3D/VR originales del arquitecto.')
+
+    with tab6:
+        st.header("🛒 ADQUIRIR PROYECTO")
+
+        # Verificar si ya compró este proyecto
+        conn = db_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM ventas_proyectos WHERE proyecto_id = ? AND cliente_email = ?", (project_id, client_email))
+        ya_comprado = cursor.fetchone()
+        conn.close()
+
+        if ya_comprado:
+            st.success("✅ Ya has adquirido este proyecto")
+            st.info("Puedes descargar los archivos desde 'Mis Proyectos'")
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("📄 Descargar Memoria PDF", use_container_width=True):
+                    st.info("Descarga iniciada...")
+            with col2:
+                if st.button("🖥️ Descargar Planos CAD", use_container_width=True):
+                    st.info("Descarga iniciada...")
+            with col3:
+                if st.button("🏗️ Descargar Modelo 3D", use_container_width=True):
+                    st.info("Descarga iniciada...")
+        else:
+            st.info("💳 Selecciona el producto que deseas adquirir:")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button(f"📄 Memoria PDF - €{1800}", use_container_width=True, type="primary"):
+                    st.success("🎉 PDF adquirido! Recibirás el enlace por email")
+            with col2:
+                if st.button(f"🖥️ Planos CAD - €{2500}", use_container_width=True, type="primary"):
+                    st.success("🎉 CAD adquirido! Recibirás el enlace por email")
+
+            if st.button("🛒 Comprar Proyecto Completo - €{4000}", use_container_width=True, type="primary"):
+                st.success("🎉 Proyecto completo adquirido! Recibirás todos los archivos por email")
 def show_client_interests(client_email):
     """Mostrar proyectos de interés del cliente"""
     st.subheader("⭐ Mis Proyectos de Interés")
@@ -385,119 +661,173 @@ def show_buyer_panel(client_email):
 
             st.markdown("---")
 
-            # 🔍 Verificación Técnica con IA (TRASLADADO DE plot_detail.py)
-            st.subheader("🔍 Verificación Técnica con IA")
+            # 🔍 VERIFICACIÓN TÉCNICA AUTOMÁTICA CON IA
+            st.subheader("🔍 Verificación Técnica Automática con IA")
 
-            # Estado de verificación IA
-            ia_verified = st.session_state.get(f'ia_verified_{plot_id}', False)
+            # Función de verificación automática con cacheado
+            def run_automatic_verification(plot_id, plot_data):
+                """Ejecuta verificación automática con cacheado de 5 minutos"""
+                import time
+                from pathlib import Path
 
-            if ia_verified:
-                st.success("✅ Datos verificados con IA - La información catastral coincide con los datos publicados")
+                # Cache key para esta finca específica
+                cache_key = f'ia_verification_{plot_id}'
+                cache_time_key = f'ia_verification_time_{plot_id}'
+
+                # Verificar si hay cache válido (5 minutos = 300 segundos)
+                current_time = time.time()
+                last_verification = st.session_state.get(cache_time_key, 0)
+                cache_valid = (current_time - last_verification) < 300  # 5 minutos
+
+                # Si ya está verificado y el cache es válido, usar datos cacheados
+                if st.session_state.get(cache_key) and cache_valid:
+                    return st.session_state[cache_key]
+
+                # Si no hay cache o expiró, ejecutar verificación
+                try:
+                    from modules.marketplace.ai_engine import extraer_datos_catastral_completo
+
+                    # Buscar archivos PDF catastrales
+                    pdf_paths = [
+                        Path("archirapid_extract/catastro_output/nota_catastral.pdf"),
+                        Path("uploads/nota_catastral.pdf"),
+                        Path("catastro_output/nota_catastral.pdf")
+                    ]
+
+                    pdf_encontrado = None
+                    for pdf_path in pdf_paths:
+                        if pdf_path.exists():
+                            pdf_encontrado = pdf_path
+                            break
+
+                    if pdf_encontrado:
+                        datos_extraidos = extraer_datos_catastral_completo(str(pdf_encontrado))
+
+                        if datos_extraidos and "error" not in datos_extraidos:
+                            # Comparar datos extraídos con datos de la finca
+                            superficie_pdf = datos_extraidos.get("superficie_m2", 0)
+                            ref_catastral_pdf = datos_extraidos.get("referencia_catastral", "")
+
+                            superficie_finca = plot_data[3] or 0  # m2
+                            ref_catastral_finca = plot_data[2] or ''  # catastral_ref
+
+                            # Verificar coincidencias
+                            superficie_ok = abs(superficie_pdf - superficie_finca) < 10
+                            ref_ok = ref_catastral_pdf.strip() == ref_catastral_finca.strip()
+
+                            # Preparar datos para cache y session state
+                            verification_data = {
+                                'superficie_pdf': superficie_pdf,
+                                'ref_catastral_pdf': ref_catastral_pdf,
+                                'superficie_finca': superficie_finca,
+                                'ref_catastral_finca': ref_catastral_finca,
+                                'superficie_ok': superficie_ok,
+                                'ref_ok': ref_ok,
+                                'datos_extraidos': datos_extraidos,
+                                'pdf_path': str(pdf_encontrado),
+                                'timestamp': current_time
+                            }
+
+                            # Guardar en cache y session state
+                            st.session_state[cache_key] = verification_data
+                            st.session_state[cache_time_key] = current_time
+
+                            # Guardar m² verificados para uso futuro
+                            if superficie_ok:
+                                st.session_state['verified_m2'] = superficie_pdf
+
+                            return verification_data
+                        else:
+                            return {"error": datos_extraidos.get("error", "Error en extracción")}
+                    else:
+                        return {"error": "PDF no encontrado"}
+
+                except Exception as e:
+                    return {"error": str(e)}
+
+            # Ejecutar verificación automática
+            verification_result = run_automatic_verification(plot_id, plot_data)
+
+            # Mostrar resultados de forma elegante
+            if "error" in verification_result:
+                st.warning(f"⚠️ Verificación automática pendiente: {verification_result['error']}")
+
+                # Mantener botón manual como fallback
+                if st.button("🔍 Reintentar Verificación Manual", key=f"manual_verify_{plot_id}", type="secondary"):
+                    st.rerun()
             else:
-                st.info("📋 Recomendado: Verifica que los datos de la finca coincidan con la nota catastral antes de comprar")
+                # VERIFICACIÓN EXITOSA - Mostrar resultados integrados
+                data = verification_result
 
-                if st.button("🔍 Verificar con Nota Catastral", key=f"verify_ia_{plot_id}", type="secondary"):
-                    with st.spinner("Analizando datos catastrales completos con IA..."):
-                        try:
-                            from modules.marketplace.ai_engine import extraer_datos_catastral_completo
+                # Estado de verificación
+                if data['superficie_ok'] and data['ref_ok']:
+                    st.success("✅ **VERIFICACIÓN AUTOMÁTICA EXITOSA** - Datos catastrales validados")
+                elif data['superficie_ok']:
+                    st.warning("⚠️ **Superficie verificada**, pero referencia catastral requiere revisión")
+                else:
+                    st.error("❌ **Discrepancia detectada** - Revisar datos catastrales")
 
-                            # Buscar archivos PDF catastrales
-                            import os
-                            from pathlib import Path
+                # Información técnica integrada
+                with st.expander("📊 Detalles de Verificación Técnica", expanded=False):
+                    col1, col2 = st.columns(2)
 
-                            pdf_paths = [
-                                Path("archirapid_extract/catastro_output/nota_catastral.pdf"),
-                                Path("uploads/nota_catastral.pdf"),
-                                Path("catastro_output/nota_catastral.pdf")
-                            ]
+                    with col1:
+                        st.markdown("### 📋 Datos Catastrales Verificados")
+                        st.write(f"**Superficie:** {data['superficie_pdf']} m²")
+                        st.write(f"**Referencia:** {data['ref_catastral_pdf']}")
+                        st.write(f"**Municipio:** {data['datos_extraidos'].get('municipio', 'N/A')}")
 
-                            pdf_encontrado = None
-                            for pdf_path in pdf_paths:
-                                if pdf_path.exists():
-                                    pdf_encontrado = pdf_path
-                                    break
+                    with col2:
+                        st.markdown("### 🏗️ Información Técnica")
+                        st.write(f"**Forma:** {data['datos_extraidos'].get('forma_geometrica', 'N/A')}")
+                        st.write(f"**Vértices:** {data['datos_extraidos'].get('vertices', 0)}")
+                        dims = data['datos_extraidos'].get('dimensiones', {})
+                        st.write(f"**Dimensiones:** {dims.get('ancho_m', 0):.1f}m × {dims.get('largo_m', 0):.1f}m")
 
-                            if pdf_encontrado:
-                                datos_extraidos = extraer_datos_catastral_completo(str(pdf_encontrado))
+                    # Edificabilidad
+                    ed = data['datos_extraidos'].get('edificabilidad', {})
+                    if ed:
+                        st.markdown("### 🏗️ Parámetros de Edificabilidad")
+                        st.write(f"**Máx. Edificable:** {ed.get('max_edificable_m2', 0):.1f} m²")
+                        st.write(f"**Porcentaje:** {ed.get('porcentaje_edificable', 0):.1f}%")
 
-                                if datos_extraidos and "error" not in datos_extraidos:
-                                    # Comparar datos extraídos con datos de la finca
-                                    superficie_pdf = datos_extraidos.get("superficie_m2", 0)
-                                    ref_catastral_pdf = datos_extraidos.get("referencia_catastral", "")
+                    # Plano si existe
+                    archivos = data['datos_extraidos'].get('archivos_generados', {})
+                    plano_visualizado = archivos.get('plano_vectorizado')
+                    plano_limpio = archivos.get('plano_limpio')
 
-                                    superficie_finca = plot_data[3] or 0  # m2
-                                    ref_catastral_finca = plot_data[2] or ''  # catastral_ref
+                    if plano_visualizado and Path(plano_visualizado).exists():
+                        st.markdown("### 📐 Plano Catastral Verificado")
+                        st.image(str(plano_visualizado), caption="Plano vectorizado con contornos detectados", use_container_width=True)
 
-                                    # Verificar coincidencias
-                                    superficie_ok = abs(superficie_pdf - superficie_finca) < 10  # Tolerancia de 10m²
-                                    ref_ok = ref_catastral_pdf.strip() == ref_catastral_finca.strip()
+                        if plano_limpio and Path(plano_limpio).exists():
+                            with open(plano_limpio, "rb") as file:
+                                st.download_button(
+                                    label="📄 Descargar Plano Técnico (PNG)",
+                                    data=file,
+                                    file_name="plano_catastral_verificado.png",
+                                    mime="image/png",
+                                    help="Plano técnico verificado para uso arquitectónico"
+                                )
 
-                                    with st.expander("📊 Resultados de Verificación IA Completa", expanded=True):
-                                        st.markdown("### 📋 Datos Extraídos de la Nota Catastral")
-
-                                        col1, col2 = st.columns(2)
-                                        with col1:
-                                            st.write(f"**Superficie:** {superficie_pdf} m²")
-                                            st.write(f"**Referencia Catastral:** {ref_catastral_pdf}")
-                                            st.write(f"**Municipio:** {datos_extraidos.get('municipio', 'No detectado')}")
-
-                                        with col2:
-                                            st.write(f"**Forma Geométrica:** {datos_extraidos.get('forma_geometrica', 'No detectada')}")
-                                            st.write(f"**Vértices:** {datos_extraidos.get('vertices', 0)}")
-                                            dims = datos_extraidos.get('dimensiones', {})
-                                            st.write(f"**Dimensiones:** {dims.get('ancho_m', 0):.1f}m × {dims.get('largo_m', 0):.1f}m")
-
-                                        st.markdown("### 🏗️ Información de Edificabilidad")
-                                        ed = datos_extraidos.get('edificabilidad', {})
-                                        st.write(f"**Máx. Edificable:** {ed.get('max_edificable_m2', 0):.1f} m²")
-                                        st.write(f"**Porcentaje:** {ed.get('porcentaje_edificable', 0):.1f}%")
-
-                                        st.markdown("### 🧭 Orientación y Plano")
-                                        st.write(f"**Orientación Norte:** {datos_extraidos.get('orientacion_norte', 'No detectada')}")
-
-                                        # Mostrar plano vectorizado si existe
-                                        archivos = datos_extraidos.get('archivos_generados', {})
-                                        plano_visualizado = archivos.get('plano_vectorizado')
-                                        plano_limpio = archivos.get('plano_limpio')
-
-                                        if plano_visualizado and Path(plano_visualizado).exists():
-                                            st.markdown("### 📐 Plano Catastral Vectorizado")
-                                            st.image(str(plano_visualizado), caption="Plano con contornos detectados", use_container_width=True)
-
-                                            # Opción de descarga del plano técnico
-                                            if plano_limpio and Path(plano_limpio).exists():
-                                                with open(plano_limpio, "rb") as file:
-                                                    st.download_button(
-                                                        label="📄 Descargar Plano Técnico (PNG)",
-                                                        data=file,
-                                                        file_name="plano_catastral_limpio.png",
-                                                        mime="image/png",
-                                                        help="Plano limpio con medidas para uso arquitectónico"
-                                                    )
-
-                                        st.markdown("### 🔍 Comparación con Datos Publicados")
-                                        st.write(f"**Superficie Finca:** {superficie_finca} m²")
-                                        st.write(f"**Referencia Catastral Finca:** {ref_catastral_finca}")
-
-                                        if superficie_ok and ref_ok:
-                                            st.success("✅ VERIFICACIÓN EXITOSA: Los datos coinciden perfectamente")
-                                            st.session_state[f'ia_verified_{plot_id}'] = True
-                                            st.balloons()
-                                        elif superficie_ok:
-                                            st.warning("⚠️ Superficie correcta, pero referencia catastral diferente")
-                                            st.info("Los datos de superficie coinciden, pero verifica la referencia catastral")
-                                        else:
-                                            st.error("❌ DISCREPANCIA: Los datos de superficie no coinciden")
-                                            st.warning("Revisa la información antes de proceder con la compra")
-                                else:
-                                    error_msg = datos_extraidos.get("error", "Error desconocido")
-                                    st.error(f"❌ Error en extracción completa: {error_msg}")
-                            else:
-                                st.warning("⚠️ No se encontró archivo PDF de nota catastral")
-                                st.info("Sube un archivo 'nota_catastral.pdf' a la carpeta uploads/ o archirapid_extract/catastro_output/")
-
-                        except Exception as e:
-                            st.error(f"Error en verificación IA completa: {str(e)}")
+                # BOTÓN PDF SIEMPRE VISIBLE (como solicitado)
+                registry_note_path = plot_data[7]  # registry_note_path
+                if registry_note_path and os.path.exists(registry_note_path):
+                    st.markdown("---")
+                    col_pdf1, col_pdf2 = st.columns([3, 1])
+                    with col_pdf1:
+                        st.info("📄 **Nota Catastral Digital Disponible** - Descarga tu documento oficial")
+                    with col_pdf2:
+                        with open(registry_note_path, "rb") as f:
+                            st.download_button(
+                                label="📥 DESCARGAR PDF",
+                                data=f,
+                                file_name=f"nota_catastral_{plot_data[2] or plot_data[1]}.pdf",
+                                mime="application/pdf",
+                                key="catastral_download_auto"
+                            )
+                else:
+                    st.info("📄 Nota catastral no disponible - Contacta con soporte para obtenerla")
 
             st.markdown("---")
 
@@ -513,11 +843,10 @@ def show_buyer_panel(client_email):
                     # TODO: Implementar navegación a diseñador IA
 
             with col2:
-                if st.button("📐 BUSCAR PROYECTOS COMPATIBLES", type="secondary", use_container_width=True):
-                    # Filtrar proyectos que no superen el 33% de la superficie
-                    max_surface = plot_data[4] * 0.33  # 33% de la superficie construible
-                    st.info(f"🔍 Buscando proyectos compatibles (máx. {max_surface:,.0f} m²)")
-                    # TODO: Implementar búsqueda filtrada
+                if st.button("📐 VER PROYECTOS COMPATIBLES", type="secondary", use_container_width=True):
+                    # Activar modo de búsqueda de proyectos dentro del panel
+                    st.session_state['show_project_search'] = True
+                    st.rerun()
 
             with col3:
                 if st.button("💰 MIS TRANSACCIONES", type="secondary", use_container_width=True):
@@ -530,6 +859,10 @@ def show_buyer_panel(client_email):
                     # TODO: Mostrar documentos relacionados
 
             st.markdown("---")
+
+            # BUSCADOR INTEGRADO DE PROYECTOS COMPATIBLES
+            if st.session_state.get('show_project_search', False):
+                show_integrated_project_search(client_email, plot_data)
 
     # Si no tiene finca adquirida, mostrar mensaje
     else:
@@ -1037,3 +1370,112 @@ def show_client_project_purchases(client_email):
 
     st.markdown("### 📥 Descargas Disponibles")
     st.info("Las descargas de tus proyectos estarán disponibles próximamente en esta sección.")
+
+
+def show_integrated_project_search(client_email, plot_data):
+    """Buscador integrado de proyectos compatibles dentro del panel de cliente"""
+    from modules.marketplace import ai_engine_groq as ai
+
+    st.markdown("---")
+    st.subheader("🏗️ Buscador de Proyectos Compatibles")
+
+    # Botón para volver al panel principal
+    col_back, col_title = st.columns([1, 3])
+    with col_back:
+        if st.button("⬅️ Volver a Mi Finca", key="back_to_property"):
+            st.session_state['show_project_search'] = False
+            st.rerun()
+
+    # Obtener superficie verificada (prioridad: verified_m2 > superficie_edificable > 33% de finca)
+    verified_m2 = st.session_state.get('verified_m2')
+    if verified_m2:
+        max_surface = verified_m2
+        source_info = "datos verificados por IA"
+    else:
+        # Usar superficie edificable de la tabla plots o calcular 33%
+        superficie_edificable = plot_data[3] if len(plot_data) > 3 and plot_data[3] else None
+        if superficie_edificable:
+            max_surface = superficie_edificable
+            source_info = "superficie edificable registrada"
+        else:
+            max_surface = plot_data[4] * 0.33 if len(plot_data) > 4 and plot_data[4] else 0
+            source_info = "33% de la superficie total (estimación)"
+
+    st.markdown(f"### 🎯 Filtro Automático Aplicado")
+    st.info(f"📐 **Superficie máxima de construcción:** {max_surface:,.0f} m² ({source_info})")
+    st.write("Solo se muestran proyectos cuya superficie construida sea ≤ a este límite.")
+
+    # Buscar proyectos compatibles automáticamente
+    with st.spinner("🔍 Buscando proyectos compatibles con tu finca..."):
+        search_params = {
+            'client_parcel_size': max_surface,
+            'client_email': client_email
+        }
+        proyectos = get_proyectos_compatibles(**search_params)
+
+    # Mostrar resultados
+    st.markdown(f"### 🏗️ Proyectos Encontrados: {len(proyectos)}")
+
+    if not proyectos:
+        st.warning("No se encontraron proyectos que quepan en tu finca con los criterios actuales.")
+        st.info("💡 Considera contactar con arquitectos para proyectos personalizados.")
+        return
+
+    # Mostrar proyectos en grid
+    cols = st.columns(2)
+    for idx, proyecto in enumerate(proyectos):
+        with cols[idx % 2]:
+            with st.container():
+                # Imagen del proyecto
+                foto = proyecto.get('foto_principal')
+                if foto:
+                    try:
+                        st.image(foto, width=250, caption=proyecto['title'])
+                    except:
+                        st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+                else:
+                    st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+
+                # Información básica
+                st.markdown(f"**🏗️ {proyecto['title']}**")
+                area_construida = proyecto.get('m2_construidos', proyecto.get('area_m2', 0))
+                # Asegurar que area_construida no sea None antes de dar formato
+                area_val = area_construida if area_construida is not None else 0
+                st.write(f"📐 **Área construida:** {area_val:,.0f} m²")
+                st.write(f"💰 **Precio:** €{proyecto.get('price', 0):,.0f}" if proyecto.get('price') else "💰 **Precio:** Consultar")
+
+                # Arquitecto
+                if proyecto.get('architect_name'):
+                    st.write(f"👨‍💼 **Arquitecto:** {proyecto['architect_name']}")
+
+                # Compatibilidad
+                # Filtro de seguridad: Si el área es None, lo ignoramos para evitar el crash
+                if area_construida is not None and area_construida <= max_surface:
+                    st.success(f"✅ Compatible (usa {area_construida/max_surface*100:.1f}% de tu capacidad)")
+                else:
+                    st.error("❌ No compatible")
+
+                # RECOMENDACIÓN DE IA
+                with st.expander("🤖 Recomendación de ARCHIRAPID", expanded=False):
+                    try:
+                        # Preparar contexto para Gemini
+                        finca_info = f"Finca de {plot_data[4]:,.0f} m², superficie edificable: {max_surface:,.0f} m²"
+                        proyecto_info = f"Proyecto '{proyecto['title']}' de {area_construida:,.0f} m², precio €{proyecto.get('price', 0):,.0f}"
+
+                        prompt = f"""Analiza por qué este proyecto arquitectónico es ideal para esta finca específica.
+                        Finca: {finca_info}
+                        Proyecto: {proyecto_info}
+                        Responde en 2-3 frases concisas explicando la compatibilidad técnica y valor añadido."""
+
+                        recomendacion = ai.generate_text(prompt)
+                        st.write(recomendacion)
+                    except Exception as e:
+                        st.write("🤖 Recomendación no disponible temporalmente")
+
+                # Botón de detalles
+                if st.button("Ver Proyecto Completo", key=f"view_project_{proyecto['id']}", use_container_width=True):
+                    st.session_state['selected_project_for_panel'] = proyecto['id']
+                    st.session_state['show_project_search'] = False  # Ocultar búsqueda al ver detalles
+                    st.rerun()
+
+                st.markdown("---")

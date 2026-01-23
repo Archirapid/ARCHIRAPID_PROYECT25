@@ -668,7 +668,6 @@ def show_buyer_panel(client_email):
             def run_automatic_verification(plot_id, plot_data):
                 """Ejecuta verificación automática con cacheado de 5 minutos"""
                 import time
-                from pathlib import Path
 
                 # Cache key para esta finca específica
                 cache_key = f'ia_verification_{plot_id}'

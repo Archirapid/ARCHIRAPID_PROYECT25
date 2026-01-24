@@ -8,6 +8,7 @@ import streamlit as st
 import json
 from modules.marketplace.plot_detail import get_project_images
 from src import db
+from .marketplace import get_project_display_image
 
 def normalize_gallery(galeria_fotos):
     import json
@@ -29,12 +30,9 @@ def get_project_by_id(project_id: str) -> dict:
     conn = db.get_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, title, description, m2_construidos, area_m2, price, estimated_cost,
-               price_memoria, price_cad, property_type, foto_principal, galeria_fotos,
-               memoria_pdf, planos_pdf, planos_dwg, modelo_3d_glb, vr_tour, energy_rating,
-               architect_name, characteristics_json, habitaciones, banos, garaje, plantas,
-               m2_parcela_minima, m2_parcela_maxima, certificacion_energetica, tipo_proyecto,
-               ocr_text
+        SELECT id, architect_id, title, description, area_m2, price, 
+               foto_principal, galeria_fotos, memoria_pdf, planos_pdf, 
+               planos_dwg, modelo_3d_glb, vr_tour, ocr_text, created_at
         FROM projects
         WHERE id = ?
     """, (project_id,))
@@ -44,9 +42,61 @@ def get_project_by_id(project_id: str) -> dict:
     if not row:
         return None
 
+    # Parsear galeria_fotos si es JSON
+    import json
+    galeria_fotos = []
+    if row[7]:  # galeria_fotos
+        try:
+            if isinstance(row[7], str):
+                galeria_fotos = json.loads(row[7])
+            elif isinstance(row[7], list):
+                galeria_fotos = row[7]
+        except:
+            galeria_fotos = []
+
     # Convertir row a dict y asegurar que ocr_text esté incluido
-    project_dict = dict(row)
-    project_dict['nombre'] = project_dict.get('title', '')  # Alias para compatibilidad
+    project_dict = {
+        'id': row[0],
+        'architect_id': row[1],
+        'title': row[2],
+        'description': row[3],
+        'area_m2': row[4],
+        'price': row[5],
+        'files': {
+            'fotos': galeria_fotos,
+            'memoria': row[8],
+            'planos': row[9],
+            'modelo_3d': row[11],
+            'vr_tour': row[12],
+            'ocr_text': row[13]
+        },
+        'created_at': row[14],
+        # Mapeos para compatibilidad
+        'm2_construidos': row[4],  # area_m2
+        'architect_name': 'Arquitecto Demo',  # Placeholder
+        'foto_principal': row[6] if row[6] else (galeria_fotos[0] if galeria_fotos else None),
+        'galeria_fotos': galeria_fotos,
+        'memoria_pdf': row[8],
+        'planos_pdf': row[9],
+        'modelo_3d_glb': row[11],
+        'vr_tour': row[12],
+        'property_type': 'Residencial',
+        'estimated_cost': row[5] * 0.8 if row[5] else 0,
+        'price_memoria': 1800,
+        'price_cad': 2500,
+        'energy_rating': 'A',
+        'characteristics_json': '{}',
+        'habitaciones': 3,
+        'banos': 2,
+        'garaje': True,
+        'plantas': 2,
+        'm2_parcela_minima': row[4] / 0.33 if row[4] else 0,
+        'm2_parcela_maxima': row[4] / 0.2 if row[4] else 0,
+        'certificacion_energetica': 'A',
+        'tipo_proyecto': 'Residencial',
+        'ocr_text': row[13],  # From database column
+        'nombre': row[2]  # Alias para compatibilidad
+    }
 
     return project_dict
 
@@ -60,11 +110,9 @@ def show_project_detail_page(project_id: str):
     conn = db.get_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, title, description, m2_construidos, area_m2, price, estimated_cost,
-               price_memoria, price_cad, property_type, foto_principal, galeria_fotos,
-               memoria_pdf, planos_pdf, planos_dwg, modelo_3d_glb, vr_tour, energy_rating,
-               architect_name, characteristics_json, habitaciones, banos, garaje, plantas,
-               m2_parcela_minima, m2_parcela_maxima, certificacion_energetica, tipo_proyecto
+        SELECT id, architect_id, title, description, area_m2, price, 
+               foto_principal, galeria_fotos, memoria_pdf, planos_pdf, 
+               planos_dwg, modelo_3d_glb, vr_tour, ocr_text, created_at
         FROM projects
         WHERE id = ?
     """, (project_id,))
@@ -75,36 +123,58 @@ def show_project_detail_page(project_id: str):
         st.error("❌ Proyecto no encontrado")
         return
 
+    # Parsear galeria_fotos si es JSON
+    import json
+    galeria_fotos = []
+    if row[7]:  # galeria_fotos
+        try:
+            if isinstance(row[7], str):
+                galeria_fotos = json.loads(row[7])
+            elif isinstance(row[7], list):
+                galeria_fotos = row[7]
+        except:
+            galeria_fotos = []
+
     # Extraer datos del proyecto
     project_data = {
         'id': row[0],
-        'title': row[1],
-        'description': row[2],
-        'm2_construidos': row[3],
+        'architect_id': row[1],
+        'title': row[2],
+        'description': row[3],
         'area_m2': row[4],
         'price': row[5],
-        'estimated_cost': row[6],
-        'price_memoria': row[7] or 1800,
-        'price_cad': row[8] or 2500,
-        'property_type': row[9],
-        'foto_principal': row[10],
-        'galeria_fotos': row[11],
-        'memoria_pdf': row[12],
-        'planos_pdf': row[13],
-        'planos_dwg': row[14],
-        'modelo_3d_glb': row[15],
-        'vr_tour': row[16],
-        'energy_rating': row[17],
-        'architect_name': row[18],
-        'characteristics': json.loads(row[19]) if row[19] else {},
-        'habitaciones': row[20],
-        'banos': row[21],
-        'garaje': row[22],
-        'plantas': row[23],
-        'm2_parcela_minima': row[24],
-        'm2_parcela_maxima': row[25],
-        'certificacion_energetica': row[26],
-        'tipo_proyecto': row[27]
+        'files': {
+            'fotos': galeria_fotos,
+            'memoria': row[8],
+            'planos': row[9],
+            'modelo_3d': row[11],
+            'vr_tour': row[12],
+            'ocr_text': row[13]
+        },
+        'created_at': row[14],
+        # Mapeos para compatibilidad
+        'm2_construidos': row[4],  # area_m2
+        'architect_name': 'Arquitecto Demo',  # Placeholder
+        'foto_principal': row[6] if row[6] else (galeria_fotos[0] if galeria_fotos else None),
+        'galeria_fotos': galeria_fotos,
+        'memoria_pdf': row[8],
+        'planos_pdf': row[9],
+        'modelo_3d_glb': row[11],
+        'vr_tour': row[12],
+        'property_type': 'Residencial',
+        'estimated_cost': row[5] * 0.8 if row[5] else 0,
+        'price_memoria': 1800,
+        'price_cad': 2500,
+        'energy_rating': 'A',
+        'characteristics': {},
+        'habitaciones': 3,
+        'banos': 2,
+        'garaje': True,
+        'plantas': 2,
+        'm2_parcela_minima': row[4] / 0.33 if row[4] else 0,
+        'm2_parcela_maxima': row[4] / 0.2 if row[4] else 0,
+        'certificacion_energetica': 'A',
+        'tipo_proyecto': 'Residencial'
     }
 
     gallery = normalize_gallery(project_data["galeria_fotos"])
@@ -127,10 +197,7 @@ def show_project_detail_page(project_id: str):
     st.header("📸 Galería del Proyecto")
 
     # Obtener imágenes válidas
-    project_images = get_project_images({
-        'foto_principal': project_data['foto_principal'],
-        'galeria_fotos': gallery
-    })
+    project_images = get_project_display_image(project_id, 'gallery')
 
     if project_images:
         # Mostrar imágenes en grid
@@ -352,167 +419,189 @@ Ejemplo que el modelo debe imitar (NO lo modifiques, solo úsalo como referencia
                 st.code(plano_visual, language="text")
                 st.success("✅ Plano ASCII generado exitosamente.")
 
-    # VISUALIZACIONES DEL PROYECTO
+    # VISUALIZACIONES DEL PROYECTO - CINCO PESTAÑAS CLONADAS (SIN COMPRA)
     st.header("🏗️ Visualizaciones del Proyecto")
 
-    tab_3d, tab_vr, tab_fotos = st.tabs(["🎥 3D", "🥽 VR", "🖼️ Fotos / Planos"])
+    # PESTAÑAS PARA ORGANIZAR EL CONTENIDO
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📋 DOSSIER", "🔍 ANÁLISIS IA", "📄 MEMORIA", "📐 PLANOS", "🏗️ 3D/VR"
+    ])
 
-    with tab_3d:
-        if client_logged_in:
-            st.markdown("#### 🎥 Visor 3D del Proyecto")
-            if project_data.get("modelo_3d_glb"):
-                # Mostrar visor 3D completo
-                rel_path = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
-                model_url = f"http://localhost:8765/{rel_path}".replace(" ", "%20")
+    with tab1:
+        st.header("📋 DOSSIER PREVENTA")
+        if st.button("📋 Generar Dossier Completo", type="primary"):
+            texto = project_data.get('ocr_text', "No hay datos en la DB")
+            with st.spinner("Analizando proyecto..."):
+                from modules.marketplace import ai_engine_groq as ai
+                resumen = ai.generate_text(f"Genera un dossier de preventa profesional para este proyecto arquitectónico resumiendo en 200 palabras: materiales, estilo, características técnicas y valor añadido: {texto[:2500]}")
+                st.success("📋 DOSSIER GENERADO")
+                st.write(resumen)
 
-                # HTML con Three.js para visor 3D
-                three_html = f"""
-                <div id="container3d" style="width: 100%; height: 700px; border: 1px solid #ccc;"></div>
-                <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-                <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-                <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-                <script>
-                    // Inicializar escena, cámara y renderer
-                    const scene = new THREE.Scene();
-                    scene.background = new THREE.Color(0xf0f0f0);
+    with tab2:
+        st.header("🔍 ANÁLISIS CON IA")
+        if st.button("🤖 Analizar Proyecto con Gemini", type="primary"):
+            texto = project_data.get('ocr_text', "")
+            if not texto:
+                st.error("No hay datos técnicos disponibles para el análisis")
+            else:
+                with st.spinner("Analizando con IA avanzada..."):
+                    from modules.marketplace import ai_engine_groq as ai
+                    analisis = ai.generate_text(f"Analiza técnicamente este proyecto arquitectónico: fortalezas, debilidades, viabilidad constructiva, eficiencia energética y recomendaciones de mejora: {texto[:3000]}")
+                    st.success("🔍 ANÁLISIS COMPLETADO")
+                    st.write(analisis)
 
-                    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-                    camera.position.set(5, 5, 5);
+    with tab3:
+        st.header("📄 MEMORIA TÉCNICA")
+        if st.button("📄 Generar Memoria Detallada", type="secondary"):
+            texto = project_data.get('ocr_text', "")
+            if not texto:
+                st.error("No hay memoria técnica disponible")
+            else:
+                with st.spinner("Generando memoria técnica..."):
+                    from modules.marketplace import ai_engine_groq as ai
+                    memoria = ai.generate_text(f"Genera una memoria técnica completa para este proyecto basándote en la información disponible: {texto[:3000]}")
+                    st.success("📄 MEMORIA GENERADA")
+                    st.write(memoria)
 
-                    const renderer = new THREE.WebGLRenderer({{ antialias: true }});
-                    renderer.setSize(document.getElementById('container3d').clientWidth, 700);
-                    renderer.shadowMap.enabled = true;
-                    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-                    document.getElementById('container3d').appendChild(renderer.domElement);
+    with tab4:
+        st.header("📐 PLANOS TÉCNICOS")
+        if st.button("📐 Generar Plano Arquitectónico", type="secondary"):
+            texto = project_data.get('ocr_text', "")
+            if not texto:
+                st.error("No hay datos para generar planos")
+            else:
+                with st.spinner("Dibujando plano técnico..."):
+                    from modules.marketplace import ai_engine_groq as ai
+                    plano = ai.generate_ascii_plan_only(texto)
+                    st.success("📐 PLANO GENERADO")
+                    st.code(plano, language="text")
 
-                    // Controles de órbita
-                    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-                    controls.enableDamping = true;
-                    controls.dampingFactor = 0.05;
+    with tab5:
+        st.header("🏗️ VISUALIZACIÓN 3D / VR")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🏗️ Generar Modelo 3D", type="secondary", use_container_width=True):
+                # Verificar si el proyecto tiene modelo 3D
+                if project_data.get("modelo_3d_glb"):
+                    # Mostrar visor 3D completo
+                    rel_path = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
+                    model_url = f"http://localhost:8765/{rel_path}".replace(" ", "%20")
 
-                    // Luces
-                    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-                    scene.add(ambientLight);
+                    # HTML con Three.js para visor 3D
+                    three_html = f"""
+                    <div id="container3d" style="width: 100%; height: 700px; border: 1px solid #ccc;"></div>
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+                    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+                    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+                    <script>
+                        // Inicializar escena, cámara y renderer
+                        const scene = new THREE.Scene();
+                        scene.background = new THREE.Color(0xf0f0f0);
 
-                    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                    directionalLight.position.set(10, 10, 5);
-                    directionalLight.castShadow = true;
-                    scene.add(directionalLight);
+                        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                        camera.position.set(5, 5, 5);
 
-                    // Cargar modelo GLTF
-                    const loader = new THREE.GLTFLoader();
-                    loader.load(
-                        '{model_url}',
-                        function (gltf) {{
-                            const model = gltf.scene;
-                            scene.add(model);
-
-                            // Calcular bounding box para centrar la cámara
-                            const box = new THREE.Box3().setFromObject(model);
-                            const center = box.getCenter(new THREE.Vector3());
-                            const size = box.getSize(new THREE.Vector3());
-
-                            // Centrar modelo en origen
-                            model.position.sub(center);
-
-                            // Ajustar cámara para ver todo el modelo
-                            const maxDim = Math.max(size.x, size.y, size.z);
-                            const fov = camera.fov * (Math.PI / 180);
-                            let cameraZ = Math.abs(maxDim / Math.sin(fov / 2));
-
-                            camera.position.set(center.x, center.y, center.z + cameraZ * 1.5);
-                            camera.lookAt(center);
-
-                            controls.target.copy(center);
-                            controls.update();
-
-                            // Habilitar sombras si el modelo las soporta
-                            model.traverse(function (child) {{
-                                if (child.isMesh) {{
-                                    child.castShadow = true;
-                                    child.receiveShadow = true;
-                                }}
-                            }});
-                        }},
-                        function (xhr) {{
-                            console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-                        }},
-                        function (error) {{
-                            console.error('Error loading GLTF:', error);
-                            alert('Error cargando el modelo 3D. Verifica que el archivo exista.');
-                        }}
-                    );
-
-                    // Función de animación
-                    function animate() {{
-                        requestAnimationFrame(animate);
-                        controls.update();
-                        renderer.render(scene, camera);
-                    }}
-                    animate();
-
-                    // Ajustar tamaño al cambiar ventana
-                    window.addEventListener('resize', function() {{
-                        camera.aspect = document.getElementById('container3d').clientWidth / 700;
-                        camera.updateProjectionMatrix();
+                        const renderer = new THREE.WebGLRenderer({{ antialias: true }});
                         renderer.setSize(document.getElementById('container3d').clientWidth, 700);
-                    }});
-                </script>
-                """
+                        renderer.shadowMap.enabled = true;
+                        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                        document.getElementById('container3d').appendChild(renderer.domElement);
 
-                st.components.v1.html(three_html, height=700, scrolling=False)
-            else:
-                st.info("Este proyecto no tiene modelo 3D disponible.")
-        else:
-            st.info("🔒 Para ver el modelo 3D interactivo completo, regístrate como cliente.")
-            st.markdown("**Vista previa limitada:** Los modelos 3D se desbloquean tras registro.")
+                        // Controles de órbita
+                        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+                        controls.enableDamping = true;
+                        controls.dampingFactor = 0.05;
 
-    with tab_vr:
-        if client_logged_in:
-            st.markdown("#### 🥽 Visor de Realidad Virtual")
-            if project_data.get("modelo_3d_glb"):
-                rel = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
-                glb_url = f"http://localhost:8765/{rel}".replace(" ", "%20")
-                viewer_url = f"http://localhost:8765/static/vr_viewer.html?model={glb_url}"
-                st.markdown(
-                    f'<a href="{viewer_url}" target="_blank">'
-                    f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
-                    f"Abrir experiencia VR en nueva pestaña"
-                    f"</button></a>",
-                    unsafe_allow_html=True,
-                )
-                st.caption("Se abrirá el visor VR en una nueva pestaña. Requiere navegador con WebXR.")
-            else:
-                st.info("Este proyecto no tiene modelo VR disponible.")
-        else:
-            st.info("🔒 Para acceder a la experiencia VR completa, regístrate como cliente.")
-            st.markdown("**Vista previa:** VR disponible tras registro.")
+                        // Luces
+                        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+                        scene.add(ambientLight);
 
-    with tab_fotos:
-        if client_logged_in:
-            st.markdown("#### 🖼️ Galería Completa de Fotos y Planos")
-            # Foto principal
-            if project_data.get("foto_principal"):
-                rel = project_data["foto_principal"].replace("\\", "/").lstrip("/")
-                url = f"http://localhost:8765/{rel}"
-                st.image(url, width=400, caption="Foto Principal")
-            # Galería adicional
-            if gallery:
-                st.subheader("Galería Adicional")
-                for idx, foto in enumerate(gallery):
-                    if foto:
-                        rel = foto.replace("\\", "/").lstrip("/")
-                        url = f"http://localhost:8765/{rel}"
-                        st.image(url, width=300, caption=f"Imagen {idx + 1}")
-            # Planos
-            if project_data.get("planos_pdf") or project_data.get("planos_dwg"):
-                st.subheader("Planos Técnicos")
-                if project_data.get("planos_pdf"):
-                    st.download_button("📄 Descargar Planos PDF", data=open(project_data["planos_pdf"], "rb"), file_name="planos.pdf")
-                if project_data.get("planos_dwg"):
-                    st.download_button("📐 Descargar Planos DWG", data=open(project_data["planos_dwg"], "rb"), file_name="planos.dwg")
-        else:
-            st.info("🔒 Para ver la galería completa de fotos y planos, regístrate como cliente.")
+                        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                        directionalLight.position.set(10, 10, 5);
+                        directionalLight.castShadow = true;
+                        scene.add(directionalLight);
+
+                        // Cargar modelo GLTF
+                        const loader = new THREE.GLTFLoader();
+                        loader.load(
+                            '{model_url}',
+                            function (gltf) {{
+                                const model = gltf.scene;
+                                scene.add(model);
+
+                                // Calcular bounding box para centrar la cámara
+                                const box = new THREE.Box3().setFromObject(model);
+                                const center = box.getCenter(new THREE.Vector3());
+                                const size = box.getSize(new THREE.Vector3());
+
+                                // Centrar modelo en origen
+                                model.position.sub(center);
+
+                                // Ajustar cámara para ver todo el modelo
+                                const maxDim = Math.max(size.x, size.y, size.z);
+                                const fov = camera.fov * (Math.PI / 180);
+                                let cameraZ = Math.abs(maxDim / Math.sin(fov / 2));
+
+                                camera.position.set(center.x, center.y, center.z + cameraZ * 1.5);
+                                camera.lookAt(center);
+
+                                controls.target.copy(center);
+                                controls.update();
+
+                                // Habilitar sombras si el modelo las soporta
+                                model.traverse(function (child) {{
+                                    if (child.isMesh) {{
+                                        child.castShadow = true;
+                                        child.receiveShadow = true;
+                                    }}
+                                }});
+                            }},
+                            function (xhr) {{
+                                console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+                            }},
+                            function (error) {{
+                                console.error('Error loading GLTF:', error);
+                                alert('Error cargando el modelo 3D. Verifica que el archivo exista.');
+                            }}
+                        );
+
+                        // Función de animación
+                        function animate() {{
+                            requestAnimationFrame(animate);
+                            controls.update();
+                            renderer.render(scene, camera);
+                        }}
+                        animate();
+
+                        // Ajustar tamaño al cambiar ventana
+                        window.addEventListener('resize', function() {{
+                            camera.aspect = document.getElementById('container3d').clientWidth / 700;
+                            camera.updateProjectionMatrix();
+                            renderer.setSize(document.getElementById('container3d').clientWidth, 700);
+                        }});
+                    </script>
+                    """
+
+                    st.components.v1.html(three_html, height=700, scrolling=False)
+                else:
+                    st.warning('⚠️ Este proyecto específico no dispone de archivos 3D/VR originales del arquitecto.')
+        with col2:
+            if st.button("🥽 Visor VR Inmersivo", type="secondary", use_container_width=True):
+                # Verificar si el proyecto tiene modelo 3D para VR
+                if project_data.get("modelo_3d_glb"):
+                    rel = str(project_data["modelo_3d_glb"]).replace("\\", "/").lstrip("/")
+                    glb_url = f"http://localhost:8765/{rel}".replace(" ", "%20")
+                    viewer_url = f"http://localhost:8765/static/vr_viewer.html?model={glb_url}"
+                    st.markdown(
+                        f'<a href="{viewer_url}" target="_blank">'
+                        f'<button style="padding:10px 16px;border-radius:6px;background:#0b5cff;color:#fff;border:none;">'
+                        f"Abrir experiencia VR en nueva pestaña"
+                        f"</button></a>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption("Se abrirá el visor VR en una nueva pestaña. Requiere navegador con WebXR.")
+                else:
+                    st.warning('⚠️ Este proyecto específico no dispone de archivos 3D/VR originales del arquitecto.')
 
     # 🔍 BUSCAR PROYECTOS SIMILARES (solo para usuarios logueados)
     if client_logged_in:

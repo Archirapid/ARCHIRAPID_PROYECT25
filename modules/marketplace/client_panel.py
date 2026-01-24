@@ -169,12 +169,9 @@ def show_selected_project_panel(client_email, project_id):
     conn = db_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, title, description, m2_construidos, area_m2, price, estimated_cost,
-               price_memoria, price_cad, property_type, foto_principal, galeria_fotos,
-               memoria_pdf, planos_pdf, planos_dwg, modelo_3d_glb, vr_tour, energy_rating,
-               architect_name, characteristics_json, habitaciones, banos, garaje, plantas,
-               m2_parcela_minima, m2_parcela_maxima, certificacion_energetica, tipo_proyecto,
-               ocr_text
+        SELECT id, architect_id, title, description, area_m2, price, 
+               foto_principal, galeria_fotos, memoria_pdf, planos_pdf, 
+               planos_dwg, modelo_3d_glb, vr_tour, ocr_text, created_at
         FROM projects
         WHERE id = ?
     """, (project_id,))
@@ -185,38 +182,45 @@ def show_selected_project_panel(client_email, project_id):
         st.error("Proyecto no encontrado")
         return
 
-    # Convertir a dict con todos los campos
+    # Parsear galeria_fotos si es JSON
+    import json
+    galeria_fotos = []
+    if row[7]:  # galeria_fotos
+        try:
+            if isinstance(row[7], str):
+                galeria_fotos = json.loads(row[7])
+            elif isinstance(row[7], list):
+                galeria_fotos = row[7]
+        except:
+            galeria_fotos = []
+
+    # Convertir a dict con todos los campos (mapeando a los nombres esperados)
     project = {
         'id': row[0],
-        'title': row[1],
-        'description': row[2],
-        'm2_construidos': row[3],
+        'architect_id': row[1],
+        'title': row[2],
+        'description': row[3],
         'area_m2': row[4],
         'price': row[5],
-        'estimated_cost': row[6],
-        'price_memoria': row[7],
-        'price_cad': row[8],
-        'property_type': row[9],
-        'foto_principal': row[10],
-        'galeria_fotos': row[11],
-        'memoria_pdf': row[12],
-        'planos_pdf': row[13],
-        'planos_dwg': row[14],
-        'modelo_3d_glb': row[15],
-        'vr_tour': row[16],
-        'energy_rating': row[17],
-        'architect_name': row[18],
-        'characteristics_json': row[19],
-        'habitaciones': row[20],
-        'banos': row[21],
-        'garaje': row[22],
-        'plantas': row[23],
-        'm2_parcela_minima': row[24],
-        'm2_parcela_maxima': row[25],
-        'certificacion_energetica': row[26],
-        'tipo_proyecto': row[27],
-        'ocr_text': row[28],
-        'nombre': row[1]  # Alias para compatibilidad
+        'files': {
+            'fotos': galeria_fotos,
+            'memoria': row[8],
+            'planos': row[9],
+            'modelo_3d': row[11],
+            'vr_tour': row[12],
+            'ocr_text': row[13]
+        },
+        'created_at': row[14],
+        # Mapeos para compatibilidad
+        'm2_construidos': row[4],  # area_m2
+        'architect_name': 'Arquitecto Demo',  # Placeholder por ahora
+        'foto_principal': row[6] if row[6] else (galeria_fotos[0] if galeria_fotos else None),
+        'galeria_fotos': galeria_fotos,
+        'memoria_pdf': row[8],
+        'planos_pdf': row[9],
+        'modelo_3d_glb': row[11],
+        'vr_tour': row[12],
+        'nombre': row[2]  # Alias para compatibilidad
     }
 
     st.title(f"🏗️ {project['nombre']}")
@@ -225,11 +229,11 @@ def show_selected_project_panel(client_email, project_id):
     col1, col2 = st.columns([2, 1])
     with col1:
         st.markdown(f"**👨‍💼 Arquitecto:** {project.get('architect_name', 'No especificado')}")
-        st.markdown(f"**📐 Área construida:** {project.get('total_m2', 0):,.0f} m²")
-        st.markdown(f"**💰 Precio:** €{project.get('precio', 0):,.0f}" if project.get('precio') else "**💰 Precio:** Consultar")
+        st.markdown(f"**📐 Área construida:** {project.get('m2_construidos', 0):,.0f} m²")
+        st.markdown(f"**💰 Precio:** €{project.get('price', 0):,.0f}" if project.get('price') else "**💰 Precio:** Consultar")
     with col2:
         # Imagen principal
-        foto = project.get('imagen_principal')
+        foto = project.get('foto_principal')
         if foto:
             try:
                 st.image(foto, width=200, caption=project['nombre'])
@@ -444,15 +448,51 @@ def show_selected_project_panel(client_email, project_id):
         else:
             st.info("💳 Selecciona el producto que deseas adquirir:")
 
+            # Opciones adicionales de servicios
+            st.markdown("### 🔧 Servicios Adicionales")
+            col_serv1, col_serv2 = st.columns(2)
+            
+            with col_serv1:
+                visado_proyecto = st.checkbox("🏛️ Visado del Proyecto - €500", value=False)
+                direccion_obra = st.checkbox("👷 Dirección de Obra - €800", value=False)
+            
+            with col_serv2:
+                construccion = st.checkbox("🏗️ Construcción Completa - €1500", value=False)
+                supervision = st.checkbox("👁️ Supervisión Técnica - €300", value=False)
+
+            # Número de copias adicionales
+            st.markdown("### 📋 Número de Copias Adicionales")
+            num_copias = st.number_input("Número de copias adicionales (200€ cada una)", min_value=0, max_value=10, value=0, step=1)
+
+            # Calcular precios adicionales
+            precio_adicional_servicios = 0
+            if visado_proyecto:
+                precio_adicional_servicios += 500
+            if direccion_obra:
+                precio_adicional_servicios += 800
+            if construccion:
+                precio_adicional_servicios += 1500
+            if supervision:
+                precio_adicional_servicios += 300
+            
+            precio_adicional_copias = num_copias * 200
+            precio_total_adicional = precio_adicional_servicios + precio_adicional_copias
+
+            if precio_total_adicional > 0:
+                st.info(f"💰 Costo adicional total: €{precio_total_adicional}")
+
             col1, col2 = st.columns(2)
             with col1:
-                if st.button(f"📄 Memoria PDF - €{1800}", use_container_width=True, type="primary"):
+                precio_pdf_final = 1800 + precio_total_adicional
+                if st.button(f"📄 Memoria PDF - €{precio_pdf_final}", use_container_width=True, type="primary"):
                     st.success("🎉 PDF adquirido! Recibirás el enlace por email")
             with col2:
-                if st.button(f"🖥️ Planos CAD - €{2500}", use_container_width=True, type="primary"):
+                precio_cad_final = 2500 + precio_total_adicional
+                if st.button(f"🖥️ Planos CAD - €{precio_cad_final}", use_container_width=True, type="primary"):
                     st.success("🎉 CAD adquirido! Recibirás el enlace por email")
 
-            if st.button("🛒 Comprar Proyecto Completo - €{4000}", use_container_width=True, type="primary"):
+            precio_completo_final = 4000 + precio_total_adicional
+            if st.button("🛒 Comprar Proyecto Completo - €{precio_completo_final}", use_container_width=True, type="primary"):
                 st.success("🎉 Proyecto completo adquirido! Recibirás todos los archivos por email")
 def show_client_interests(client_email):
     """Mostrar proyectos de interés del cliente"""

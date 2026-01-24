@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 from src import db as _db
 from modules.marketplace.utils import init_db, db_conn
-from modules.marketplace.marketplace import get_project_display_image
 
 # Inicializar base de datos
 init_db()
@@ -25,8 +24,8 @@ st.set_page_config(layout='wide')
 
 def detalles_proyecto_v2(project_id: str):
     """Muestra la página de vista previa de un proyecto arquitectónico - VERSIÓN V2"""
-    from modules.marketplace.project_detail import show_project_detail_page
-    show_project_detail_page(project_id)
+    from modules.marketplace import client_panel
+    client_panel.show_selected_project_panel(None, project_id)
 
 def panel_cliente_v2():
     """Panel de cliente - VERSIÓN V2 (copia exacta del contenido original)"""
@@ -287,7 +286,11 @@ def show_selected_project_panel_v2(client_email: str, project_id: str):
     st.header("📸 Galería Completa del Proyecto")
 
     # Obtener imágenes válidas usando la función existente
-    project_images = get_project_display_image(project_id, 'gallery')
+    from modules.marketplace.plot_detail import get_project_images
+    project_images = get_project_images({
+        'foto_principal': project_data['foto_principal'],
+        'galeria_fotos': json.loads(project_data['galeria_fotos']) if isinstance(project_data['galeria_fotos'], str) else project_data['galeria_fotos']
+    })
 
     if project_images:
         # Mostrar imágenes en grid responsivo
@@ -1089,17 +1092,6 @@ if "selected_project_v2" in st.query_params and not page_from_query:
         detalles_proyecto_v2(project_id)
     except Exception as e:
         st.error(f"Error mostrando detalles del proyecto v2: {e}")
-    st.stop()  # Detener la ejecución para no mostrar el resto de la app
-
-if "selected_plot" in st.query_params and not page_from_query:
-    try:
-        plot_id = st.query_params["selected_plot"]
-        st.session_state['selected_page'] = "🔍 Detalle de Finca"
-        st.session_state['selected_plot'] = plot_id
-        del st.query_params["selected_plot"]
-        st.rerun()
-    except Exception as e:
-        st.error(f"Error procesando finca seleccionada: {e}")
     st.stop()  # Detener la ejecución para no mostrar el resto de la app
 
 if st.query_params.get("page") == "👤 Panel de Cliente":

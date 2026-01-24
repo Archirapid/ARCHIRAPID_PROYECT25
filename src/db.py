@@ -1176,15 +1176,12 @@ def get_featured_projects(limit=6):
             id,
             title,
             description,
-            architect_name,
-            price,
             area_m2,
+            price,
             foto_principal,
             galeria_fotos,
-            characteristics_json,
             created_at
         FROM projects
-        WHERE is_active = 1 OR is_active IS NULL
         ORDER BY created_at DESC
         LIMIT ?
         """
@@ -1197,9 +1194,9 @@ def get_featured_projects(limit=6):
             # Procesar galeria_fotos si es JSON
             galeria = []
             if row['galeria_fotos']:
-                try: 
-                    galeria = json.loads(row['galeria_fotos']) if isinstance(row['galeria_fotos'], str) else row['galeria_fotos']
-                except: 
+                try:
+                    galeria = json.loads(row['galeria_fotos']) if isinstance(row['galeria_fotos'], str) else []
+                except:
                     galeria = [row['galeria_fotos']] if row['galeria_fotos'] else []
             
             # Construir lista de fotos: principal + galería
@@ -1212,20 +1209,95 @@ def get_featured_projects(limit=6):
                 'id': row['id'],
                 'title': row['title'],
                 'description': row['description'],
-                'architect_name': row['architect_name'],
+                'architect_name': '',  # No existe en la tabla actual
                 'company': '',  # No existe en la tabla
                 'price': row['price'],
                 'area_m2': row['area_m2'],
                 'files': {'fotos': fotos},
-                'characteristics': json.loads(row['characteristics_json']) if row['characteristics_json'] else {},
+                'characteristics': {},  # No existe en la tabla actual
                 'created_at': row['created_at']
             }
             projects.append(project)
         
+        print(f"DEBUG: get_featured_projects returning {len(projects)} projects")
+        for p in projects:
+            print(f"  Project {p['id']}: files = {p.get('files', 'NO FILES')}")
         return projects
         
     except Exception as e:
         print(f"Error obteniendo proyectos destacados: {e}")
         return []
+    finally:
+        conn.close()
+
+
+def get_project_by_id(project_id: str):
+    """
+    Obtiene un proyecto específico por su ID.
+    
+    Args:
+        project_id (str): ID del proyecto a buscar
+        
+    Returns:
+        dict: Diccionario con datos del proyecto o None si no existe
+    """
+    ensure_tables()
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        
+        # Consulta SQL para obtener el proyecto
+        query = """
+        SELECT 
+            id,
+            title,
+            description,
+            area_m2,
+            price,
+            foto_principal,
+            galeria_fotos,
+            created_at
+        FROM projects
+        WHERE id = ?
+        """
+        
+        cursor.execute(query, (project_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            return None
+        
+        # Procesar galeria_fotos si es JSON
+        galeria = []
+        if row['galeria_fotos']:
+            try:
+                galeria = json.loads(row['galeria_fotos']) if isinstance(row['galeria_fotos'], str) else []
+            except:
+                galeria = [row['galeria_fotos']] if row['galeria_fotos'] else []
+        
+        # Construir lista de fotos: principal + galería
+        fotos = []
+        if row['foto_principal']:
+            fotos.append(row['foto_principal'])
+        fotos.extend(galeria)
+        
+        project = {
+            'id': row['id'],
+            'title': row['title'],
+            'description': row['description'],
+            'architect_name': '',  # No existe en la tabla actual
+            'company': '',  # No existe en la tabla
+            'price': row['price'],
+            'area_m2': row['area_m2'],
+            'files': {'fotos': fotos},
+            'characteristics': {},  # No existe en la tabla actual
+            'created_at': row['created_at']
+        }
+        
+        return project
+        
+    except Exception as e:
+        print(f"Error obteniendo proyecto {project_id}: {e}")
+        return None
     finally:
         conn.close()

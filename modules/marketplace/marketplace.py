@@ -29,15 +29,15 @@ def set_query_param(key, value):
     """
     st.query_params[key] = str(value)
 
-# Map plot ids to images
-PLOT_IMAGES = {
-    'finca_es_malaga': 'assets/fincas/image1.jpg',
-    'finca_es_madrid': 'assets/fincas/image2.jpg',
-    'finca_pt_lisboa': 'assets/fincas/image3.jpg',
-}
+# Map plot ids to images - ELIMINADO: Usar lógica unificada con BD
+# PLOT_IMAGES = {
+#     'finca_es_malaga': 'assets/fincas/image1.jpg',
+#     'finca_es_madrid': 'assets/fincas/image2.jpg',
+#     'finca_pt_lisboa': 'assets/fincas/image3.jpg',
+# }
 
 def get_plot_image_path(plot):
-    """Get the image path for a plot, preferring uploaded photos."""
+    """Get the image path for a plot, preferring uploaded photos from BD."""
     if plot.get('photo_paths'):
         try:
             paths = json.loads(plot['photo_paths'])
@@ -49,7 +49,94 @@ def get_plot_image_path(plot):
                     return upload_path
         except (json.JSONDecodeError, TypeError):
             pass
-    return PLOT_IMAGES.get(plot['id'], 'assets/fincas/image1.jpg')
+    
+    # Si no hay imagen subida, usar placeholder genérico de ARCHIRAPID
+    return 'assets/branding/logo.png'
+
+def get_project_display_image(project_id, image_type='main'):
+    """Función unificada para obtener imagen de proyecto.
+
+    Args:
+        project_id: ID del proyecto
+        image_type: 'main' para imagen principal, 'gallery' para todas las imágenes
+
+    Returns:
+        str: Ruta a la imagen principal (si image_type='main')
+        list: Lista de rutas de imágenes (si image_type='gallery')
+    """
+    import glob
+
+    try:
+        # PRIMERO: Intentar usar rutas de la base de datos
+        try:
+            project = db.get_project_by_id(project_id)
+            if project and 'files' in project and 'fotos' in project['files']:
+                fotos_from_db = project['files']['fotos']
+                if fotos_from_db:
+                    if image_type == 'main':
+                        # Usar la primera imagen como principal
+                        main_image = fotos_from_db[0]
+                        if os.path.exists(main_image):
+                            return main_image
+                    elif image_type == 'gallery':
+                        # Filtrar solo imágenes que existen
+                        existing_images = [img for img in fotos_from_db if os.path.exists(img)]
+                        if existing_images:
+                            return existing_images
+        except Exception as db_error:
+            # Si falla la consulta a BD, continuar con escaneo físico
+            pass
+
+        # SEGUNDO: Si BD falla o no tiene imágenes, escanear físicamente
+        base_path = "uploads"
+
+        if image_type == 'main':
+            # Buscar imagen principal: project_main_*
+            patterns = [
+                f"{base_path}/project_main_{project_id}.*",
+                f"{base_path}/project_{project_id}_main.*",
+                f"{base_path}/*{project_id}*main*.*",
+                f"{base_path}/*{project_id}*.jpg",
+                f"{base_path}/*{project_id}*.png",
+                f"{base_path}/*{project_id}*.jpeg"
+            ]
+
+            for pattern in patterns:
+                matches = glob.glob(pattern)
+                if matches:
+                    return matches[0]
+
+            # Placeholder si no se encuentra
+            return 'assets/branding/logo.png'
+
+        elif image_type == 'gallery':
+            # Buscar todas las imágenes del proyecto
+            patterns = [
+                f"{base_path}/project_*_{project_id}.*",
+                f"{base_path}/project_{project_id}_*.*",
+                f"{base_path}/*{project_id}*.*"
+            ]
+
+            all_images = []
+            for pattern in patterns:
+                matches = glob.glob(pattern)
+                # Filtrar solo imágenes
+                for match in matches:
+                    if match.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')):
+                        all_images.append(match)
+
+            # Remover duplicados y ordenar
+            all_images = list(set(all_images))
+            all_images.sort()
+
+            return all_images if all_images else []
+
+        else:
+            return 'assets/branding/logo.png'
+
+    except Exception as e:
+        # En caso de error, usar placeholder
+        return 'assets/branding/logo.png' if image_type == 'main' else []
 
 def get_popup_image_url(plot):
     """
@@ -65,7 +152,7 @@ def get_popup_image_url(plot):
 
     if not abs_path.exists():
         # Fallback a placeholder
-        abs_path = Path("assets/fincas/image1.jpg").resolve()
+        abs_path = Path("assets/branding/logo.png").resolve()
 
     # Construir URL file:// (ej. file:///C:/ARCHIRAPID_PROYECT25/uploads/imagen.jpg)
     return abs_path.as_uri()

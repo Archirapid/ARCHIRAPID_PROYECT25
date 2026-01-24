@@ -20,95 +20,7 @@ init_db()
 import streamlit as st
 st.set_page_config(layout='wide')
 
-# LÓGICA DE NAVEGACIÓN MAESTRA
-if 'selected_page' not in st.session_state or st.session_state['selected_page'] == "":
-    st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
-
-# Detectar si hay una finca seleccionada en los parámetros de consulta
-params = st.query_params
-
-# Detectar navegación al panel de cliente desde project_detail
-if st.session_state.get("navigate_to_client_panel"):
-    # Limpiar el flag de navegación
-    del st.session_state["navigate_to_client_panel"]
-    # Usar el mismo mecanismo que el botón "Acceso Clientes" en HOME
-    st.query_params["page"] = "👤 Panel de Cliente"
-    # Si hay proyecto seleccionado, mantenerlo en query_params
-    if "selected_project_for_panel" in st.session_state:
-        if "selected_project" in st.query_params:
-            del st.query_params["selected_project"]
-        del st.session_state["selected_project_for_panel"]
-    st.rerun()
-
-# Detectar página seleccionada por query param
-page_from_query = params.get("page")
-
-# # Interceptar páginas especiales por query param (VIEJAS)
-# if page_from_query == "🛒 Comprar Proyecto":
-#     try:
-#         import modules.marketplace.project_purchase_panel as project_purchase_panel
-#         project_purchase_panel.main()
-#         st.stop()
-#     except Exception as e:
-#         st.error(f"Error mostrando panel de compra: {e}")
-
-# === RUTAS VIEJAS COMENTADAS (NO USAR - VERSIONES ANTIGUAS) ===
-# if "selected_plot" in params:
-#     try:
-#         plot_id = params["selected_plot"]
-#         from modules.marketplace.plot_detail import show_plot_detail_page
-#         show_plot_detail_page(plot_id)
-#         st.stop()  # Detener la ejecución para no mostrar el resto de la app
-#     except Exception as e:
-#         st.error(f"Error mostrando detalles de la finca: {e}")
-
-# if "selected_project" in params and not page_from_query: 
-#     try:
-#         project_id = params["selected_project"]
-#         from modules.marketplace.project_detail import show_project_detail_page
-#         show_project_detail_page(project_id)
-#         st.stop()  # Detener la ejecución para no mostrar el resto de la app
-#     except Exception as e:
-#         st.error(f"Error mostrando detalles del proyecto: {e}")
-
-# # Interceptar páginas especiales por query param (VIEJAS)
-# if page_from_query == "🛒 Comprar Proyecto":
-#     try:
-#         import modules.marketplace.project_purchase_panel as project_purchase_panel
-#         project_purchase_panel.main()
-#         st.stop()
-#     except Exception as e:
-#         st.error(f"Error mostrando panel de compra: {e}")
-
-# if "selected_plot" in params:
-#     try:
-#         plot_id = params["selected_plot"]
-#         from modules.marketplace.plot_detail import show_plot_detail_page
-#         show_plot_detail_page(plot_id)
-#         st.stop()  # Detener la ejecución para no mostrar el resto de la app
-#     except Exception as e:
-#         st.error(f"Error mostrando detalles de la finca: {e}")
-
-# if "selected_project" in params and not page_from_query: 
-#     try:
-#         project_id = params["selected_project"]
-#         from modules.marketplace.project_detail import show_project_detail_page
-#         show_project_detail_page(project_id)
-#         st.stop()  # Detener la ejecución para no mostrar el resto de la app
-#     except Exception as e:
-#         st.error(f"Error mostrando detalles del proyecto: {e}")
-
-# === FUNCIONES V2 (COPIA EXACTA DEL CONTENIDO ORIGINAL) ===
-
-# Interceptar navegación desde mapa (selected_plot en query params)
-if "selected_plot" in params:
-    plot_id = params["selected_plot"]
-    if isinstance(plot_id, list):
-        plot_id = plot_id[0]
-    st.session_state['selected_plot'] = plot_id
-    st.session_state['selected_page'] = '🔍 Detalle de Finca'
-    st.query_params.clear()  # Limpiar params para evitar loops
-    st.rerun()
+# === FUNCIONES AUXILIARES V2 ===
 
 def detalles_proyecto_v2(project_id: str):
     """Muestra la página de vista previa de un proyecto arquitectónico - VERSIÓN V2"""
@@ -117,6 +29,7 @@ def detalles_proyecto_v2(project_id: str):
     import json
     from modules.marketplace.plot_detail import get_project_images
     from src import db
+    from modules.marketplace.marketplace import get_project_display_image
 
     def normalize_gallery(galeria_fotos):
         import json
@@ -136,58 +49,36 @@ def detalles_proyecto_v2(project_id: str):
     # Limpiar sidebar para vista dedicada
     st.sidebar.empty()
 
-    # Obtener datos del proyecto
-    conn = db.get_conn()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, title, description, m2_construidos, area_m2, price, estimated_cost,
-               price_memoria, price_cad, property_type, foto_principal, galeria_fotos,
-               memoria_pdf, planos_pdf, planos_dwg, modelo_3d_glb, vr_tour, energy_rating,
-               architect_name, characteristics_json, habitaciones, banos, garaje, plantas,
-               m2_parcela_minima, m2_parcela_maxima, certificacion_energetica, tipo_proyecto
-        FROM projects
-        WHERE id = ?
-    """, (project_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
+    # Obtener datos del proyecto usando la nueva función
+    project_data = db.get_project_by_id(project_id)
+    
+    if not project_data:
         st.error("❌ Proyecto no encontrado")
         return
 
-    # Extraer datos del proyecto
-    project_data = {
-        'id': row[0],
-        'title': row[1],
-        'description': row[2],
-        'm2_construidos': row[3],
-        'area_m2': row[4],
-        'price': row[5],
-        'estimated_cost': row[6],
-        'price_memoria': row[7] or 1800,
-        'price_cad': row[8] or 2500,
-        'property_type': row[9],
-        'foto_principal': row[10],
-        'galeria_fotos': row[11],
-        'memoria_pdf': row[12],
-        'planos_pdf': row[13],
-        'planos_dwg': row[14],
-        'modelo_3d_glb': row[15],
-        'vr_tour': row[16],
-        'energy_rating': row[17],
-        'architect_name': row[18],
-        'characteristics': json.loads(row[19]) if row[19] else {},
-        'habitaciones': row[20],
-        'banos': row[21],
-        'garaje': row[22],
-        'plantas': row[23],
-        'm2_parcela_minima': row[24],
-        'm2_parcela_maxima': row[25],
-        'certificacion_energetica': row[26],
-        'tipo_proyecto': row[27]
-    }
+    # Para compatibilidad, agregar campos faltantes que usa el código
+    project_data.update({
+        'm2_construidos': project_data.get('area_m2', 0),
+        'm2_parcela_maxima': None,
+        'property_type': 'Residencial',
+        'tipo_proyecto': 'Residencial',
+        'habitaciones': None,
+        'banos': None,
+        'plantas': None,
+        'garaje': None,
+        'certificacion_energetica': None,
+        'estimated_cost': None,
+        'price_memoria': 1800,
+        'price_cad': 2500,
+        'memoria_pdf': None,
+        'planos_pdf': None,
+        'planos_dwg': None,
+        'modelo_3d_glb': None,
+        'vr_tour': None,
+        'm2_parcela_minima': None
+    })
 
-    gallery = normalize_gallery(project_data["galeria_fotos"])
+    gallery = []  # Ya no usamos galeria_fotos de BD
 
     # Definir variables de login temprano para evitar errores
     client_logged_in = st.session_state.get("client_logged_in", False)
@@ -206,12 +97,9 @@ def detalles_proyecto_v2(project_id: str):
     # Galería de fotos
     st.header("📸 Galería del Proyecto")
 
-    # Obtener imágenes válidas
-    project_images = get_project_images({
-        'foto_principal': project_data['foto_principal'],
-        'galeria_fotos': gallery
-    })
-
+    # ESCÁNER FÍSICO: Buscar todas las imágenes del proyecto usando la función unificada
+    project_images = get_project_display_image(project_id, image_type='gallery')
+    
     if project_images:
         # Mostrar imágenes en grid
         cols = st.columns(min(len(project_images), 3))
@@ -248,8 +136,8 @@ def detalles_proyecto_v2(project_id: str):
             st.write(f"**Garaje:** {'Sí' if project_data['garaje'] else 'No'}")
 
         # Certificación energética
-        if project_data['certificacion_energetica'] or project_data['energy_rating']:
-            rating = project_data['certificacion_energetica'] or project_data['energy_rating']
+        if project_data.get('certificacion_energetica') or project_data.get('energy_rating'):
+            rating = project_data.get('certificacion_energetica') or project_data.get('energy_rating', 'A')
             st.write(f"**Certificación energética:** {rating}")
 
     with col2:
@@ -1032,6 +920,106 @@ def detalles_proyecto_v2(project_id: str):
     # Detener la ejecución para evitar mostrar contenido adicional
     st.stop()
 
+# LÓGICA DE NAVEGACIÓN MAESTRA
+if 'selected_page' not in st.session_state or st.session_state['selected_page'] == "":
+    st.session_state['selected_page'] = "🏠 Inicio / Marketplace"
+
+# Detectar si hay una finca seleccionada en los parámetros de consulta
+params = st.query_params
+
+# Detectar navegación al panel de cliente desde project_detail
+if st.session_state.get("navigate_to_client_panel"):
+    # Limpiar el flag de navegación
+    del st.session_state["navigate_to_client_panel"]
+    # Usar el mismo mecanismo que el botón "Acceso Clientes" en HOME
+    st.query_params["page"] = "👤 Panel de Cliente"
+    # Si hay proyecto seleccionado, mantenerlo en query_params
+    if "selected_project_for_panel" in st.session_state:
+        if "selected_project" in st.query_params:
+            del st.query_params["selected_project"]
+        del st.session_state["selected_project_for_panel"]
+    st.rerun()
+
+# Detectar página seleccionada por query param
+page_from_query = params.get("page")
+
+# Interceptar selected_project_v2 para mostrar detalles de proyecto V2
+if "selected_project_v2" in params:
+    try:
+        project_id = params["selected_project_v2"]
+        if isinstance(project_id, list):
+            project_id = project_id[0]
+        detalles_proyecto_v2(project_id)
+        st.stop()  # Detener la ejecución para no mostrar el resto de la app
+    except Exception as e:
+        st.error(f"Error mostrando detalles del proyecto V2: {e}")
+
+# # Interceptar páginas especiales por query param (VIEJAS)
+# if page_from_query == "🛒 Comprar Proyecto":
+#     try:
+#         import modules.marketplace.project_purchase_panel as project_purchase_panel
+#         project_purchase_panel.main()
+#         st.stop()
+#     except Exception as e:
+#         st.error(f"Error mostrando panel de compra: {e}")
+
+# === RUTAS VIEJAS COMENTADAS (NO USAR - VERSIONES ANTIGUAS) ===
+# if "selected_plot" in params:
+#     try:
+#         plot_id = params["selected_plot"]
+#         from modules.marketplace.plot_detail import show_plot_detail_page
+#         show_plot_detail_page(plot_id)
+#         st.stop()  # Detener la ejecución para no mostrar el resto de la app
+#     except Exception as e:
+#         st.error(f"Error mostrando detalles de la finca: {e}")
+
+# if "selected_project" in params and not page_from_query: 
+#     try:
+#         project_id = params["selected_project"]
+#         from modules.marketplace.project_detail import show_project_detail_page
+#         show_project_detail_page(project_id)
+#         st.stop()  # Detener la ejecución para no mostrar el resto de la app
+#     except Exception as e:
+#         st.error(f"Error mostrando detalles del proyecto: {e}")
+
+# # Interceptar páginas especiales por query param (VIEJAS)
+# if page_from_query == "🛒 Comprar Proyecto":
+#     try:
+#         import modules.marketplace.project_purchase_panel as project_purchase_panel
+#         project_purchase_panel.main()
+#         st.stop()
+#     except Exception as e:
+#         st.error(f"Error mostrando panel de compra: {e}")
+
+# if "selected_plot" in params:
+#     try:
+#         plot_id = params["selected_plot"]
+#         from modules.marketplace.plot_detail import show_plot_detail_page
+#         show_plot_detail_page(plot_id)
+#         st.stop()  # Detener la ejecución para no mostrar el resto de la app
+#     except Exception as e:
+#         st.error(f"Error mostrando detalles de la finca: {e}")
+
+# if "selected_project" in params and not page_from_query: 
+#     try:
+#         project_id = params["selected_project"]
+#         from modules.marketplace.project_detail import show_project_detail_page
+#         show_project_detail_page(project_id)
+#         st.stop()  # Detener la ejecución para no mostrar el resto de la app
+#     except Exception as e:
+#         st.error(f"Error mostrando detalles del proyecto: {e}")
+
+# === FUNCIONES V2 (COPIA EXACTA DEL CONTENIDO ORIGINAL) ===
+
+# Interceptar navegación desde mapa (selected_plot en query params)
+if "selected_plot" in params:
+    plot_id = params["selected_plot"]
+    if isinstance(plot_id, list):
+        plot_id = plot_id[0]
+    st.session_state['selected_plot'] = plot_id
+    st.session_state['selected_page'] = '🔍 Detalle de Finca'
+    st.query_params.clear()  # Limpiar params para evitar loops
+    st.rerun()
 
 def panel_cliente_v2():
     """Panel de cliente - VERSIÓN V2 (copia exacta del contenido original)"""
@@ -1334,8 +1322,8 @@ def show_selected_project_panel_v2(client_email: str, project_id: str):
             st.write(f"**Garaje:** {'Sí' if project_data['garaje'] else 'No'}")
 
         # Certificación energética
-        if project_data['certificacion_energetica'] or project_data['energy_rating']:
-            rating = project_data['certificacion_energetica'] or project_data['energy_rating']
+        if project_data.get('certificacion_energetica') or project_data.get('energy_rating'):
+            rating = project_data.get('certificacion_energetica') or project_data.get('energy_rating', 'A')
             st.write(f"**Certificación energética:** {rating}")
 
     with col2:
@@ -2579,23 +2567,15 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
 
         try:
             from src import db
+            from modules.marketplace.marketplace import get_project_display_image
             projects = db.get_featured_projects(limit=6)
             
             if projects: 
                 cols = st.columns(3)
                 for idx, p in enumerate(projects):
                     with cols[idx % 3]:
-                        # Usar la misma lógica que en plot_detail.py para obtener imágenes válidas
-                        from modules.marketplace.plot_detail import get_project_images
-                        
-                        # Convertir el formato del proyecto para que sea compatible con get_project_images
-                        proyecto_compat = {
-                            'foto_principal': p.get('files', {}).get('fotos', [])[0] if p.get('files', {}).get('fotos') else None,
-                            'galeria_fotos': p.get('files', {}).get('fotos', [])[1:] if p.get('files', {}).get('fotos') else []
-                        }
-                        
-                        project_images = get_project_images(proyecto_compat)
-                        thumbnail = project_images[0] if project_images else "assets/fincas/image1.jpg"
+                        # Usar función unificada para obtener imagen del proyecto
+                        thumbnail = get_project_display_image(p['id'], image_type='main')
                         
                         st.image(thumbnail, width=250)
                         st.subheader(p.get('title', 'Proyecto'))

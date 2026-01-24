@@ -200,10 +200,26 @@ def show_plot_detail_page(plot_id: str):
             lat = float(plot.get('lat', 40.4168))
             lon = float(plot.get('lon', -3.7038))
             m = folium.Map(location=[lat, lon], zoom_start=15, tiles="CartoDB positron")
+            
+            # Verificar si la finca está vendida/reservada
+            conn_check = db.get_conn()
+            cursor_check = conn_check.cursor()
+            cursor_check.execute("SELECT 1 FROM reservations WHERE plot_id = ?", (plot_id,))
+            is_sold = cursor_check.fetchone() is not None
+            conn_check.close()
+            
+            # Definir icono según disponibilidad
+            if is_sold:
+                # FINCA VENDIDA/RESERVADA: Color ROJO con icono de prohibido
+                icon = folium.Icon(color='red', icon='ban', prefix='fa', icon_color='white')
+            else:
+                # FINCA DISPONIBLE: Color AZUL con icono de casa
+                icon = folium.Icon(color='blue', icon='home', prefix='fa', icon_color='white')
+            
             folium.Marker(
                 [lat, lon],
                 popup=plot.get('title', 'Finca'),
-                icon=folium.Icon(color='red', icon='home', prefix='fa')
+                icon=icon
             ).add_to(m)
             components.html(m._repr_html_(), height=300)
         except Exception as e:

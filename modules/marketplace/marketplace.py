@@ -228,8 +228,8 @@ def get_filtered_plots(min_surface, max_surface, search_query):
     return plots_all
 
 def render_featured_plots(plots):
-    """Renderiza la sección de fincas destacadas (Premium primero, luego últimas publicadas)."""
-    st.header("Fincas Destacadas")
+    """Renderiza la sección de fincas destacadas en grid de 3 columnas (2 filas = 6 fincas)."""
+    st.header("🏠 Fincas Destacadas")
 
     if not plots:
         st.info("No hay fincas disponibles con los filtros actuales.")
@@ -253,26 +253,38 @@ def render_featured_plots(plots):
         reverse=True
     )
 
-    # Construir lista final: primero premium, luego normales
+    # Construir lista final: primero premium, luego normales (6 fincas total)
     featured = premium_sorted[:6]
 
     if len(featured) < 6:
         needed = 6 - len(featured)
         featured += normal_sorted[:needed]
 
-    # Renderizar en grid 2 columnas
-    cols = st.columns(2)
+    # Tomar solo las primeras 6 fincas
+    featured = featured[:6]
+
+    # Renderizar en grid 3 columnas (2 filas)
+    cols = st.columns(3)
     for i, plot in enumerate(featured):
-        with cols[i % 2]:
-            img_path = get_plot_image_path(plot)
-            st.image(img_path, width=120, caption=f"{plot['title'][:15]}...")
+        with cols[i % 3]:
+            # Contenedor para la tarjeta de finca
+            with st.container():
+                # Imagen de la finca
+                img_path = get_plot_image_path(plot)
+                st.image(img_path, use_container_width=True, caption=f"{plot['title'][:20]}...")
 
-            if plot.get("featured") == 1:
-                st.markdown("⭐ **Destacada Premium**")
+                # Indicador especial para las 2 primeras fincas (destacadas)
+                if i < 2:
+                    st.caption("⭐ DESTACADA PREMIUM")
 
-            if st.button("Ver", key=f"mini_{plot['id']}", help=f"Ver detalles de {plot['title']}"):
-                set_query_param("selected_plot", plot["id"])
-                st.rerun()
+                # Información básica
+                st.markdown(f"**📏 {plot.get('m2', 'N/A')} m²**")
+                st.markdown(f"**💰 €{plot.get('price', 0):,.0f}**")
+
+                # Botón para ver detalles (mantiene la misma lógica)
+                if st.button("Ver Detalles", key=f"featured_{plot['id']}", use_container_width=True):
+                    set_query_param("selected_plot", plot["id"])
+                    st.rerun()
 
 def render_map(plots):
     """Renderiza el mapa interactivo con las fincas."""
@@ -313,13 +325,13 @@ def render_map(plots):
         is_sold = plot_id in sold_plot_ids
 
         if is_sold:
-            # FINCA VENDIDA/RESERVADA: Color rojo y cartel
-            icon = folium.Icon(color='red', icon='ban', prefix='fa')
+            # FINCA VENDIDA/RESERVADA: Color ROJO con icono de prohibido
+            icon = folium.Icon(color='red', icon='ban', prefix='fa', icon_color='white')
             status_text = "🏠 VENDIDA / RESERVADA"
             button_disabled = True
         else:
-            # FINCA DISPONIBLE: Color normal
-            icon = folium.Icon(color='red', icon='home', prefix='fa')
+            # FINCA DISPONIBLE: Color AZUL con icono de casa
+            icon = folium.Icon(color='blue', icon='home', prefix='fa', icon_color='white')
             status_text = ""
             button_disabled = False
 
@@ -499,9 +511,6 @@ def main():
         show_plot_detail_page(selected_plot_local)
         return
 
-    # 2. Título principal
-    st.title("🏠 ARCHIRAPID — Marketplace de Fincas y Proyectos")
-
     # Mensaje de bienvenida si está logueado
     if st.session_state.get('logged_in'):
         user_name = st.session_state.get('full_name', st.session_state.get('email', 'Usuario'))
@@ -565,14 +574,11 @@ def main():
     # Obtener fincas filtradas
     plots = get_filtered_plots(min_surface, max_surface, search_query)
 
-    # Layout principal: dos columnas
-    left_col, right_col = st.columns([1, 2])
+    # Layout principal: mapa ocupa todo el ancho
+    render_map(plots)
 
-    with left_col:
-        render_featured_plots(plots)
-
-    with right_col:
-        render_map(plots)
+    # Sección de fincas destacadas debajo del mapa
+    render_featured_plots(plots)
 
     # Sección de proyectos adicionales
     render_projects_section()

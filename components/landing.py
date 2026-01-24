@@ -208,7 +208,24 @@ def render_landing():
                 finca = FincaMVP.desde_dict(p)
                 # 2. Mostrar mapa de la finca
                 m_finca = folium.Map(location=[finca.lat, finca.lon], zoom_start=15, tiles="CartoDB positron")
-                folium.Marker([finca.lat, finca.lon], icon=folium.Icon(color='red', icon='home', prefix='fa')).add_to(m_finca)
+                
+                # Verificar si la finca está vendida/reservada para definir el color del marcador
+                from src import db
+                conn_check = db.get_conn()
+                cursor_check = conn_check.cursor()
+                cursor_check.execute("SELECT 1 FROM reservations WHERE plot_id = ?", (p.get('id'),))
+                is_sold = cursor_check.fetchone() is not None
+                conn_check.close()
+                
+                # Definir icono según disponibilidad
+                if is_sold:
+                    # FINCA VENDIDA/RESERVADA: Color ROJO con icono de prohibido
+                    icon = folium.Icon(color='red', icon='ban', prefix='fa', icon_color='white')
+                else:
+                    # FINCA DISPONIBLE: Color AZUL con icono de casa
+                    icon = folium.Icon(color='blue', icon='home', prefix='fa', icon_color='white')
+                
+                folium.Marker([finca.lat, finca.lon], icon=icon).add_to(m_finca)
                 st.markdown(f"### {finca.titulo if hasattr(finca, 'titulo') else p.get('title', 'Finca')}")
                 components.html(m_finca._repr_html_(), height=300)
                 # 3. Mostrar superficie edificable y solar_virtual

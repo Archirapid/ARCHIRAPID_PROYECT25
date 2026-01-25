@@ -383,7 +383,6 @@ def show_selected_project_panel(client_email, project_id):
                     # Importar función de generación visual
                     from archirapid_extract.generate_design import generate_simple_visual_plan
                     import tempfile
-                    import os
 
                     # Crear archivo temporal para el plano
                     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:

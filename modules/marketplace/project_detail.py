@@ -256,169 +256,6 @@ def show_project_detail_page(project_id: str):
     if project_data['architect_name']:
         st.write(f"**Arquitecto:** {project_data['architect_name']}")
 
-    # PLANOS ARQUITECTÓNICOS CON IA
-    st.header("🎨 Planos Arquitectónicos con IA")
-
-    if st.button("🎨 Generar Planos Arquitectónicos con IA", key="btn_ia_plans"):
-        if project_data.get("memoria_pdf"):
-            try:
-                import PyPDF2
-                with open(project_data["memoria_pdf"], "rb") as f:
-                    reader = PyPDF2.PdfReader(f)
-                    text = ""
-                    for page in reader.pages[:10]:  # Más páginas para usuarios logueados
-                        text += page.extract_text() + "\n"
-
-                if text.strip():
-                    # PROMPT SENCILLO PARA PLANO BÁSICO
-                    # Usar los m² reales del proyecto (ya calculados arriba)
-                    m2_para_plano = m2_proyecto if m2_proyecto > 0 else 120  # Valor por defecto razonable si no hay datos
-
-                    # Calcular dimensión aproximada (cuadrado)
-                    import math
-                    lado = math.sqrt(m2_para_plano)
-
-                    # ---- 1️⃣ Ejemplo de "few‑shot" (plano correcto) -------------------------
-                    ejemplo = f"""
-PLANO BÁSICO DEL PROYECTO ({m2_para_plano} m²)
-
-   NORTE +----------+  {lado:.1f}m
-|          |
-|   CASA   |  Área construida: {m2_para_plano} m²
-|          |  Dimensiones aproximadas: {lado:.1f}m x {lado:.1f}m
-+----------+
-   {lado:.1f}m
-
-"""
-
-                    # ---- 2️⃣ Prompt que enviamos al modelo ---------------------------------
-                    prompt = f"""Genera ÚNICAMENTE un plano arquitectónico básico en formato ASCII
-para un proyecto de **{m2_para_plano} m²** con dimensiones aproximadas cuadradas:
-**{lado:.1f} m x {lado:.1f} m**.
-
-INSTRUCCIONES OBLIGATORIAS:
-- Devuelve **exactamente** el bloque que sigue, sin texto antes ni después.
-- Usa el mismo estilo que el ejemplo que aparece a continuación (incluye
-  la palabra "NORTE", las líneas `+----------+` y los valores de metros).
-- No añadas markdown, ni triple back‑ticks, ni la palabra "ASCII".
-- Detente cuando veas una línea en blanco doble.
-
-Ejemplo que el modelo debe imitar (NO lo modifiques, solo úsalo como referencia):
-
-{ejemplo}
-"""
-
-                    # ---- 2️⃣ Llamar al endpoint API para generar planos -----------------
-                    import requests
-                    api_url = "http://127.0.0.1:5000/api/generar-plano-ascii"
-                    payload = {
-                        "area_m2": m2_para_plano,
-                        "tipologia": project_data.get("property_type", "casa"),
-                        "use_ai": True  # Usar IA con fallback
-                    }
-                    
-                    try:
-                        response = requests.post(api_url, json=payload, timeout=30)
-                        if response.status_code == 200:
-                            data = response.json()
-                            if data.get("success"):
-                                plans = data["plano"]
-                                st.success(f"✅ Planos generados vía API ({data.get('metodo', 'Desconocido')}):")
-                            else:
-                                st.error(f"Error en API: {data.get('error', 'Desconocido')}")
-                                plans = ""
-                        else:
-                            st.error(f"Error HTTP {response.status_code}: {response.text}")
-                            plans = ""
-                    except requests.exceptions.RequestException as e:
-                        st.error(f"Error conectando al API: {e}. Usando generación local...")
-                        # Fallback local
-                        from modules.marketplace import ai_engine_groq as ai
-                        plans = ai.generate_ascii_plan(prompt)
-                        if "Error:" in plans:
-                            from modules.marketplace.ascii_generator import ascii_square
-                            plans = ascii_square(m2_para_plano)
-
-                    if plans:
-                        st.markdown("### 📐 Esquema de Planta Sugerido")
-                        st.code(plans, language="text")  # mantiene espacios y saltos
-                else:
-                    st.warning("No se pudo extraer texto del PDF.")
-            except ImportError:
-                st.error("Librería PyPDF2 no instalada. Instala con: pip install PyPDF2")
-            except Exception as e:
-                st.error(f"Error generando planos: {e}")
-        else:
-            st.info("No hay memoria PDF disponible para este proyecto.")
-
-    # RESUMEN INTELIGENTE CON IA
-    st.header("🤖 Análisis Inteligente con IA")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("📋 GENERAR DOSSIER TÉCNICO", type="primary"):
-            with st.spinner("Generando dossier técnico..."):
-                from modules.marketplace import ai_engine_groq as ai
-
-                nombre_proyecto = project_data.get("titulo", project_data.get("nombre", "Proyecto Arquitectónico"))
-
-                # Intentamos usar OCR si está disponible, sino extraemos del PDF
-                texto_memoria = project_data.get("ocr_text", "")
-                if not texto_memoria and project_data.get("memoria_pdf"):
-                    try:
-                        import PyPDF2
-                        with open(project_data["memoria_pdf"], "rb") as f:
-                            reader = PyPDF2.PdfReader(f)
-                            texto_memoria = ""
-                            for page in reader.pages[:5]:  # Primeras 5 páginas para resumen
-                                texto_memoria += page.extract_text() + "\n"
-                    except:
-                        texto_memoria = f"Proyecto: {nombre_proyecto}"
-
-                # Forzamos a que mencione las superficies reales si están disponibles
-                prompt_resumen = f"Haz un resumen ejecutivo del proyecto '{nombre_proyecto}' basado en esta memoria técnica. Analiza la distribución, superficies y características principales. Máximo 200 palabras."
-                if texto_memoria.strip():
-                    prompt_resumen += f"\n\nContenido de la memoria:\n{texto_memoria[:1000]}"
-
-                resumen = ai.generate_text(prompt_resumen, max_tokens=300)
-                st.markdown("### 📋 Análisis Profesional")
-                st.write(resumen)
-                st.success("✅ Dossier técnico generado exitosamente.")
-
-    with col2:
-        if st.button("📐 GENERAR PLANO ASCII", type="primary"):
-            with st.spinner("Generando plano técnico..."):
-                from modules.marketplace import ai_engine_groq as ai
-
-                nombre_proyecto = project_data.get("titulo", project_data.get("nombre", "Proyecto Arquitectónico"))
-
-                # Intentamos usar OCR si está disponible, sino extraemos del PDF
-                texto_memoria = project_data.get("ocr_text", "")
-                if not texto_memoria and project_data.get("memoria_pdf"):
-                    try:
-                        import PyPDF2
-                        with open(project_data["memoria_pdf"], "rb") as f:
-                            reader = PyPDF2.PdfReader(f)
-                            texto_memoria = ""
-                            for page in reader.pages[:5]:  # Primeras 5 páginas para resumen
-                                texto_memoria += page.extract_text() + "\n"
-                    except:
-                        texto_memoria = f"Proyecto: {nombre_proyecto}"
-
-                # PASO 1: Extraer tabla de m2
-                tabla_m2 = ai.extract_area_table(texto_memoria)
-                st.markdown("#### 📊 Cuadro de Superficies Extraído")
-                st.markdown(tabla_m2)
-
-                # PASO 2: EL PLANO (Llamada independiente)
-                plano_visual = ai.generate_ascii_plan_only(tabla_m2)
-
-                # El bloque st.code fuerza a la IA a mostrar el dibujo sin deformarlo
-                st.markdown("### 📐 Esquema de Distribución Sugerido")
-                st.code(plano_visual, language="text")
-                st.success("✅ Plano ASCII generado exitosamente.")
-
     # VISUALIZACIONES DEL PROYECTO - CINCO PESTAÑAS CLONADAS (SIN COMPRA)
     st.header("🏗️ Visualizaciones del Proyecto")
 
@@ -466,15 +303,36 @@ Ejemplo que el modelo debe imitar (NO lo modifiques, solo úsalo como referencia
     with tab4:
         st.header("📐 PLANOS TÉCNICOS")
         if st.button("📐 Generar Plano Arquitectónico", type="secondary"):
-            texto = project_data.get('ocr_text', "")
-            if not texto:
-                st.error("No hay datos para generar planos")
-            else:
-                with st.spinner("Dibujando plano técnico..."):
-                    from modules.marketplace import ai_engine_groq as ai
-                    plano = ai.generate_ascii_plan_only(texto)
-                    st.success("📐 PLANO GENERADO")
-                    st.code(plano, language="text")
+            with st.spinner("Generando plano técnico..."):
+                from modules.marketplace import ai_engine_groq as ai
+
+                nombre_proyecto = project_data.get("titulo", project_data.get("nombre", "Proyecto Arquitectónico"))
+
+                # Intentamos usar OCR si está disponible, sino extraemos del PDF
+                texto_memoria = project_data.get("ocr_text", "")
+                if not texto_memoria and project_data.get("memoria_pdf"):
+                    try:
+                        import PyPDF2
+                        with open(project_data["memoria_pdf"], "rb") as f:
+                            reader = PyPDF2.PdfReader(f)
+                            texto_memoria = ""
+                            for page in reader.pages[:5]:  # Primeras 5 páginas para resumen
+                                texto_memoria += page.extract_text() + "\n"
+                    except:
+                        texto_memoria = f"Proyecto: {nombre_proyecto}"
+
+                # PASO 1: Extraer tabla de m2
+                tabla_m2 = ai.extract_area_table(texto_memoria)
+                st.markdown("#### 📊 Cuadro de Superficies Extraído")
+                st.markdown(tabla_m2)
+
+                # PASO 2: EL PLANO (Llamada independiente)
+                plano_visual = ai.generate_ascii_plan_only(tabla_m2)
+
+                # El bloque st.code fuerza a la IA a mostrar el dibujo sin deformarlo
+                st.markdown("### 📐 Esquema de Distribución Sugerido")
+                st.code(plano_visual, language="text")
+                st.success("✅ Plano ASCII generado exitosamente.")
 
     with tab5:
         st.header("🏗️ VISUALIZACIÓN 3D / VR")

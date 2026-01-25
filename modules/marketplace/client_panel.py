@@ -357,7 +357,16 @@ def show_selected_project_panel(client_email, project_id):
     with tab3:
         st.header("📄 MEMORIA TÉCNICA")
         if st.button("📄 Generar Memoria Detallada", type="secondary"):
+            # Intentar extraer texto del PDF de memoria si existe
+            memoria_pdf = project.get('memoria_pdf')
             texto = project.get('ocr_text', "")
+            if not texto and memoria_pdf and os.path.exists(memoria_pdf):
+                try:
+                    from archirapid_extract.parse_project_memoria import extract_text_from_pdf
+                    texto = extract_text_from_pdf(memoria_pdf)
+                except Exception as e:
+                    st.warning(f"No se pudo extraer texto del PDF: {e}")
+            
             if not texto:
                 st.error("No hay memoria técnica disponible")
             else:

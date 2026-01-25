@@ -1531,33 +1531,38 @@ if st.session_state.get('selected_page') == "🏠 Inicio / Marketplace":
         st.header("🔐 Selecciona tu Perfil de Acceso")
         st.markdown("Elige el tipo de usuario que eres para acceder a las funcionalidades correspondientes.")
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
 
         with col1:
-            st.markdown("### 🏠 Soy Cliente/Propietario")
-            st.markdown("Accede a tus proyectos y visor 3D.")
-            if st.button("🔑 Acceso Clientes", key="select_client", use_container_width=True):
+            st.markdown("### 🏠 Cliente")
+            st.markdown("Accede a tus proyectos y compras.")
+            if st.button("🔑 Acceso Cliente", key="select_client", use_container_width=True):
                 st.session_state['login_role'] = 'client'
                 st.session_state['viewing_login'] = True
                 st.rerun()
 
         with col2:
-            st.markdown("### 🏗️ Soy Arquitecto")
+            st.markdown("### 🏗️ Arquitecto")
             st.markdown("Gestiona tus diseños y fincas.")
-            if st.button("🔑 Acceso Arquitectos", key="select_architect", use_container_width=True):
+            if st.button("🔑 Acceso Arquitecto", key="select_architect", use_container_width=True):
                 st.session_state['login_role'] = 'architect'
                 st.session_state['viewing_login'] = True
                 st.rerun()
 
         with col3:
-            st.markdown("### 🛠️ Soy Profesional")
-            st.markdown("Gestiona tus servicios y obras.")
-            if st.button("🔑 Acceso Profesionales", key="select_professional", use_container_width=True):
-                st.session_state['login_role'] = 'services'
+            st.markdown("### 🏡 Propietario")
+            st.markdown("Administra tus propiedades.")
+            if st.button("🔑 Acceso Propietario", key="select_owner", use_container_width=True):
+                st.session_state['login_role'] = 'owner'
                 st.session_state['viewing_login'] = True
                 st.rerun()
-            if st.button("Regístrate aquí", key="register_here"):
-                st.session_state['selected_page'] = "📝 Registro de Proveedor de Servicios"
+
+        with col4:
+            st.markdown("### 🛠️ Servicios")
+            st.markdown("Gestiona tus servicios profesionales.")
+            if st.button("🔑 Acceso Servicios", key="select_services", use_container_width=True):
+                st.session_state['login_role'] = 'services'
+                st.session_state['viewing_login'] = True
                 st.rerun()
 
         # Botón discreto para admin

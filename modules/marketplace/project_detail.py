@@ -446,35 +446,49 @@ def show_project_detail_page(project_id: str):
             with col2:
                 email = st.text_input("Email", placeholder="tu@email.com")
                 confirmar_email = st.text_input("Confirmar Email", placeholder="tu@email.com")
+                password = st.text_input("Contraseña", type="password", placeholder="Mínimo 6 caracteres")
+                confirmar_password = st.text_input("Confirmar Contraseña", type="password", placeholder="Repite tu contraseña")
                 direccion = st.text_input("Dirección", placeholder="Calle, Ciudad, Provincia")
 
             submitted = st.form_submit_button("🚀 Registrarme y Acceder", type="primary", width='stretch')
 
             if submitted:
                 # Validaciones básicas
-                if not nombre or not apellidos or not email:
-                    st.error("Por favor completa nombre, apellidos y email")
+                if not nombre or not apellidos or not email or not password:
+                    st.error("Por favor completa nombre, apellidos, email y contraseña")
                 elif email != confirmar_email:
                     st.error("Los emails no coinciden")
+                elif password != confirmar_password:
+                    st.error("Las contraseñas no coinciden")
+                elif len(password) < 6:
+                    st.error("La contraseña debe tener al menos 6 caracteres")
                 elif "@" not in email:
                     st.error("Por favor introduce un email válido")
                 else:
                     # Registrar usuario en base de datos
                     try:
+                        from werkzeug.security import generate_password_hash
                         conn = db.get_conn()
                         cursor = conn.cursor()
 
-                        # Verificar si el email ya existe
-                        cursor.execute("SELECT id FROM clients WHERE email = ?", (email,))
-                        existing = cursor.fetchone()
+                        # Verificar si el email ya existe en users
+                        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+                        existing_user = cursor.fetchone()
 
-                        if existing:
+                        if existing_user:
                             st.success("✅ Ya estabas registrado. Accediendo al portal...")
                         else:
-                            # Insertar nuevo cliente (combinar nombre y apellidos)
+                            # Insertar nuevo usuario con contraseña
                             full_name = f"{nombre} {apellidos}".strip()
+                            hashed_password = generate_password_hash(password)
                             cursor.execute("""
-                                INSERT INTO clients (name, email, phone, address, created_at)
+                                INSERT INTO users (email, full_name, role, is_professional, password_hash, created_at)
+                                VALUES (?, ?, 'client', 0, ?, datetime('now'))
+                            """, (email, full_name, hashed_password))
+
+                            # También insertar en clients para compatibilidad V2
+                            cursor.execute("""
+                                INSERT OR IGNORE INTO clients (name, email, phone, address, created_at)
                                 VALUES (?, ?, ?, ?, datetime('now'))
                             """, (full_name, email, telefono, direccion))
 
@@ -494,14 +508,20 @@ def show_project_detail_page(project_id: str):
 
                         conn.close()
 
-                        # Auto-login
+                        # Auto-login con credenciales
                         st.session_state["client_logged_in"] = True
                         st.session_state["client_email"] = email
+                        st.session_state["logged_in"] = True
+                        st.session_state["user_email"] = email
+                        st.session_state["user_name"] = full_name
+                        st.session_state["role"] = "client"
                         st.session_state["user_role"] = "buyer"
                         st.session_state["has_transactions"] = False
                         st.session_state["has_properties"] = False
-                        st.session_state["just_registered"] = True  # Flag para saber que acabamos de registrarnos
-                        st.session_state["registration_success"] = True  # Flag para mostrar opciones después del formulario
+                        st.session_state["just_registered"] = True
+                        st.session_state["registration_success"] = True
+
+                        st.rerun()
 
                     except Exception as e:
                         st.error(f"Error en el registro: {e}")

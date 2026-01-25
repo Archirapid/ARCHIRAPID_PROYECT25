@@ -677,26 +677,129 @@ def build_project(catastro_path: str, output_dir: str, num_bedrooms: int = 2,
 
 
 # =======================
-# FUNCIÓN DE PRUEBA
+# FUNCIÓN SIMPLE PARA PLANOS VISUALES
 # =======================
 
-if __name__ == "__main__":
-    # Test básico
-    catastro_dir = "../catastro_output"
-    output_dir = "design_output"
-    
-    result = build_project(
-        catastro_path=catastro_dir,
-        output_dir=output_dir,
-        num_bedrooms=2,
-        num_floors=1,
-        setback_m=3.0
-    )
-    
-    if result["success"]:
-        print("\n✅ ÉXITO")
-        print(f"Archivos generados: {len(result['files_generated'])}")
-        for f in result["files_generated"]:
-            print(f"  - {f}")
+def generate_simple_visual_plan(project_data: dict, output_path: str = None) -> str:
+    """
+    Genera un plano visual simple usando datos básicos del proyecto.
+
+    Args:
+        project_data: Dict con datos del proyecto (m2, habitaciones, baños, plantas, tipo)
+        output_path: Ruta donde guardar el PNG (opcional)
+
+    Returns:
+        Ruta del archivo generado o descripción del plano
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    from matplotlib.patches import Rectangle
+    import numpy as np
+
+    # Extraer datos del proyecto
+    titulo = project_data.get('title', 'Proyecto Residencial')
+    m2 = float(project_data.get('m2_construidos', project_data.get('area_m2', 100)))
+    habitaciones = int(project_data.get('habitaciones', 3))
+    banos = int(project_data.get('banos', 2))
+    plantas = int(project_data.get('plantas', 1))
+    tipo = project_data.get('property_type', project_data.get('tipo_proyecto', 'Residencial'))
+
+    # Crear figura
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Calcular dimensiones aproximadas basadas en m²
+    # Asumir proporción típica de vivienda (relación ancho/alto ≈ 1.3)
+    area_total = m2
+    lado_aprox = np.sqrt(area_total)
+    ancho = lado_aprox * 1.3
+    alto = lado_aprox * 0.8
+
+    # Dibujar contorno de la vivienda
+    vivienda = Rectangle((1, 1), ancho, alto, linewidth=2, edgecolor='black', facecolor='lightblue', alpha=0.7)
+    ax.add_patch(vivienda)
+
+    # Calcular posiciones para habitaciones
+    # Distribuir habitaciones en un layout simple
+    margen = 0.5
+    ancho_hab = (ancho - 2*margen) / max(2, habitaciones // 2 + habitaciones % 2)
+    alto_hab = (alto - 2*margen) / 2.5
+
+    # Colores para diferentes espacios
+    colores = ['#FFE4B5', '#E6E6FA', '#F0FFF0', '#FFF8DC', '#F5DEB3']
+
+    # Dibujar habitaciones
+    espacios = []
+    for i in range(habitaciones):
+        if i < 2:  # Primera fila
+            x = margen + 1 + i * ancho_hab
+            y = margen + 1
+        else:  # Segunda fila
+            x = margen + 1 + (i-2) * ancho_hab
+            y = margen + 1 + alto_hab + margen
+
+        hab = Rectangle((x, y), ancho_hab*0.9, alto_hab*0.9,
+                       linewidth=1, edgecolor='black',
+                       facecolor=colores[i % len(colores)], alpha=0.8)
+        ax.add_patch(hab)
+        espacios.append(f"Dormitorio {i+1}")
+
+    # Dibujar baños
+    for i in range(min(banos, 2)):  # Máximo 2 baños en el plano simple
+        x = ancho - margen - ancho_hab*0.6 + i * ancho_hab*0.3
+        y = alto - margen - alto_hab*0.4
+        bano = Rectangle((x, y), ancho_hab*0.5, alto_hab*0.4,
+                        linewidth=1, edgecolor='black',
+                        facecolor='#E0FFFF', alpha=0.8)
+        ax.add_patch(bano)
+        espacios.append(f"Baño {i+1}")
+
+    # Dibujar salón/comedor (área central)
+    salon_x = margen + ancho_hab + 0.2
+    salon_y = margen + alto_hab + margen + 0.2
+    salon_ancho = ancho - 2*ancho_hab - 0.4
+    salon_alto = alto - alto_hab - 2*margen - 0.4
+
+    if salon_ancho > 0 and salon_alto > 0:
+        salon = Rectangle((salon_x, salon_y), salon_ancho, salon_alto,
+                         linewidth=1, edgecolor='black',
+                         facecolor='#FFFACD', alpha=0.8)
+        ax.add_patch(salon)
+        espacios.append("Salón-Comedor")
+
+    # Dibujar cocina
+    cocina_x = margen + 1.2
+    cocina_y = alto - margen - alto_hab*0.6
+    cocina = Rectangle((cocina_x, cocina_y), ancho_hab*0.8, alto_hab*0.5,
+                      linewidth=1, edgecolor='black',
+                      facecolor='#FFE4E1', alpha=0.8)
+    ax.add_patch(cocina)
+    espacios.append("Cocina")
+
+    # Añadir etiquetas
+    ax.text(ancho/2 + 1, alto + 1.5, f"{titulo}", ha='center', va='center',
+            fontsize=14, weight='bold')
+    ax.text(ancho/2 + 1, alto + 0.8, f"Tipo: {tipo} | {m2}m² | {habitaciones} hab | {banos} baños | {plantas} plantas",
+            ha='center', va='center', fontsize=10)
+
+    # Leyenda
+    legend_text = "ESPACIOS:\n" + "\n".join([f"• {espacio}" for espacio in espacios])
+    ax.text(0.02, 0.98, legend_text, transform=ax.transAxes,
+           fontsize=9, verticalalignment='top',
+           bbox=dict(boxstyle='round', facecolor='white', alpha=0.9))
+
+    # Configurar ejes
+    ax.set_xlim(0, ancho + 2)
+    ax.set_ylim(0, alto + 2)
+    ax.set_aspect('equal')
+    ax.axis('off')
+    ax.set_title('ARCHIRAPID - Plano Arquitectónico', fontsize=16, weight='bold', pad=20)
+
+    # Guardar imagen
+    if output_path:
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        return output_path
     else:
-        print(f"\n❌ ERROR: {result['error']}")
+        # Si no hay output_path, devolver descripción
+        plt.close()
+        return f"Plano generado para {titulo}: {m2}m², {habitaciones} habitaciones, {banos} baños"

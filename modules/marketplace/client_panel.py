@@ -378,14 +378,70 @@ def show_selected_project_panel(client_email, project_id):
     with tab4:
         st.header("📐 PLANOS TÉCNICOS")
         if st.button("📐 Generar Plano Arquitectónico", type="secondary"):
-            texto = project.get('ocr_text', "")
-            if not texto:
-                st.error("No hay datos para generar planos")
-            else:
-                with st.spinner("Dibujando plano técnico..."):
-                    plano = ai.generate_ascii_plan_only(texto)
-                    st.success("📐 PLANO GENERADO")
-                    st.code(plano, language="text")
+            with st.spinner("Generando plano visual..."):
+                try:
+                    # Importar función de generación visual
+                    from archirapid_extract.generate_design import generate_simple_visual_plan
+                    import tempfile
+                    import os
+
+                    # Crear archivo temporal para el plano
+                    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                        output_path = tmp_file.name
+
+                    # Generar plano visual
+                    result = generate_simple_visual_plan(project, output_path)
+
+                    if os.path.exists(output_path):
+                        st.success("📐 PLANO VISUAL GENERADO")
+                        st.image(output_path, caption=f"Plano Arquitectónico - {project.get('title', 'Proyecto')}", width='stretch')
+
+                        # Limpiar archivo temporal después de mostrar
+                        import time
+                        time.sleep(1)  # Dar tiempo a que se renderice
+                        try:
+                            os.unlink(output_path)
+                        except:
+                            pass
+                    else:
+                        st.error("Error generando el plano visual")
+
+                except Exception as e:
+                    st.error(f"Error generando plano visual: {e}")
+                    # Fallback al plano ASCII si falla lo visual
+                    st.warning("Generando plano ASCII como alternativa...")
+                    try:
+                        # Intentar obtener texto para el plano ASCII
+                        texto = project.get('ocr_text', "")
+                        memoria_pdf = project.get('memoria_pdf')
+
+                        # Fallback 1: Extraer del PDF si no hay OCR
+                        if not texto and memoria_pdf and os.path.exists(memoria_pdf):
+                            try:
+                                from archirapid_extract.parse_project_memoria import extract_text_from_pdf
+                                texto = extract_text_from_pdf(memoria_pdf)
+                            except Exception as e:
+                                st.warning(f"No se pudo extraer texto del PDF: {e}")
+
+                        # Fallback 2: Generar plano básico con datos del proyecto
+                        if not texto:
+                            titulo = project.get('title', 'Proyecto')
+                            m2 = project.get('m2_construidos', project.get('area_m2', 0))
+                            habitaciones = project.get('habitaciones', 3)
+                            banos = project.get('banos', 2)
+                            plantas = project.get('plantas', 1)
+                            tipo = project.get('property_type', project.get('tipo_proyecto', 'Residencial'))
+
+                            texto = f"Proyecto: {titulo}. Tipo: {tipo}. Superficie: {m2} m². Habitaciones: {habitaciones}. Baños: {banos}. Plantas: {plantas}."
+
+                        if texto:
+                            plano = ai.generate_ascii_plan_only(texto)
+                            st.success("📐 PLANO ASCII GENERADO")
+                            st.code(plano, language="text")
+                        else:
+                            st.error("No hay datos suficientes para generar el plano")
+                    except Exception as e2:
+                        st.error(f"Error en fallback ASCII: {e2}")
 
     with tab5:
         st.header("🏗️ VISUALIZACIÓN 3D / VR")

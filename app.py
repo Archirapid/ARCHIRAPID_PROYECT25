@@ -25,8 +25,18 @@ st.set_page_config(layout='wide')
 
 def detalles_proyecto_v2(project_id: str):
     """Muestra la página de vista previa de un proyecto arquitectónico - VERSIÓN V2"""
-    from modules.marketplace.project_detail import show_project_detail_page
-    show_project_detail_page(project_id)
+    # Verificar si el usuario está logueado como cliente
+    client_logged_in = st.session_state.get("client_logged_in", False)
+    client_email = st.session_state.get("client_email", "")
+
+    if client_logged_in and client_email:
+        # Usuario registrado: mostrar panel completo con pestaña COMPRA
+        from modules.marketplace import client_panel
+        client_panel.show_selected_project_panel(client_email, project_id)
+    else:
+        # Usuario no registrado: mostrar vista previa limitada
+        from modules.marketplace.project_detail import show_project_detail_page
+        show_project_detail_page(project_id)
 
 def panel_cliente_v2():
     """Panel de cliente - VERSIÓN V2 (copia exacta del contenido original)"""

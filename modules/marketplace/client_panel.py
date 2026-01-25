@@ -220,27 +220,96 @@ def show_selected_project_panel(client_email, project_id):
         'planos_pdf': row[9],
         'modelo_3d_glb': row[11],
         'vr_tour': row[12],
+        'property_type': 'Residencial',
+        'estimated_cost': row[5] * 0.8 if row[5] else 0,
+        'price_memoria': 1800,
+        'price_cad': 2500,
+        'energy_rating': 'A',
+        'characteristics': {},
+        'habitaciones': 3,
+        'banos': 2,
+        'garaje': True,
+        'plantas': 2,
+        'm2_parcela_minima': row[4] / 0.33 if row[4] else 0,
+        'm2_parcela_maxima': row[4] / 0.2 if row[4] else 0,
+        'certificacion_energetica': 'A',
+        'tipo_proyecto': 'Residencial',
         'nombre': row[2]  # Alias para compatibilidad
     }
 
+    # Título
     st.title(f"🏗️ {project['nombre']}")
 
-    # INFORMACIÓN BÁSICA
-    col1, col2 = st.columns([2, 1])
+    # Galería de fotos completa
+    st.header("📸 Galería del Proyecto")
+
+    # Usar las imágenes de la galería del proyecto
+    if galeria_fotos and len(galeria_fotos) > 0:
+        # Mostrar imágenes en grid
+        cols = st.columns(min(len(galeria_fotos), 3))
+        for idx, img_path in enumerate(galeria_fotos):
+            with cols[idx % 3]:
+                try:
+                    # Asegurar que la ruta sea correcta
+                    if not img_path.startswith('uploads/'):
+                        img_path = f"uploads/{img_path}"
+                    st.image(img_path, width='stretch', caption=f"Imagen {idx + 1}")
+                except Exception as e:
+                    st.warning(f"No se pudo cargar la imagen {idx + 1}")
+    else:
+        st.info("No hay imágenes disponibles para este proyecto")
+
+    # Información básica del proyecto
+    st.header("📋 Información del Proyecto")
+
+    # Calcular superficie mínima requerida
+    m2_proyecto = project['m2_construidos'] or project['area_m2'] or 0
+    if project['m2_parcela_minima']:
+        superficie_minima = project['m2_parcela_minima']
+    else:
+        superficie_minima = m2_proyecto / 0.33 if m2_proyecto > 0 else 0
+
+    col1, col2 = st.columns(2)
+
     with col1:
-        st.markdown(f"**👨‍💼 Arquitecto:** {project.get('architect_name', 'No especificado')}")
-        st.markdown(f"**📐 Área construida:** {project.get('m2_construidos', 0):,.0f} m²")
-        st.markdown(f"**💰 Precio:** €{project.get('price', 0):,.0f}" if project.get('price') else "**💰 Precio:** Consultar")
+        st.subheader("🏠 Características Técnicas")
+        st.write(f"**Superficie construida:** {m2_proyecto:.0f} m²")
+        st.write(f"**Superficie mínima de terreno:** {superficie_minima:.0f} m²")
+        if project['m2_parcela_maxima']:
+            st.write(f"**Superficie máxima de terreno:** {project['m2_parcela_maxima']:.0f} m²")
+        st.write(f"**Tipo:** {project['property_type'] or project['tipo_proyecto'] or 'Residencial'}")
+
+        # Características específicas
+        if project['habitaciones']:
+            st.write(f"**Habitaciones:** {project['habitaciones']}")
+        if project['banos']:
+            st.write(f"**Baños:** {project['banos']}")
+        if project['plantas']:
+            st.write(f"**Plantas:** {project['plantas']}")
+        if project['garaje']:
+            st.write(f"**Garaje:** {'Sí' if project['garaje'] else 'No'}")
+
+        # Certificación energética
+        if project['certificacion_energetica'] or project['energy_rating']:
+            rating = project['certificacion_energetica'] or project['energy_rating']
+            st.write(f"**Certificación energética:** {rating}")
+
     with col2:
-        # Imagen principal
-        foto = project.get('foto_principal')
-        if foto:
-            try:
-                st.image(foto, width=200, caption=project['nombre'])
-            except:
-                st.image("assets/fincas/image1.jpg", width=200, caption=project['nombre'])
-        else:
-            st.image("assets/fincas/image1.jpg", width=200, caption=project['nombre'])
+        st.subheader("💰 Información Económica")
+        if project['estimated_cost']:
+            st.write(f"**Coste de ejecución aproximado:** €{project['estimated_cost']:,.0f}")
+        st.write("**Precio descarga proyecto completo:**")
+        st.write(f"• PDF (Memoria completa): €{project['price_memoria']}")
+        st.write(f"• CAD (Planos editables): €{project['price_cad']}")
+
+    # Descripción
+    if project['description']:
+        st.header("📝 Descripción")
+        st.write(project['description'])
+
+    # Arquitecto
+    if project['architect_name']:
+        st.write(f"**Arquitecto:** {project['architect_name']}")
 
     st.markdown("---")
 
@@ -485,15 +554,238 @@ def show_selected_project_panel(client_email, project_id):
             with col1:
                 precio_pdf_final = 1800 + precio_total_adicional
                 if st.button(f"📄 Memoria PDF - €{precio_pdf_final}", use_container_width=True, type="primary"):
+                    # Registrar compra de PDF
+                    with st.spinner("Procesando compra..."):
+                        import time
+                        time.sleep(1)
+                    
+                    # Determinar productos comprados
+                    productos = ["PDF"]
+                    if visado_proyecto:
+                        productos.append("Visado del Proyecto")
+                    if direccion_obra:
+                        productos.append("Dirección de Obra")
+                    if construccion:
+                        productos.append("Construcción Completa")
+                    if supervision:
+                        productos.append("Supervisión Técnica")
+                    if num_copias > 0:
+                        productos.append(f"{num_copias} Copias Adicionales")
+                    
+                    productos_str = ", ".join(productos)
+                    
+                    # Registrar en base de datos
+                    conn_buy = db_conn()
+                    cursor_buy = conn_buy.cursor()
+                    cursor_buy.execute("""
+                        INSERT INTO ventas_proyectos
+                        (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
+                        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                    """, (project_id, client_email, "Compra desde panel cliente", productos_str, precio_pdf_final, "Simulado"))
+                    conn_buy.commit()
+                    conn_buy.close()
+                    
                     st.success("🎉 PDF adquirido! Recibirás el enlace por email")
+                    st.rerun()
+                    
             with col2:
                 precio_cad_final = 2500 + precio_total_adicional
                 if st.button(f"🖥️ Planos CAD - €{precio_cad_final}", use_container_width=True, type="primary"):
+                    # Registrar compra de CAD
+                    with st.spinner("Procesando compra..."):
+                        import time
+                        time.sleep(1)
+                    
+                    # Determinar productos comprados
+                    productos = ["CAD"]
+                    if visado_proyecto:
+                        productos.append("Visado del Proyecto")
+                    if direccion_obra:
+                        productos.append("Dirección de Obra")
+                    if construccion:
+                        productos.append("Construcción Completa")
+                    if supervision:
+                        productos.append("Supervisión Técnica")
+                    if num_copias > 0:
+                        productos.append(f"{num_copias} Copias Adicionales")
+                    
+                    productos_str = ", ".join(productos)
+                    
+                    # Registrar en base de datos
+                    conn_buy = db_conn()
+                    cursor_buy = conn_buy.cursor()
+                    cursor_buy.execute("""
+                        INSERT INTO ventas_proyectos
+                        (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
+                        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                    """, (project_id, client_email, "Compra desde panel cliente", productos_str, precio_cad_final, "Simulado"))
+                    conn_buy.commit()
+                    conn_buy.close()
+                    
                     st.success("🎉 CAD adquirido! Recibirás el enlace por email")
+                    st.rerun()
 
             precio_completo_final = 4000 + precio_total_adicional
-            if st.button("🛒 Comprar Proyecto Completo - €{precio_completo_final}", use_container_width=True, type="primary"):
+            if st.button(f"🛒 Comprar Proyecto Completo - €{precio_completo_final}", use_container_width=True, type="primary"):
+                # Registrar compra completa
+                with st.spinner("Procesando compra..."):
+                    import time
+                    time.sleep(1)
+                
+                # Determinar productos comprados
+                productos = ["PDF", "CAD", "Proyecto Completo"]
+                if visado_proyecto:
+                    productos.append("Visado del Proyecto")
+                if direccion_obra:
+                    productos.append("Dirección de Obra")
+                if construccion:
+                    productos.append("Construcción Completa")
+                if supervision:
+                    productos.append("Supervisión Técnica")
+                if num_copias > 0:
+                    productos.append(f"{num_copias} Copias Adicionales")
+                
+                productos_str = ", ".join(productos)
+                
+                # Registrar en base de datos
+                conn_buy = db_conn()
+                cursor_buy = conn_buy.cursor()
+                cursor_buy.execute("""
+                    INSERT INTO ventas_proyectos
+                    (proyecto_id, cliente_email, nombre_cliente, productos_comprados, total_pagado, metodo_pago, fecha_compra)
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                """, (project_id, client_email, "Compra desde panel cliente", productos_str, precio_completo_final, "Simulado"))
+                conn_buy.commit()
+                conn_buy.close()
+                
                 st.success("🎉 Proyecto completo adquirido! Recibirás todos los archivos por email")
+                st.rerun()
+
+    # 🔍 BUSCADOR INTEGRADO DE PROYECTOS SIMILARES (solo para usuarios logueados)
+    st.header("🔍 Buscar Proyectos Similares")
+    st.write("Encuentra otros proyectos que se ajusten a tus necesidades específicas")
+
+    # Formulario de búsqueda
+    with st.form("similar_projects_form"):
+        st.markdown("### 🎯 Especifica tus criterios")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            presupuesto_max = st.number_input(
+                "💰 Presupuesto máximo (€)",
+                min_value=0,
+                value=int(project.get('price') or 0),
+                step=10000,
+                help="Precio máximo que estás dispuesto a pagar"
+            )
+
+            area_deseada = st.number_input(
+                "📐 Área de construcción deseada (m²)",
+                min_value=0,
+                value=int(project.get('m2_construidos') or 0),
+                step=10,
+                help="Superficie aproximada que quieres construir"
+            )
+
+        with col2:
+            parcela_disponible = st.number_input(
+                "🏞️ Parcela disponible (m²)",
+                min_value=0,
+                value=int(project.get('m2_parcela_minima') or 0),
+                step=50,
+                help="Tamaño de terreno que tienes disponible"
+            )
+
+            # Checkbox para buscar solo proyectos que quepan
+            solo_compatibles = st.checkbox(
+                "Solo proyectos compatibles con mi parcela",
+                value=True,
+                help="Filtrar proyectos cuya parcela mínima sea ≤ a tu terreno disponible"
+            )
+
+        # Botón de búsqueda
+        submitted = st.form_submit_button("🔍 Buscar Proyectos Similares", type="primary", use_container_width=True)
+
+    # Procesar búsqueda
+    if submitted:
+        # Preparar parámetros
+        search_params = {
+            'client_budget': presupuesto_max if presupuesto_max > 0 else None,
+            'client_desired_area': area_deseada if area_deseada > 0 else None,
+            'client_parcel_size': parcela_disponible if parcela_disponible > 0 and solo_compatibles else None,
+            'client_email': client_email
+        }
+
+        # Mostrar criterios de búsqueda
+        st.markdown("### 📋 Criterios de búsqueda aplicados:")
+        criterios = []
+        if search_params['client_budget']:
+            criterios.append(f"💰 Presupuesto ≤ €{search_params['client_budget']:,}")
+        if search_params['client_desired_area']:
+            criterios.append(f"📐 Área ≈ {search_params['client_desired_area']} m² (±20%)")
+        if search_params['client_parcel_size']:
+            criterios.append(f"🏞️ Parcela ≥ {search_params['client_parcel_size']} m²")
+
+        if criterios:
+            for criterio in criterios:
+                st.write(f"• {criterio}")
+        else:
+            st.info("No se aplicaron filtros específicos - mostrando todos los proyectos disponibles")
+
+        # Buscar proyectos
+        with st.spinner("Buscando proyectos similares..."):
+            from modules.marketplace.compatibilidad import get_proyectos_compatibles
+            proyectos = get_proyectos_compatibles(**search_params)
+
+        # Filtrar para excluir el proyecto actual
+        proyectos = [p for p in proyectos if str(p['id']) != str(project_id)]
+
+        # Mostrar resultados
+        st.markdown(f"### 🏗️ Proyectos similares encontrados: {len(proyectos)}")
+
+        if not proyectos:
+            st.warning("No se encontraron proyectos que cumplan con tus criterios. Prueba ampliando los límites.")
+        else:
+            # Mostrar proyectos en grid
+            cols = st.columns(2)
+            for idx, proyecto in enumerate(proyectos):
+                with cols[idx % 2]:
+                    # Tarjeta de proyecto
+                    with st.container():
+                        # Imagen
+                        foto = proyecto.get('foto_principal')
+                        if foto:
+                            try:
+                                st.image(foto, width=250, caption=proyecto['title'])
+                            except:
+                                st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+                        else:
+                            st.image("assets/fincas/image1.jpg", width=250, caption=proyecto['title'])
+
+                        # Información básica
+                        st.markdown(f"**🏗️ {proyecto['title']}**")
+                        st.write(f"📐 **Área:** {proyecto.get('m2_construidos', proyecto.get('area_m2', 'N/D'))} m²")
+                        st.write(f"💰 **Precio:** €{proyecto.get('price', 0):,.0f}" if proyecto.get('price') else "💰 **Precio:** Consultar")
+
+                        # Arquitecto
+                        if proyecto.get('architect_name'):
+                            st.write(f"👨‍💼 **Arquitecto:** {proyecto['architect_name']}")
+
+                        # Compatibilidad (si hay filtros aplicados)
+                        if 'client_parcel_size' in search_params and search_params['client_parcel_size'] and proyecto.get('m2_parcela_minima'):
+                            if proyecto['m2_parcela_minima'] <= search_params['client_parcel_size']:
+                                st.success("✅ Compatible con tu parcela")
+                            else:
+                                st.warning(f"⚠️ Necesita parcela ≥ {proyecto['m2_parcela_minima']} m²")
+
+                        # Botón de detalles
+                        if st.button("Ver Detalles", key=f"similar_detail_{proyecto['id']}", use_container_width=True):
+                            st.query_params["selected_project"] = proyecto['id']
+                            st.rerun()
+
+                        st.markdown("---")
+
 def show_client_interests(client_email):
     """Mostrar proyectos de interés del cliente"""
     st.subheader("⭐ Mis Proyectos de Interés")

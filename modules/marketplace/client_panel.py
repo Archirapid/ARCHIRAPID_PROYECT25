@@ -329,11 +329,26 @@ def show_selected_project_panel(client_email, project_id):
 
     with tab2:
         st.header("🔍 ANÁLISIS CON IA")
-        if st.button("🤖 Analizar Proyecto con Gemini", type="primary"):
+        if st.button("🤖 Analizar Proyecto con IA", type="primary"):
             texto = project.get('ocr_text', "")
             if not texto:
-                st.error("No hay datos técnicos disponibles para el análisis")
-            else:
+                # Intentar extraer texto del PDF de memoria si existe
+                memoria_pdf = project.get('memoria_pdf')
+                if memoria_pdf and os.path.exists(memoria_pdf):
+                    try:
+                        from archirapid_extract.parse_project_memoria import extract_text_from_pdf
+                        texto = extract_text_from_pdf(memoria_pdf)
+                        if not texto.strip():  # Si no extrajo nada útil
+                            st.error("No hay datos técnicos disponibles para el análisis")
+                            texto = ""
+                    except Exception as e:
+                        st.error(f"Error extrayendo texto del PDF: {e}")
+                        texto = ""
+                else:
+                    st.error("No hay datos técnicos disponibles para el análisis")
+                    texto = ""
+            
+            if texto:  # Solo proceder si tenemos texto
                 with st.spinner("Analizando con IA avanzada..."):
                     analisis = ai.generate_text(f"Analiza técnicamente este proyecto arquitectónico: fortalezas, debilidades, viabilidad constructiva, eficiencia energética y recomendaciones de mejora: {texto[:3000]}")
                     st.success("🔍 ANÁLISIS COMPLETADO")

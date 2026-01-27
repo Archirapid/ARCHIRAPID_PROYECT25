@@ -9,10 +9,18 @@ import http.server
 import socketserver
 import functools
 import time
+import json
 from pathlib import Path
 from src import db as _db
 from modules.marketplace.utils import init_db, db_conn
 from modules.marketplace.marketplace import get_project_display_image
+from modules.marketplace import client_panel
+from modules.marketplace.compatibilidad import get_proyectos_compatibles
+
+# Función auxiliar para compatibilidad
+def three_html_for(model_url, project_id):
+    """Genera HTML para el visor 3D"""
+    return client_panel.generate_3d_viewer_html(model_url)
 
 # Inicializar base de datos
 init_db()
@@ -63,7 +71,7 @@ def panel_cliente_v2():
         user_name = st.session_state.get('user_name', 'Cliente')
 
         # Mostrar directamente el panel profesional
-        show_client_dashboard(user_email, user_name)
+        client_panel.main()
         return
 
     # BYPASS PARA PAGO CONFIRMADO - Acceso inmediato sin consultas DB
@@ -75,7 +83,7 @@ def panel_cliente_v2():
         del st.session_state['payment_confirmed']
 
         # Mostrar directamente el panel profesional
-        show_client_dashboard(user_email, user_name)
+        client_panel.main()
         return
 
     # SEGUNDO: Auto-login si viene de query params con owner_email (sistema legacy)

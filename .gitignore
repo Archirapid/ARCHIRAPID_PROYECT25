@@ -14,6 +14,12 @@ venv/
 env/
 ENV/
 
+# Environment variables - API Keys protection
+.env
+.env.local
+.env.*.local
+*.env
+
 # Backups (no subir a Git)
 *.zip
 *.backup

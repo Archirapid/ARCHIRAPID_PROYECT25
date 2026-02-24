@@ -1320,14 +1320,54 @@ def render_step3():
             babylon_data = _json.load(babylon_json)
             st.session_state["babylon_modified_layout"] = babylon_data
 
-            # Calcular totales
+            # Calcular totales básicos
             total_area = sum(float(r.get('new_area', 0)) for r in babylon_data)
             total_cost = int(total_area * 1500)
 
-            st.success(f"✅ Diseño cargado: {len(babylon_data)} habitaciones | {total_area:.1f}m² | €{total_cost:,}")
-            # NO hacer st.rerun() aquí
+            # AUTO-REDISTRIBUCIÓN: llamar recalculate_layout()
+            house_shape = st.session_state.get('request', {}).get('house_shape', 'Rectangular')
+            modified_rooms = []
+            for r in babylon_data:
+                # Ignorar entrada de tabiques personalizados
+                if r.get('index') == 'custom_walls':
+                    continue
+                try:
+                    modified_rooms.append({
+                        'code': r.get('code', r.get('name', 'espacio')),
+                        'name': r.get('name', 'Espacio'),
+                        'area_m2': float(r.get('new_area', r.get('original_area', 10)))
+                    })
+                except (ValueError, TypeError):
+                    continue
+
+            if modified_rooms:
+                result = recalculate_layout(modified_rooms, house_shape)
+
+                if result['success']:
+                    # Guardar layout redistribuido
+                    st.session_state["babylon_redistributed_layout"] = result['layout']
+
+                    # Actualizar sliders Paso 2 con áreas redistribuidas
+                    for i, room in enumerate(result['layout']):
+                        slider_key = f"step2_slider_{i}"
+                        st.session_state[slider_key] = round(float(room['area_m2']), 1)
+
+                    st.success(
+                        f"✅ Diseño cargado y redistribuido: "
+                        f"{len(result['layout'])} habitaciones | "
+                        f"{total_area:.1f}m² | €{total_cost:,} | "
+                        f"Plano: {result['total_width']:.1f}m × {result['total_depth']:.1f}m"
+                    )
+                else:
+                    st.warning(f"⚠️ Diseño cargado pero redistribución falló: {result.get('error', 'desconocido')}")
+                    st.success(f"✅ Diseño cargado: {len(babylon_data)} habitaciones | {total_area:.1f}m² | €{total_cost:,}")
+            else:
+                st.success(f"✅ Diseño cargado: {len(babylon_data)} habitaciones | {total_area:.1f}m² | €{total_cost:,}")
+
         except Exception as e:
             st.error(f"❌ Error: {e}")
+            import traceback
+            st.code(traceback.format_exc())
 
     # Validar datos
     req = st.session_state.get("ai_house_requirements", {})

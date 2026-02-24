@@ -365,34 +365,89 @@ def render_step1():
     st.markdown("---")
     
     # ============================================
-    # PASO B: ESTILO DE VIVIENDA
+    # PASO B: ESTILO DE VIVIENDA - CARDS CON FOTOS
     # ============================================
     st.subheader("🎨 ¿Qué estilo te gusta?")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    styles = {
-        "🌿 Ecológico": "Materiales naturales, mínimo impacto ambiental",
-        "🏡 Rural": "Piedra, madera, integrado en el paisaje",
-        "🏠 Moderno": "Líneas limpias, grandes ventanales, minimalista",
-        "⛰️ Montaña": "Refugio alpino, tejados inclinados, madera y piedra",
-        "🌊 Playa": "Abierto, ventilado, colores claros, terrazas",
-        "🏛️ Clásico": "Elegante, simétrico, materiales nobles",
-        "💃 Andaluz": "Patio central, cerámica, cal, frescor natural",
-        "🌆 Contemporáneo": "Vanguardista, tecnológico, sostenible"
+
+    styles_data = {
+        "Ecológico": {
+            "desc": "Materiales naturales, mínimo impacto ambiental",
+            "img": "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400&h=250&fit=crop"
+        },
+        "Rural": {
+            "desc": "Piedra, madera, integrado en el paisaje",
+            "img": "https://images.unsplash.com/photo-1510798831971-661eb04b3739?w=400&h=250&fit=crop"
+        },
+        "Moderno": {
+            "desc": "Líneas limpias, grandes ventanales, minimalista",
+            "img": "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=400&h=250&fit=crop"
+        },
+        "Montaña": {
+            "desc": "Refugio alpino, tejados inclinados, madera y piedra",
+            "img": "https://images.unsplash.com/photo-1518780664697-55e3ad937233?w=400&h=250&fit=crop"
+        },
+        "Playa": {
+            "desc": "Abierto, ventilado, colores claros, terrazas",
+            "img": "https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=400&h=250&fit=crop"
+        },
+        "Clásico": {
+            "desc": "Elegante, simétrico, materiales nobles",
+            "img": "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=400&h=250&fit=crop"
+        },
+        "Andaluz": {
+            "desc": "Patio central, cerámica, cal, frescor natural",
+            "img": "https://images.unsplash.com/photo-1558442086-8ea19a79cd4d?w=400&h=250&fit=crop"
+        },
+        "Contemporáneo": {
+            "desc": "Vanguardista, tecnológico, sostenible",
+            "img": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=400&h=250&fit=crop"
+        },
     }
-    
-    style_options = list(styles.keys())
-    selected_style = st.radio(
-        "Elige el estilo de tu vivienda",
-        style_options,
-        horizontal=True,
-        label_visibility="collapsed"
-    )
-    
-    # Mostrar descripción del estilo
-    st.caption(f"✨ {styles[selected_style]}")
-    
+
+    # Inicializar selección
+    if 'selected_style_key' not in st.session_state:
+        st.session_state['selected_style_key'] = 'Moderno'
+
+    # Render cards en filas de 4
+    style_keys = list(styles_data.keys())
+    for row_start in range(0, len(style_keys), 4):
+        cols = st.columns(4)
+        for col, style_key in zip(cols, style_keys[row_start:row_start+4]):
+            data = styles_data[style_key]
+            is_selected = st.session_state['selected_style_key'] == style_key
+            border_color = "#3498DB" if is_selected else "rgba(255,255,255,0.1)"
+            bg_color = "rgba(52,152,219,0.15)" if is_selected else "rgba(255,255,255,0.03)"
+            check = "✅ " if is_selected else ""
+
+            with col:
+                st.markdown(f"""
+                <div style='
+                    border: 2px solid {border_color};
+                    border-radius: 12px;
+                    overflow: hidden;
+                    background: rgba(20,30,48,0.95);
+                    margin-bottom: 8px;
+                    cursor: pointer;
+                '>
+                    <img src='{data["img"]}' style='width:100%; height:130px; object-fit:cover;'>
+                    <div style='padding: 8px 10px;'>
+                        <p style='margin:0; font-weight:700; font-size:0.9em; color:white; text-shadow: 1px 1px 3px rgba(0,0,0,0.9);'>{check}{style_key}</p>
+                        <p style='margin:2px 0 0 0; font-size:0.75em; color:rgba(255,255,255,0.85); text-shadow: 1px 1px 2px rgba(0,0,0,0.9);'>{data["desc"]}</p>
+                    </div>
+                </div>
+                """ , unsafe_allow_html=True)
+
+                if st.button(
+                    "✓ Seleccionar" if is_selected else "Elegir",
+                    key=f"style_btn_{style_key}",
+                    use_container_width=True,
+                    type="primary" if is_selected else "secondary"
+                ):
+                    st.session_state['selected_style_key'] = style_key
+                    st.rerun()
+
+    selected_style = st.session_state['selected_style_key']
+    st.caption(f"✨ Seleccionado: **{selected_style}** — {styles_data[selected_style]['desc']}")
     st.markdown("---")
     
     # ============================================

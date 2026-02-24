@@ -625,8 +625,8 @@ def generate_babylon_html(rooms_data, total_width, total_depth):
             link.download = 'archirapid_layout_modificado.json';
             link.click();
             
-            // Mostrar warning
-            alert('⚠️ CAMBIOS GUARDADOS\\n\\n📄 Archivo JSON descargado\\n\\n⚠️ IMPORTANTE: Este diseño requiere validación por un arquitecto antes de construcción.\\n\\nLos cambios NO garantizan cumplimiento de normativa CTE.');
+            // Mostrar mensaje de éxito y siguiente paso
+            alert('✅ CAMBIOS GUARDADOS\n\n📄 Archivo JSON descargado\n\n📌 SIGUIENTE PASO:\nVe a la pestaña "Documentación" y sube este JSON para sincronizar el plano.\n\n⚠️ IMPORTANTE: Requiere validación por arquitecto colegiado antes de construcción.');
         }}
         
         // ================================================
